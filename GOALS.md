@@ -20,8 +20,10 @@ Each tool does one job. craboodle is the conductor; scuttlerun and pincenez are 
 
 - **Run + grade + report.** No built-in comparison mode. The primitive is: run configs, grade outputs, report. Comparison (with/without skill, model A vs B, etc.) is a pattern that callers compose on top by defining scenario variants.
 - **Layered configuration.** A base scuttlerun config (`base.yml`) defines shared defaults (model, tools, permissions). Each scenario overrides via a `scuttlerun:` passthrough block. Uses scuttlerun's existing config merging — no new config system. Craboodle settings live separately in `craboodle.yaml`.
-- **Repeats with averaging.** Craboodle runs each scenario N times and averages pass rates across repetitions. Averaged rates (not majority vote) give a richer signal — 0.67 is more informative than pass/fail.
-- **Streaming output.** Results stream to stdout as YAML as scenarios complete. Compact output for passing assertions, verbose output (with evidence) for failures. Human-readable yet machine-parseable.
+- **Raw data, not verdicts.** Craboodle runs each scenario N times and reports fractional pass rates per assertion (0.33, 0.67, 1.0). It does not apply thresholds or majority voting — callers decide what constitutes pass/fail. The ratchet is the one exception: it compares the mean of per-assertion pass rates against a committed threshold.
+- **Streaming output.** Results stream to stdout as incrementally valid YAML. The `scenarios:` key is emitted first, then each scenario's results are appended as array items as they complete. The overall `pass_rate` is written last. The output is valid YAML at every intermediate point — callers can process partial output.
+- **Artifacts preserved.** Intermediate artifacts (scuttlerun outputs, pincenez gradings) are written to a temp directory that is always preserved after the run. The temp directory path is included in the YAML output, enabling downstream inspection and debugging.
+- **Error tolerance.** When a rep fails (scuttlerun crash, pincenez timeout, API error), craboodle skips the failed rep, excludes it from averaging, and reports the error in the scenario's output. Remaining reps and scenarios continue unaffected.
 - **Hardwired to scuttlerun + pincenez.** The tools form an opinionated stack. No pluggable runners or graders — that's over-abstraction for a pipeline with exactly two external tools.
 - **Small tools, loosely joined.** Each tool in the stack is focused and composable. craboodle is the third extraction; more may follow. Avoid absorbing concerns that belong in other tools or downstream callers.
 
@@ -35,9 +37,11 @@ Each tool does one job. craboodle is the conductor; scuttlerun and pincenez are 
 
 4. **Parallel by default.** All scenario runs execute in parallel, with configurable concurrency limits. Grading parallelism is inherited from pincenez (one LLM call per assertion).
 
-5. **Streaming YAML output.** Results stream to stdout as YAML — scenarios appear as they complete. Compact output for passing assertions (check + pass_rate), verbose for failures (check + pass_rate + per-rep evidence). No files written; stdout is the interface.
+5. **Streaming YAML output.** Results stream to stdout as incrementally valid YAML — scenarios appear as they complete. Compact output for passing assertions (check + pass_rate), verbose for failures (check + pass_rate + per-rep evidence). The temp directory path and per-scenario error details are included in the output.
 
-6. **Ratchet for regression prevention.** If `craboodle.yaml` in the evals directory defines a `minimum_score`, craboodle exits non-zero when results fall below it. Supports both an overall threshold and per-scenario overrides. The ratchet file is meant to be committed — a high-water mark that guards against regressions.
+6. **Ratchet for regression prevention.** If `craboodle.yaml` in the evals directory defines a `minimum_score`, craboodle exits non-zero when results fall below it. The ratchet compares against the mean of per-assertion pass rates. Supports both an overall threshold and per-scenario overrides. The ratchet file is meant to be committed — a high-water mark that guards against regressions.
+
+7. **Scenario labels.** Scenarios support an optional `labels` map (key-value pairs) that passes through to the output YAML. Craboodle does not interpret labels — they enable callers to tag variants (e.g., `variant: with_skill`, `model: sonnet`) for downstream comparison and grouping.
 
 ## Non-Goals (for now)
 
@@ -52,4 +56,3 @@ Each tool does one job. craboodle is the conductor; scuttlerun and pincenez are 
 ## Open Questions
 
 - **Skillcraft relationship**: Skillcraft will keep a thin wrapper around craboodle for skill-specific conventions (paired with/without variants, discrimination analysis). Exact wrapper design deferred to implementation.
-- **Output labels for comparison**: Should the output YAML support a labels/tags/metadata field on scenarios to make downstream comparison easier (e.g., tagging variants)? Deferred — revisit after seeing how skillcraft actually uses craboodle.

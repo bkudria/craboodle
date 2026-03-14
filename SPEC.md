@@ -34,12 +34,15 @@ craboodle is a **test runner**, not:
 | Dependencies | Hardwired to scuttlerun + pincenez | Opinionated stack; no pluggable runners/graders |
 | Scenario discovery | Directory convention | Glob `*/scenario.yml` in evals dir |
 | Repeats | Built-in with averaging | Average pass rates across N reps (not majority vote) |
+| Pass rate semantics | Raw fractional data | craboodle reports 0.33, 0.67, etc. — no binary thresholds. Callers decide what constitutes pass/fail |
 | Configuration | Layered (base.yml + scenario scuttlerun: passthrough) | Uses scuttlerun's config merging; craboodle settings separate in craboodle.yaml |
-| Output | Streaming YAML to stdout | Human-readable, machine-parseable; scenarios stream as they complete |
+| Output | Streaming YAML to stdout | Incrementally valid YAML; scenarios stream as array items as they complete |
 | Output style | Compact pass, verbose fail | Passing assertions: check + pass_rate. Failures include per-rep evidence |
-| Artifacts | Temp dir (ephemeral) | Intermediate files (output.md, grading.yml) don't pollute evals dir |
+| Artifacts | Temp dir (preserved) | Intermediate files kept for debugging; temp dir path included in output YAML |
+| Labels | Key-value map on scenarios | Passthrough to output; enables downstream comparison/grouping without craboodle interpreting semantics |
+| Error handling | Skip failed reps | Failed reps excluded from averaging, reported in per-scenario `errors` array. Other reps/scenarios unaffected |
 | Parallelism | Default parallel, configurable concurrency | All scenarios run concurrently; `--concurrency` limits |
-| Ratchet | craboodle.yaml minimum_score | Exit 1 if results fall below committed threshold |
+| Ratchet | craboodle.yaml minimum_score | Exit 1 if mean of per-assertion pass rates falls below committed threshold |
 
 ---
 
@@ -138,15 +141,22 @@ The evals directory contains only scenario definitions and configuration — no 
     └── scenario.yml
 ```
 
-Intermediate artifacts (scuttlerun outputs, pincenez gradings) are written to a temp directory and discarded after the run.
+Intermediate artifacts (scuttlerun outputs, pincenez gradings) are written to a temp directory that is preserved after the run for debugging. The temp directory path is included in the YAML output.
 
 ### scenario.yml
 
-A scenario has three craboodle-understood fields (`name`, `prompt`, `assertions`) and an optional `scuttlerun:` passthrough block:
+A scenario has four craboodle-understood fields (`name`, `prompt`, `assertions`, `labels`) and an optional `scuttlerun:` passthrough block:
 
 ```yaml
 # --- Scenario metadata ---
 name: "Descriptive name for this scenario"
+
+# --- Labels (optional, passthrough to output) ---
+# Key-value pairs for downstream comparison/grouping.
+# Craboodle does not interpret labels — they pass through to output as-is.
+labels:
+  variant: with_skill
+  model: sonnet-4-6
 
 # --- Prompt (sent to scuttlerun) ---
 prompt: |
@@ -203,7 +213,8 @@ Optional file at the evals directory root. Craboodle-specific settings, separate
 ```yaml
 # craboodle.yaml — craboodle settings
 
-# Ratchet: overall minimum pass rate. Exit 1 if results fall below.
+# Ratchet: overall minimum pass rate (mean of per-assertion pass rates).
+# Exit 1 if results fall below.
 minimum_score: 0.8
 
 # Per-scenario minimum overrides (optional).
@@ -260,38 +271,47 @@ General:
 
 ## Output
 
-Results stream to stdout as YAML. Each scenario's results appear as soon as all its reps are graded and averaged. The overall `pass_rate` appears last.
+Results stream to stdout as incrementally valid YAML. The `scenarios:` key is emitted first, then each scenario's results are appended as array items as they complete (arrival order). The overall `pass_rate` and `artifact_dir` are written last. The output is valid YAML at every intermediate point.
 
-Passing assertions are compact (check + pass_rate). Failing assertions include per-rep evidence from pincenez — like rspec showing stack traces only for failures.
+All `pass_rate` values are raw fractional data (0.0–1.0), not binary verdicts. A scenario's `pass_rate` is the mean of its per-assertion pass rates. The overall `pass_rate` is the mean across all scenarios. Callers decide what constitutes pass/fail — craboodle reports the numbers.
+
+Passing assertions are compact (check + pass_rate). Failing assertions include per-rep evidence from pincenez — like rspec showing stack traces only for failures. If a rep failed due to a scuttlerun or pincenez error, it is excluded from averaging and reported in the scenario's `errors` array.
 
 ### Example Output
 
 ```yaml
+artifact_dir: /tmp/craboodle-run-a1b2c3
 scenarios:
   - id: email-validator
     name: Email validator
+    labels:
+      variant: with_skill
     assertions:
       - check: "Output contains a function that validates email format"
         pass_rate: 1.0
       - check: "Function handles edge cases like empty string and missing @"
-        pass_rate: 0.33
+        pass_rate: 0.5
         failures:
           - rep: 1
             evidence: "No empty string handling found in the output"
-          - rep: 3
-            evidence: "Missing @ check not tested"
       - check: "Output includes at least one test or example usage"
         pass_rate: 1.0
-    pass_rate: 0.78
+    pass_rate: 0.83
+    errors:
+      - rep: 3
+        stage: scuttlerun
+        error: "timeout after 120s"
   - id: url-parser
     name: URL parser
+    labels:
+      variant: without_skill
     assertions:
       - check: "Parses query strings correctly"
         pass_rate: 1.0
       - check: "Handles malformed URLs gracefully"
         pass_rate: 1.0
     pass_rate: 1.0
-pass_rate: 0.89
+pass_rate: 0.92
 ```
 
 ---
@@ -304,16 +324,18 @@ pass_rate: 0.89
 2. **Discover scenarios** — glob `<evals-dir>/*/scenario.yml`, sort by ID
 3. **Load base config** — read `<evals-dir>/base.yml` if it exists
 4. **Create temp directory** — for all intermediate artifacts
-5. **For each scenario (parallel, up to --concurrency):**
+5. **Stream `artifact_dir`** — write the temp directory path to stdout as the first YAML key
+6. **For each scenario (parallel, up to --concurrency):**
    a. Build merged scuttlerun config (base + scenario scuttlerun: overrides + prompt)
    b. Build pincenez rubric (assertions only, no context)
    c. For each rep (1..R):
       - Run `scuttlerun run <config>` → `<tmpdir>/<scenario>/rep-M/output.md`
       - Run `pincenez <rubric> <output>` → `<tmpdir>/<scenario>/rep-M/grading.yml`
-   d. Average grading results across reps
-   e. **Stream scenario results to stdout** (as soon as all reps complete)
-6. **Write overall pass_rate** to stdout
-7. **Ratchet check** — if craboodle.yaml defines minimum_score, compare results and exit 1 if below threshold
+      - **On rep failure** (scuttlerun crash, pincenez error, timeout): record the error (rep number, stage, error message), skip the rep, continue with remaining reps
+   d. Average grading results across successful reps (failed reps excluded from denominator)
+   e. **Stream scenario results to stdout** (as soon as all reps complete), including any `errors` array
+7. **Write overall pass_rate** to stdout
+8. **Ratchet check** — if craboodle.yaml defines minimum_score, compare mean of per-assertion pass rates against threshold and exit 1 if below
 
 ---
 
@@ -410,5 +432,5 @@ Track and report API costs per scenario and overall.
 ### Scenario Templates
 `craboodle init` to scaffold a new evals directory with craboodle.yaml, base.yml, and example scenarios.
 
-### Output Labels
-Support a labels/tags field on scenarios to aid downstream comparison (e.g., tagging variants for A/B analysis). Revisit after seeing how skillcraft uses craboodle.
+### Per-Scenario Repeat Overrides
+Allow scenarios to override the repeat count (e.g., `repeats: 5` for flaky scenarios). Deferred — start with uniform `--repeats` for all scenarios.
