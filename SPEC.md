@@ -2,22 +2,25 @@
 
 ## Overview
 
-craboodle is a TypeScript CLI that orchestrates evaluation pipelines for Claude Code configurations. It runs scenarios through scuttlerun (headless session driver), grades outputs with pincenez (LLM rubric grader), manages repetitions with averaging, and aggregates results into structured benchmark files.
+craboodle is a TypeScript CLI that orchestrates evaluation pipelines for Claude Code configurations. It discovers scenarios, runs them through scuttlerun (headless session driver), grades outputs with pincenez (LLM rubric grader), manages repetitions with averaging, and streams results to stdout as YAML.
 
-craboodle is **general-purpose**. It works with any directory of scenario definitions — skill evaluations, prompt engineering experiments, model comparisons, regression testing, or any other use case requiring "run Claude, grade the output, aggregate results."
+Think of craboodle as **rspec for eval scenarios**: given a directory of scenarios, run them, grade them, report results. Each invocation is a fresh run — no history, no iterations, no accumulated state.
+
+craboodle is **general-purpose**. It works with any directory of scenario definitions — skill evaluations, CLAUDE.md tuning, sub-agent definitions, model comparisons, combo config evaluation, regression testing, or any other use case requiring "run Claude, grade the output, report results."
 
 ### Motivating Problem
 
-Evaluating Claude Code configurations (skills, prompts, CLAUDE.md variants) requires orchestrating a multi-step pipeline: generate scuttlerun configs, run sessions, grade outputs against rubrics, handle repetitions, and aggregate results. This orchestration was previously a ~1000-line bash script (`run-eval.sh`) tightly coupled to skillcraft. craboodle extracts the orchestration into a standalone, typed, testable tool.
+Evaluating Claude Code configurations (skills, prompts, CLAUDE.md variants, sub-agents, combo configs) requires orchestrating a multi-step pipeline: build scuttlerun configs, run sessions, grade outputs against rubrics, handle repetitions, and average results. This orchestration was previously a ~1000-line bash script (`run-eval.sh`) tightly coupled to skillcraft. craboodle extracts the orchestration into a standalone, typed, testable tool.
 
 ### Non-Goals
 
-craboodle is a **pipeline orchestrator**, not:
+craboodle is a **test runner**, not:
 
 - **A session driver** — scuttlerun runs sessions. craboodle invokes scuttlerun.
 - **A grader** — pincenez grades outputs. craboodle invokes pincenez.
 - **A comparison framework** — craboodle runs and grades. Comparison semantics (with/without skill, model A vs B) are patterns that callers compose by defining scenario variants.
-- **A CI system** — craboodle writes benchmark files. CI reads them.
+- **A history manager** — each run is independent. No iterations, no benchmark accumulation.
+- **A CI system** — craboodle writes to stdout. CI captures it.
 
 ---
 
@@ -26,14 +29,17 @@ craboodle is a **pipeline orchestrator**, not:
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
 | Language | TypeScript | Matches scuttlerun and pincenez; types, async, error handling |
-| Scope | General-purpose orchestrator | Not coupled to skills; works with any scenario directory |
+| Scope | General-purpose test runner | Not coupled to skills; works with any scenario directory |
 | Interface | CLI-first | `craboodle run <evals-dir>` as primary invocation |
 | Dependencies | Hardwired to scuttlerun + pincenez | Opinionated stack; no pluggable runners/graders |
 | Scenario discovery | Directory convention | Glob `*/scenario.yml` in evals dir |
 | Repeats | Built-in with averaging | Average pass rates across N reps (not majority vote) |
-| Configuration | Layered (base + scenario override) | Uses scuttlerun's config merging; each scenario overrides base defaults |
-| Output | JSON benchmark files | Machine-queryable, human-inspectable |
+| Configuration | Layered (base.yml + scenario scuttlerun: passthrough) | Uses scuttlerun's config merging; craboodle settings separate in craboodle.yaml |
+| Output | Streaming YAML to stdout | Human-readable, machine-parseable; scenarios stream as they complete |
+| Output style | Compact pass, verbose fail | Passing assertions: check + pass_rate. Failures include per-rep evidence |
+| Artifacts | Temp dir (ephemeral) | Intermediate files (output.md, grading.yml) don't pollute evals dir |
 | Parallelism | Default parallel, configurable concurrency | All scenarios run concurrently; `--concurrency` limits |
+| Ratchet | craboodle.yaml minimum_score | Exit 1 if results fall below committed threshold |
 
 ---
 
@@ -51,39 +57,34 @@ craboodle is a **pipeline orchestrator**, not:
             ┌───────────────────────────────────────────┐
             │          Config Builder                    │
             │                                           │
-            │  base.yml + scenario.yml → scuttlerun     │
-            │  config (merged via scuttlerun's rules)   │
+            │  base.yml + scenario.yml scuttlerun:      │
+            │  → merged scuttlerun config               │
             │                                           │
-            │  scenario.yml assertions → pincenez       │
-            │  rubric (context + assertions)             │
+            │  scenario.yml assertions                  │
+            │  → pincenez rubric (assertions only)      │
             └───────┬───────────────────────────────────┘
                     │
           ┌─────── │ ──── x repeats ────────┐
           │        ▼                        │
           │  ┌─────────────┐                │
           │  │ scuttlerun   │ → output.md   │
-          │  │ run config   │               │
+          │  │ (temp dir)   │               │
           │  └─────────────┘                │
           │        │                        │
           │        ▼                        │
           │  ┌─────────────┐                │
           │  │ pincenez     │ → grading.yml │
-          │  │ rubric output│               │
+          │  │ (temp dir)   │               │
           │  └─────────────┘                │
           └─────────────────────────────────┘
                     │
-                    ▼
-            ┌───────────────┐
-            │  Aggregator    │
-            │                │
-            │  Average pass  │
-            │  rates across  │
-            │  reps per      │
-            │  scenario      │
-            └───────┬────────┘
+                    ▼  (average across reps)
+                    │
+              stream to stdout as YAML
+              (scenario by scenario, as each completes)
                     │
                     ▼
-            benchmark.json
+              ratchet check (if craboodle.yaml exists)
 ```
 
 ### Components
@@ -95,38 +96,27 @@ Discovers scenarios by globbing `<evals-dir>/*/scenario.yml`. Each scenario dire
 #### 2. Config Builder
 
 Builds a scuttlerun config for each scenario by merging:
-1. A **base config** (e.g., `<evals-dir>/base.yml`) defining shared defaults — model, tools, permissions, user persona
-2. The **scenario's scuttlerun overrides** — prompt, project files, and any per-scenario config
+1. A **base config** (`<evals-dir>/base.yml`, optional) defining shared defaults — model, tools, permissions, user persona
+2. The **scenario's scuttlerun overrides** (the `scuttlerun:` key in scenario.yml) — any scuttlerun config fields
+3. The **scenario's prompt** (mapped to scuttlerun's `prompt:` field)
 
-Uses scuttlerun's native config merging: later files override earlier ones (deep merge on objects, replace on scalars/arrays).
+Uses scuttlerun's native config merging: later files override earlier ones (deep merge on objects, replace on scalars/arrays). craboodle writes a temporary override config and passes it alongside base.yml to scuttlerun.
 
-Also builds a pincenez rubric from the scenario's assertions:
-- `context` ← scenario prompt (what task produced this output)
-- `assertions` ← scenario assertions array (check + optional note)
+Also builds a pincenez rubric from the scenario's assertions. The rubric contains only the `assertions` array — no `context` field. Each assertion is self-contained via its `check` and optional `note`.
 
 #### 3. Runner
 
 Invokes `scuttlerun run <merged-config>` for each scenario, N times (repeats). Manages:
 - Parallel execution with configurable concurrency
-- Output file management (`<scenario>/iteration-N/rep-M/output.md`)
-- Skip logic (don't re-run if output already exists)
-- Progress reporting
+- Output files in a temp directory
+- Progress: none by default (results stream to stdout as they complete)
 
 #### 4. Grader
 
 Invokes `pincenez <rubric> <output>` for each output. Pincenez handles per-assertion parallelism internally. craboodle manages:
-- Grading all outputs (across scenarios and reps)
-- Writing grading results to `<scenario>/iteration-N/rep-M/grading.yml`
-- Skip logic (don't re-grade if grading already exists)
-
-#### 5. Aggregator
-
-Computes averaged results across reps for each scenario:
-- Per-assertion: average pass rate across N reps
-- Per-scenario: average pass rate across all assertions
-- Overall: summary statistics across all scenarios
-
-Writes `benchmark.json` to the evals directory.
+- Grading all outputs across scenarios and reps
+- Writing grading results to temp directory
+- Averaging results across reps per assertion
 
 ---
 
@@ -134,27 +124,25 @@ Writes `benchmark.json` to the evals directory.
 
 ### Directory Structure
 
+The evals directory contains only scenario definitions and configuration — no run artifacts:
+
 ```
 <evals-dir>/
+├── craboodle.yaml                  # Craboodle settings (optional)
 ├── base.yml                        # Shared scuttlerun defaults (optional)
 ├── scenario-a/
-│   ├── scenario.yml                # Scenario definition
-│   ├── iteration-1/
-│   │   ├── rep-1/
-│   │   │   ├── output.md           # scuttlerun transcript
-│   │   │   └── grading.yml         # pincenez grading
-│   │   ├── rep-2/
-│   │   │   ├── output.md
-│   │   │   └── grading.yml
-│   │   └── scenario-grading.json   # Averaged across reps
-│   └── iteration-2/...
+│   └── scenario.yml                # Scenario definition
 ├── scenario-b/
 │   └── scenario.yml
-├── benchmark-1.json                # Aggregated results for iteration 1
-└── benchmark-2.json
+└── scenario-c/
+    └── scenario.yml
 ```
 
+Intermediate artifacts (scuttlerun outputs, pincenez gradings) are written to a temp directory and discarded after the run.
+
 ### scenario.yml
+
+A scenario has three craboodle-understood fields (`name`, `prompt`, `assertions`) and an optional `scuttlerun:` passthrough block:
 
 ```yaml
 # --- Scenario metadata ---
@@ -171,28 +159,28 @@ assertions:
   - check: "Function handles edge cases like empty string and missing @"
   - check: "Output includes at least one test or example usage"
 
-# --- Project files (scaffolded by scuttlerun) ---
-files:
-  existing-code.py: |
-    # This file is available to the agent during the session
-    def placeholder():
-        pass
-
 # --- Scuttlerun overrides (optional) ---
-# Any scuttlerun config fields here override the base config.
-# Common overrides: model, tools, user.persona, max_turns
+# Passthrough: any scuttlerun config fields. Craboodle does not
+# validate these — they are forwarded to scuttlerun as-is.
+# Common overrides: model, tools, user.persona, max_turns, project.files
 scuttlerun:
   model: claude-sonnet-4-6
   user:
     persona: "A developer who wants thorough validation"
+  project:
+    files:
+      existing-code.py: |
+        # This file is available to the agent during the session
+        def placeholder():
+            pass
 ```
 
 ### base.yml
 
-Optional file at the evals directory root. Defines shared scuttlerun config defaults:
+Optional file at the evals directory root. A plain scuttlerun config defining shared defaults:
 
 ```yaml
-# base.yml — shared defaults for all scenarios
+# base.yml — shared scuttlerun defaults for all scenarios
 model: claude-sonnet-4-6
 tools:
   - Read
@@ -208,16 +196,34 @@ project:
     Use relative paths. Do not use absolute paths.
 ```
 
+### craboodle.yaml
+
+Optional file at the evals directory root. Craboodle-specific settings, separate from scuttlerun config:
+
+```yaml
+# craboodle.yaml — craboodle settings
+
+# Ratchet: overall minimum pass rate. Exit 1 if results fall below.
+minimum_score: 0.8
+
+# Per-scenario minimum overrides (optional).
+# Scenarios without overrides use the overall minimum_score.
+scenarios:
+  scenario-a:
+    minimum_score: 0.9
+  scenario-b:
+    minimum_score: 0.6
+```
+
 ### Config Merging
 
 For each scenario, craboodle produces a scuttlerun config by merging:
 
 1. **base.yml** (if it exists)
-2. **scenario.yml's scuttlerun overrides** (the `scuttlerun:` key)
+2. **scenario.yml's scuttlerun: block** (passthrough, not validated by craboodle)
 3. **scenario.yml's prompt** (mapped to scuttlerun's `prompt:` field)
-4. **scenario.yml's files** (mapped to scuttlerun's `project.files:`)
 
-This uses scuttlerun's `run base.yml override.yml` merging behavior. craboodle writes a temporary merged config file and passes it to scuttlerun.
+This uses scuttlerun's `run base.yml override.yml` merging behavior. craboodle writes a temporary override config (scuttlerun block + prompt) and passes it alongside base.yml to scuttlerun.
 
 ---
 
@@ -227,23 +233,16 @@ This uses scuttlerun's `run base.yml override.yml` merging behavior. craboodle w
 craboodle — Eval pipeline orchestrator for Claude Code
 
 Usage:
-  craboodle run <evals-dir> [options]     Run full eval pipeline
-  craboodle show <evals-dir> [iteration]  Display benchmark results
+  craboodle run <evals-dir> [options]     Run eval pipeline
 
 Run options:
   --repeats N            Number of repetitions per scenario (default: 3)
   --concurrency N        Max parallel scuttlerun sessions (default: unlimited)
   --agent-model MODEL    Override scuttlerun model for all scenarios
   --grader-model MODEL   Override pincenez model for all assertions
-  --skip-grading         Run scenarios only, skip grading and aggregation
-  --iteration N          Reuse existing iteration N (don't create new)
-
-Show options:
-  (no options)           Show latest benchmark
-  N                      Show benchmark for iteration N
 
 General:
-  --verbose, -v          Verbose logging
+  --verbose, -v          Verbose logging (to stderr)
   -h, --help             Show help
   --version              Show version
 ```
@@ -252,75 +251,47 @@ General:
 
 | Code | Meaning |
 |------|---------|
-| 0 | Pipeline completed successfully |
-| 1 | Configuration error (invalid scenario YAML, missing base.yml fields) |
-| 2 | Pipeline error (scuttlerun or pincenez failures) |
+| 0 | Pipeline completed successfully (and ratchet passed, if configured) |
+| 1 | Ratchet failure (results below minimum_score in craboodle.yaml) |
+| 2 | Configuration error (invalid scenario YAML, missing required fields) |
+| 3 | Pipeline error (scuttlerun or pincenez failures) |
 
 ---
 
 ## Output
 
-### benchmark-N.json
+Results stream to stdout as YAML. Each scenario's results appear as soon as all its reps are graded and averaged. The overall `pass_rate` appears last.
 
-Written to `<evals-dir>/benchmark-N.json` after each iteration:
+Passing assertions are compact (check + pass_rate). Failing assertions include per-rep evidence from pincenez — like rspec showing stack traces only for failures.
 
-```json
-{
-  "iteration": 1,
-  "timestamp": "2026-03-13T10:30:00Z",
-  "config": {
-    "repeats": 3,
-    "agent_model": "claude-sonnet-4-6",
-    "grader_model": "claude-haiku-4-5"
-  },
-  "scenarios": [
-    {
-      "id": "scenario-a",
-      "name": "Descriptive name for this scenario",
-      "assertions": [
-        {
-          "check": "Output contains a function that validates email format",
-          "pass_rate": 0.67,
-          "reps": [true, false, true]
-        },
-        {
-          "check": "Function handles edge cases",
-          "pass_rate": 1.0,
-          "reps": [true, true, true]
-        }
-      ],
-      "pass_rate": 0.83
-    }
-  ],
-  "summary": {
-    "scenarios_count": 5,
-    "overall_pass_rate": 0.73,
-    "assertions_count": 15,
-    "mean_assertion_pass_rate": 0.71
-  }
-}
-```
+### Example Output
 
-### scenario-grading.json
-
-Written to `<scenario>/iteration-N/scenario-grading.json` after grading:
-
-```json
-{
-  "scenario_id": "scenario-a",
-  "assertions": [
-    {
-      "check": "Output contains a function that validates email format",
-      "pass_rate": 0.67,
-      "reps": [
-        { "pass": true, "evidence": "..." },
-        { "pass": false, "evidence": "..." },
-        { "pass": true, "evidence": "..." }
-      ]
-    }
-  ],
-  "pass_rate": 0.83
-}
+```yaml
+scenarios:
+  - id: email-validator
+    name: Email validator
+    assertions:
+      - check: "Output contains a function that validates email format"
+        pass_rate: 1.0
+      - check: "Function handles edge cases like empty string and missing @"
+        pass_rate: 0.33
+        failures:
+          - rep: 1
+            evidence: "No empty string handling found in the output"
+          - rep: 3
+            evidence: "Missing @ check not tested"
+      - check: "Output includes at least one test or example usage"
+        pass_rate: 1.0
+    pass_rate: 0.78
+  - id: url-parser
+    name: URL parser
+    assertions:
+      - check: "Parses query strings correctly"
+        pass_rate: 1.0
+      - check: "Handles malformed URLs gracefully"
+        pass_rate: 1.0
+    pass_rate: 1.0
+pass_rate: 0.89
 ```
 
 ---
@@ -329,24 +300,20 @@ Written to `<scenario>/iteration-N/scenario-grading.json` after grading:
 
 ### `craboodle run <evals-dir>`
 
-1. **Discover scenarios** — glob `<evals-dir>/*/scenario.yml`, sort by ID
-2. **Determine iteration** — next iteration number from existing `benchmark-*.json` files (or `--iteration N` to reuse)
-3. **Create iteration directories** — `<scenario>/iteration-N/rep-{1..R}/`
-4. **Load base config** — read `<evals-dir>/base.yml` if it exists
+1. **Load craboodle config** — read `<evals-dir>/craboodle.yaml` if it exists (for ratchet thresholds)
+2. **Discover scenarios** — glob `<evals-dir>/*/scenario.yml`, sort by ID
+3. **Load base config** — read `<evals-dir>/base.yml` if it exists
+4. **Create temp directory** — for all intermediate artifacts
 5. **For each scenario (parallel, up to --concurrency):**
-   a. Build merged scuttlerun config (base + scenario overrides + prompt + files)
-   b. Build pincenez rubric (context from prompt, assertions from scenario)
+   a. Build merged scuttlerun config (base + scenario scuttlerun: overrides + prompt)
+   b. Build pincenez rubric (assertions only, no context)
    c. For each rep (1..R):
-      - Run `scuttlerun run <config>` → `rep-M/output.md`
-      - Run `pincenez <rubric> rep-M/output.md` → `rep-M/grading.yml`
-   d. Average grading results across reps → `scenario-grading.json`
-6. **Aggregate** — compute overall stats, write `benchmark-N.json`
-7. **Display** — print summary table
-
-### `craboodle show <evals-dir> [N]`
-
-1. Find `benchmark-N.json` (latest if N not specified)
-2. Display formatted summary table
+      - Run `scuttlerun run <config>` → `<tmpdir>/<scenario>/rep-M/output.md`
+      - Run `pincenez <rubric> <output>` → `<tmpdir>/<scenario>/rep-M/grading.yml`
+   d. Average grading results across reps
+   e. **Stream scenario results to stdout** (as soon as all reps complete)
+6. **Write overall pass_rate** to stdout
+7. **Ratchet check** — if craboodle.yaml defines minimum_score, compare results and exit 1 if below threshold
 
 ---
 
@@ -356,29 +323,23 @@ Written to `<scenario>/iteration-N/scenario-grading.json` after grading:
 
 craboodle invokes scuttlerun as a subprocess:
 ```bash
-scuttlerun run <config.yml> > output.md
-```
-
-craboodle builds scuttlerun configs by merging base.yml with scenario overrides. It uses scuttlerun's config merging by passing multiple YAML files:
-```bash
 scuttlerun run base.yml scenario-override.yml > output.md
 ```
+
+craboodle builds a temporary override config from scenario.yml's `scuttlerun:` block and `prompt`, then passes it alongside base.yml to scuttlerun for merging.
 
 ### pincenez
 
 craboodle invokes pincenez as a subprocess:
 ```bash
-pincenez <rubric.yml> <output.md> > grading.yml
+pincenez rubric.yml output.md > grading.yml
 ```
 
-craboodle builds rubric files from scenario assertions (mapping `prompt` → `context`, passing `assertions` through directly since scenarios already use pincenez's `check`/`note` format).
+craboodle builds rubric files from scenario assertions. The rubric contains only the `assertions` array (no `context` field). Assertions pass through directly since scenarios already use pincenez's `check`/`note` format.
 
 ### skillcraft (post-extraction)
 
-After craboodle is extracted, skillcraft's relationship to eval is TBD. Options include:
-- A thin wrapper that adds skill-specific conventions (SKILL.md name lookup, with/without skill variant generation)
-- Pure documentation on how to use craboodle for skill evaluation
-- Both: docs + a convenience script
+Skillcraft keeps a thin wrapper around craboodle for skill-specific conventions — paired with/without skill variant generation, discrimination analysis, SKILL.md name lookup. The wrapper design is a skillcraft concern, not craboodle's.
 
 ---
 
@@ -389,7 +350,7 @@ After craboodle is extracted, skillcraft's relationship to eval is TBD. Options 
 | Package | Purpose |
 |---------|---------|
 | `commander` | CLI framework |
-| `yaml` | YAML parsing for scenario configs |
+| `yaml` | YAML parsing and output |
 | `zod` | Config validation |
 | `glob` | Scenario discovery |
 
@@ -419,16 +380,16 @@ craboodle/
 ├── GOALS.md                 # Design goals and philosophy
 ├── src/
 │   ├── cli.ts               # Commander CLI entry point
-│   ├── config.ts            # Scenario and base config parsing (Zod)
+│   ├── config.ts            # Scenario, base, and craboodle.yaml parsing (Zod)
 │   ├── discovery.ts         # Scenario directory discovery
 │   ├── builder.ts           # Config builder (merge base + scenario → scuttlerun config + rubric)
 │   ├── runner.ts            # scuttlerun invocation and output management
 │   ├── grader.ts            # pincenez invocation and grading management
-│   ├── aggregator.ts        # Results averaging and benchmark generation
-│   └── display.ts           # Formatted output (summary tables)
+│   └── results.ts           # Results averaging, streaming YAML output, ratchet check
 ├── tests/
 │   └── ...
 └── examples/
+    ├── craboodle.yaml       # Example craboodle config
     ├── base.yml             # Example base config
     └── example-scenario/
         └── scenario.yml     # Example scenario
@@ -440,17 +401,14 @@ craboodle/
 
 Out of scope for v1, noted for future work:
 
-### Comparison Modes
-Built-in A/B comparison (e.g., `craboodle compare <evals-dir> --variants with_skill,without_skill`). Currently, callers define variants as separate scenarios and compute deltas downstream.
-
 ### Watch Mode
 Re-run scenarios when scenario.yml files change. Useful during scenario development.
 
 ### Cost Tracking
-Track and report API costs per scenario, per iteration, and overall.
+Track and report API costs per scenario and overall.
 
 ### Scenario Templates
-`craboodle init` to scaffold a new evals directory with base.yml and example scenarios.
+`craboodle init` to scaffold a new evals directory with craboodle.yaml, base.yml, and example scenarios.
 
-### Streaming Progress
-Real-time progress updates during parallel execution (currently batch-style reporting).
+### Output Labels
+Support a labels/tags field on scenarios to aid downstream comparison (e.g., tagging variants for A/B analysis). Revisit after seeing how skillcraft uses craboodle.
