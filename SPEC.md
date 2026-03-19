@@ -6,7 +6,7 @@ craboodle is a TypeScript CLI that orchestrates evaluation pipelines for Claude 
 
 Think of craboodle as **rspec for eval scenarios**: given a directory of scenarios, run them, grade them, report results. Each invocation is a fresh run — no history, no iterations, no accumulated state.
 
-craboodle is **general-purpose**. It works with any directory of scenario definitions — skill evaluations, CLAUDE.md tuning, sub-agent definitions, model comparisons, combo config evaluation, regression testing, or any other use case requiring "run Claude, grade the output, report results."
+craboodle is **designed for generality**; skill eval is the first proven use case. It works with any directory of scenario definitions — CLAUDE.md tuning, sub-agent definitions, model comparisons, combo config evaluation, regression testing, skill evaluations, or any other use case requiring "run Claude, grade the output, report results."
 
 ### Motivating Problem
 
@@ -29,14 +29,14 @@ craboodle is a **test runner**, not:
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
 | Language | TypeScript | Matches scuttlerun and pincenez; types, async, error handling |
-| Scope | General-purpose test runner | Not coupled to skills; works with any scenario directory |
+| Scope | General-purpose test runner | Designed for generality; works with any scenario directory. Skill eval is the first proven use case |
 | Interface | CLI-first | `craboodle run <evals-dir>` as primary invocation |
 | Dependencies | Hardwired to scuttlerun + pincenez | Opinionated stack; no pluggable runners/graders |
 | Scenario discovery | Directory convention | Glob `*/scenario.yml` in evals dir |
 | Repeats | Built-in with averaging | Average pass rates across N reps (not majority vote). Majority voting is a caller concern |
 | Pass rate semantics | Raw fractional data | craboodle reports 0.33, 0.67, etc. — no binary thresholds. Callers decide what constitutes pass/fail |
 | Configuration | Layered (base.yml + scenario scuttlerun: passthrough) | Uses scuttlerun's config merging; no craboodle-specific config file |
-| Output | Streaming YAML to stdout | Incrementally valid YAML; scenarios stream as array items as they complete |
+| Output | Streaming YAML to stdout | Per-scenario streaming; valid YAML after each scenario block completes. Arrival order. Consumers process final output |
 | Output style | Compact pass, verbose fail | Passing assertions: check + pass_rate. Failures include per-rep evidence |
 | Artifacts | Temp dir (preserved) | Intermediate files kept for debugging; temp dir path included in output YAML |
 | Labels | Key-value map on scenarios | Passthrough to output; enables downstream comparison/grouping without craboodle interpreting semantics |
@@ -44,7 +44,7 @@ craboodle is a **test runner**, not:
 | Error handling | Skip failed reps | Failed reps excluded from averaging, reported in per-scenario `errors` array. Other reps/scenarios unaffected |
 | Parallelism | Flat (scenario, rep) pool | All work items in one pool; `--concurrency` limits. Run-then-grade per rep (slot held for both) |
 | Output format | Raw scuttlerun transcript | YAML transcript passed to pincenez as-is. No extraction or transformation step |
-| Grading scope | Transcript only | Pincenez grades the transcript file, not the project directory. Tool call args contain file contents |
+| Grading scope | Transcript as primary input | Pincenez receives the transcript file. It can also inspect the filesystem via Read tool if assertions require it (the transcript contains the project dir path) |
 
 ---
 
@@ -122,6 +122,8 @@ craboodle manages:
 - Averaging grading results across reps per assertion
 - Streaming scenario results to stdout as each scenario's reps complete
 
+craboodle does not impose its own timeouts. scuttlerun handles session timeouts; if scuttlerun times out, craboodle reports it as a scuttlerun-stage error.
+
 ---
 
 ## Scenario Configuration
@@ -152,7 +154,7 @@ A scenario has four craboodle-understood fields (`prompt`, `assertions`, `labels
 # Key-value pairs for downstream comparison/grouping.
 # Craboodle does not interpret labels — they pass through to output as-is.
 labels:
-  variant: with_skill
+  config: optimized
   model: sonnet-4-6
 
 # --- Context (optional, sent to pincenez rubric) ---
@@ -202,7 +204,7 @@ tools:
   - Bash
   - Glob
   - Grep
-  - Skill
+  - Edit
 user:
   turn_policy: single
 project:
@@ -254,7 +256,7 @@ General:
 
 ## Output
 
-Results stream to stdout as incrementally valid YAML. `artifact_dir` is emitted first (so consumers can find artifacts while the run is still in progress), then the `scenarios:` key, then each scenario's results are appended as array items as they complete (arrival order). The output is valid YAML at every intermediate point.
+Results stream to stdout as YAML, scenario by scenario for human-readable progress during long runs. `artifact_dir` is emitted first, then the `scenarios:` key, then each scenario's results are appended as array items as they complete (arrival order). The output is valid YAML after each scenario block is fully written. Consumers process the final complete output after craboodle exits.
 
 All `pass_rate` values are raw fractional data (0.0–1.0), not binary verdicts. A scenario's `pass_rate` is the mean of its per-assertion pass rates. Callers decide what constitutes pass/fail — craboodle reports the numbers.
 
@@ -267,7 +269,7 @@ artifact_dir: /tmp/craboodle-run-a1b2c3
 scenarios:
   - id: email-validator
     labels:
-      variant: with_skill
+      config: optimized
     assertions:
       - check: "Output contains a function that validates email format"
         pass_rate: 1.0
@@ -285,7 +287,7 @@ scenarios:
         error: "timeout after 120s"
   - id: url-parser
     labels:
-      variant: without_skill
+      config: baseline
     assertions:
       - check: "Parses query strings correctly"
         pass_rate: 1.0
@@ -334,11 +336,11 @@ craboodle invokes pincenez as a subprocess:
 pincenez rubric.yml output.yml > grading.yml
 ```
 
-craboodle builds rubric files from scenario assertions and optional context. Assertions pass through directly since scenarios already use pincenez's `check`/`note` format. Pincenez grades the transcript file only (not the scuttlerun project directory) — tool call arguments in the transcript contain file contents, which the grading judge can inspect.
+craboodle builds rubric files from scenario assertions and optional context. Assertions pass through directly since scenarios already use pincenez's `check`/`note` format. Pincenez receives the transcript file as its primary input. Tool call arguments in the transcript contain file contents, which the grading judge can inspect directly. Pincenez can also use its Read tool to inspect the scuttlerun project directory when assertions require filesystem-level verification — the transcript includes the project dir path.
 
 ### skillcraft (post-extraction)
 
-Skillcraft keeps a thin wrapper around craboodle for skill-specific conventions — paired with/without skill variant generation, discrimination analysis, SKILL.md name lookup. The wrapper design is a skillcraft concern, not craboodle's.
+As an example caller, skillcraft (craboodle's first consumer) plans to keep its own wrapper scripts for skill-specific conventions — paired with/without variant generation, discrimination analysis, SKILL.md name lookup. The wrapper design is a skillcraft concern, not craboodle's. Craboodle's design is not shaped by assumptions about what any specific caller needs.
 
 ---
 
