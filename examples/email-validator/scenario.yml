@@ -1,0 +1,21 @@
+labels:
+  config: baseline
+  model: sonnet-4-6
+
+context: |
+  The agent was asked to write an email validation function.
+  The user cares about edge case handling.
+
+prompt: |
+  Write a function that validates email addresses.
+
+assertions:
+  - check: "Output contains a function that validates email format"
+    note: "Look for regex or string parsing that checks for @ and domain"
+  - check: "Function handles edge cases like empty string and missing @"
+  - check: "Output includes at least one test or example usage"
+
+scuttlerun:
+  model: claude-sonnet-4-6
+  user:
+    persona: "A developer who wants thorough validation"

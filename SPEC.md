@@ -22,9 +22,13 @@ craboodle is a **test runner**, not:
 - **A history manager** — each run is independent. No iterations, no benchmark accumulation.
 - **A CI system** — craboodle writes to stdout. CI captures it.
 
+See also GOALS.md for a complete list of feature non-goals with rationale.
+
 ---
 
 ## Design Decisions
+
+For design philosophy and principles behind these choices, see GOALS.md.
 
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
@@ -33,8 +37,8 @@ craboodle is a **test runner**, not:
 | Interface | CLI-first | `craboodle run <evals-dir>` as primary invocation |
 | Dependencies | Hardwired to scuttlerun + pincenez | Opinionated stack; no pluggable runners/graders |
 | Scenario discovery | Directory convention | Glob `*/scenario.yml` in evals dir |
-| Repeats | Built-in with averaging | Average pass rates across N reps (not majority vote). Majority voting is a caller concern |
-| Pass rate semantics | Raw fractional data | craboodle reports 0.33, 0.67, etc. — no binary thresholds. Callers decide what constitutes pass/fail |
+| Repeats | Built-in with averaging | Average pass rates across N reps |
+| Pass rate semantics | Raw fractional data | Reports 0.33, 0.67, etc. — no binary thresholds |
 | Configuration | Layered (base.yml + scenario scuttlerun: passthrough) | Uses scuttlerun's config merging; no craboodle-specific config file |
 | Output | Streaming YAML to stdout | Per-scenario streaming; valid YAML after each scenario block completes. Arrival order. Consumers process final output |
 | Output style | Compact pass, verbose fail | Passing assertions: check + pass_rate. Failures include per-rep evidence |
@@ -136,7 +140,8 @@ The evals directory contains only scenario definitions and configuration — no 
 <evals-dir>/
 ├── base.yml                        # Shared scuttlerun defaults (optional)
 ├── scenario-a/
-│   └── scenario.yml                # Scenario definition
+│   ├── scenario.yml                # Scenario definition
+│   └── fixture.py                  # Additional files (optional, ignored by craboodle)
 ├── scenario-b/
 │   └── scenario.yml
 └── scenario-c/
@@ -148,6 +153,8 @@ Intermediate artifacts (scuttlerun outputs, pincenez gradings) are written to a 
 ### scenario.yml
 
 A scenario has four craboodle-understood fields (`prompt`, `assertions`, `labels`, `context`) and an optional `scuttlerun:` passthrough block. The scenario's ID is its directory basename. Validation is strict: `prompt` and `assertions` (with at least one assertion) are required, and unknown top-level keys cause a configuration error (exit 1). The `scuttlerun:` block is not validated by craboodle — it passes through to scuttlerun as-is.
+
+Scenario directories may contain additional files (fixtures, reference data, seed files) alongside scenario.yml. craboodle ignores all files except scenario.yml — additional files can be referenced by the scenario's scuttlerun config (e.g., via `project.files` relative paths).
 
 ```yaml
 # --- Labels (optional, passthrough to output) ---
@@ -258,7 +265,7 @@ General:
 
 Results stream to stdout as YAML, scenario by scenario for human-readable progress during long runs. `artifact_dir` is emitted first, then the `scenarios:` key, then each scenario's results are appended as array items as they complete (arrival order). The output is valid YAML after each scenario block is fully written. Consumers process the final complete output after craboodle exits.
 
-All `pass_rate` values are raw fractional data (0.0–1.0), not binary verdicts. A scenario's `pass_rate` is the mean of its per-assertion pass rates. Callers decide what constitutes pass/fail — craboodle reports the numbers.
+All `pass_rate` values are raw fractional data (0.0–1.0). A scenario's `pass_rate` is the mean of its per-assertion pass rates.
 
 Passing assertions (pass_rate == 1.0) are compact (check + pass_rate). Assertions with pass_rate < 1.0 include per-rep failure evidence from pincenez — like rspec showing stack traces only for failures. If a rep failed due to a scuttlerun or pincenez error, it is excluded from averaging and reported in the scenario's `errors` array. If all reps fail for a scenario, the scenario appears with `pass_rate: null` and its `errors` array.
 
