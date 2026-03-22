@@ -27,7 +27,7 @@ Each tool does one job. craboodle is the conductor; scuttlerun and pincenez are 
 - **Hardwired to scuttlerun + pincenez.** The tools form an opinionated stack. No pluggable runners or graders — that's over-abstraction for a pipeline with exactly two external tools.
 - **Small tools, loosely joined.** Each tool in the stack is focused and composable. craboodle is the third extraction; more may follow. Avoid absorbing concerns that belong in other tools or downstream callers.
 - **Minimal viable scope.** Start with the absolute minimum in craboodle. Absorb concerns from callers only when the pain of keeping them external demands it. When in doubt, leave it out — it's easier to add a feature later than to remove one.
-- **Strict non-interpretation.** craboodle emits raw data and never reduces, interprets, or transforms its own output. No thresholds, no verdicts, no deltas, no majority voting — even as optional flags. All interpretation is a downstream concern.
+- **Raw data with optional gating.** craboodle emits raw fractional pass rates and never reduces or transforms its own output. No verdicts, no deltas, no majority voting. The one exception is an opt-in **ratchet** (`min_pass_rate` in base.yml): a minimum acceptable score that produces a non-zero exit code when any scenario falls below the threshold. This gives a CI-compatible binary signal from non-binary eval scores, analogous to a code coverage ratchet. All other interpretation remains a downstream concern.
 
 ## Goals
 
@@ -46,7 +46,7 @@ Each tool does one job. craboodle is the conductor; scuttlerun and pincenez are 
 ## Non-Goals (for now)
 
 - Built-in comparison modes (A/B, with/without). Callers define variants as separate scenarios with labels and compute deltas downstream.
-- Pass/fail gating or ratcheting. Callers interpret pass rates and apply thresholds (e.g., `craboodle run ... | yq -e '.scenarios[].pass_rate >= 0.8'`).
+- Pass/fail gating beyond the ratchet. The `min_pass_rate` ratchet provides a binary gate; any finer-grained interpretation (majority voting, weighted scoring, etc.) remains a caller concern.
 - Pluggable runners or graders. scuttlerun + pincenez only.
 - Iteration or history management. Each `craboodle run` is independent. Callers manage versioning externally (git, timestamped copies, etc.).
 - CI/CD integration (GitHub Actions, webhooks). craboodle writes to stdout; CI captures it.

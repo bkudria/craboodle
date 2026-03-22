@@ -38,7 +38,7 @@ For design philosophy and principles behind these choices, see GOALS.md.
 | Dependencies | Hardwired to scuttlerun + pincenez | Opinionated stack; no pluggable runners/graders |
 | Scenario discovery | Directory convention | Glob `*/scenario.yml` in evals dir |
 | Repeats | Built-in with averaging | Average pass rates across N reps |
-| Pass rate semantics | Raw fractional data | Reports 0.33, 0.67, etc. — no binary thresholds |
+| Pass rate semantics | Raw fractional data with optional ratchet | Reports 0.33, 0.67, etc. Optional `min_pass_rate` in base.yml gates the exit code |
 | Configuration | Layered (base.yml + scenario scuttlerun: passthrough) | Uses scuttlerun's config merging; no craboodle-specific config file |
 | Output | Streaming YAML to stdout | Per-scenario streaming; valid YAML after each scenario block completes. Arrival order. Consumers process final output |
 | Output style | Compact pass, verbose fail | Passing assertions: check + pass_rate. Failures include per-rep evidence |
@@ -198,13 +198,114 @@ scuttlerun:
             pass
 ```
 
-### base.yml
+### Evaluating Different Config Types
 
-Optional file at the evals directory root. A plain scuttlerun config defining shared defaults:
+The `scuttlerun:` passthrough block in scenario.yml supports all Claude Code configuration types via scuttlerun's `project:` and `sdk:` fields. Here are scenario patterns for each:
+
+#### Skills
 
 ```yaml
-# base.yml — shared scuttlerun defaults for all scenarios
-model: claude-sonnet-4-6
+prompt: "Write a haiku about the ocean"
+assertions:
+  - check: "Output follows 5-7-5 syllable pattern"
+scuttlerun:
+  project:
+    skills:
+      - ~/.claude/skills/haiku-writer
+```
+
+#### CLAUDE.md Instructions
+
+```yaml
+prompt: "Write a function to parse URLs"
+assertions:
+  - check: "Output includes input validation for malformed URLs"
+scuttlerun:
+  project:
+    claude_md: |
+      Always validate user input before processing.
+      Include error handling for edge cases.
+```
+
+#### Hooks and Settings
+
+```yaml
+prompt: "Commit the changes"
+assertions:
+  - check: "Agent ran the pre-commit hook before committing"
+scuttlerun:
+  project:
+    settings:
+      hooks:
+        PreToolUse:
+          - matcher: Bash
+            hooks:
+              - type: command
+                command: "echo 'hook fired'"
+```
+
+#### MCP Servers
+
+```yaml
+prompt: "Look up the documentation for the 'zod' library"
+assertions:
+  - check: "Output contains Zod-specific API details"
+scuttlerun:
+  sdk:
+    mcp_servers:
+      docs-server:
+        command: "node"
+        args: ["./docs-mcp-server.js"]
+```
+
+#### Sub-agents (Agent Tool)
+
+```yaml
+prompt: "Research the best approach and implement it"
+assertions:
+  - check: "Agent spawned a sub-agent for research before implementing"
+scuttlerun:
+  tools:
+    - Read
+    - Write
+    - Edit
+    - Bash
+    - Glob
+    - Grep
+    - Agent
+```
+
+#### Full-Stack Combos
+
+```yaml
+prompt: "Set up a new TypeScript project"
+assertions:
+  - check: "Project uses the configured linter"
+  - check: "tsconfig matches the team standard"
+scuttlerun:
+  project:
+    skills:
+      - ~/.claude/skills/typescript-setup
+    claude_md: |
+      Use strict TypeScript. Always enable noUncheckedIndexedAccess.
+    settings:
+      env:
+        NODE_ENV: development
+    files:
+      .prettierrc: |
+        { "semi": false, "singleQuote": true }
+```
+
+---
+
+### base.yml
+
+Optional file at the evals directory root. Contains shared scuttlerun defaults and optional craboodle settings. craboodle extracts its own keys (`min_pass_rate`) and passes the rest through to scuttlerun as config defaults:
+
+```yaml
+# base.yml — shared defaults + craboodle settings
+min_pass_rate: 0.8        # craboodle: minimum acceptable scenario pass rate (0-1)
+model: claude-sonnet-4-6  # scuttlerun: everything else passes through
 tools:
   - Read
   - Write
@@ -218,6 +319,10 @@ project:
   claude_md: |
     Use relative paths. Do not use absolute paths.
 ```
+
+#### `min_pass_rate` (ratchet)
+
+When present, craboodle checks each scenario's pass_rate against this threshold after all scenarios complete. If any scenario falls below the threshold (or has `pass_rate: null` from all-failed reps), craboodle reports the failures to stderr and exits with code 3. This provides a CI-compatible binary signal from non-binary eval scores, analogous to a code coverage ratchet.
 
 ### Config Merging
 
@@ -256,8 +361,9 @@ General:
 | Code | Meaning |
 |------|---------|
 | 0 | Pipeline completed successfully with at least some successful data. Individual rep/scenario failures are reported in output but do not affect the exit code. |
-| 1 | Configuration error (invalid scenario YAML, missing required fields) |
+| 1 | Configuration error (invalid scenario YAML, missing required fields, invalid `min_pass_rate`) |
 | 2 | Infrastructure error (scuttlerun or pincenez binary not found, evals directory missing, zero scenarios discovered, or zero successful reps across all scenarios). |
+| 3 | Threshold failure: one or more scenarios fell below `min_pass_rate` (see base.yml). Failures are reported to stderr. |
 
 ---
 

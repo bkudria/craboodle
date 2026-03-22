@@ -55,10 +55,17 @@ async function runCommand(
   }
 
   // Load base config
-  const baseConfig = await loadBaseConfig(join(resolvedDir, "base.yml"));
+  const { minPassRate, scuttlerunConfig: baseConfig } = await loadBaseConfig(join(resolvedDir, "base.yml"));
 
   // Create artifact directory
   const artifactDir = await mkdtemp(join(tmpdir(), "craboodle-run-"));
+
+  // Write filtered base config (without craboodle keys) for scuttlerun
+  let basePath: string | null = null;
+  if (baseConfig) {
+    basePath = join(artifactDir, "base.yml");
+    await writeFile(basePath, stringify(baseConfig));
+  }
 
   // Stream header
   streamHeader(artifactDir);
@@ -94,11 +101,6 @@ async function runCommand(
 
           const override = buildScuttlerunOverride(config);
           const rubric = buildRubric(config);
-
-          // Write base config path
-          const basePath = baseConfig
-            ? join(resolvedDir, "base.yml")
-            : null;
 
           // Write rubric
           const rubricPath = join(repDir, "rubric.yml");
@@ -169,6 +171,7 @@ async function runCommand(
 
   // Process results per scenario
   let hasAnySuccess = false;
+  const scenarioOutputs: ScenarioOutput[] = [];
   for (const scenario of scenarios) {
     const config = scenarioConfigs.get(scenario.id)!;
     const repResults = poolResults.get(scenario.id) || [];
@@ -222,6 +225,7 @@ async function runCommand(
       };
     }
 
+    scenarioOutputs.push(scenarioOutput);
     streamScenarioYaml(scenarioOutput);
 
     if (opts.verbose) {
@@ -233,6 +237,20 @@ async function runCommand(
 
   if (!hasAnySuccess) {
     process.exit(2);
+  }
+
+  // Check ratchet threshold
+  if (minPassRate !== undefined) {
+    const failures = scenarioOutputs.filter(
+      (s) => s.pass_rate === null || s.pass_rate < minPassRate,
+    );
+    if (failures.length > 0) {
+      process.stderr.write(`[craboodle] Threshold check failed (min_pass_rate: ${minPassRate}):\n`);
+      for (const f of failures) {
+        process.stderr.write(`  ${f.id}: ${f.pass_rate ?? "null"} < ${minPassRate}\n`);
+      }
+      process.exit(3);
+    }
   }
 }
 

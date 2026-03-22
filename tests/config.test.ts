@@ -143,7 +143,7 @@ describe("config", () => {
   });
 
   describe("loadBaseConfig", () => {
-    it("reads a YAML file and returns raw object", async () => {
+    it("returns scuttlerun config without craboodle keys", async () => {
       const { loadBaseConfig } = await import("../src/config.js");
       const basePath = join(tmpDir, "base.yml");
       await writeFile(
@@ -156,17 +156,78 @@ describe("config", () => {
 
       const config = await loadBaseConfig(basePath);
 
-      expect(config).toEqual({
+      expect(config.minPassRate).toBeUndefined();
+      expect(config.scuttlerunConfig).toEqual({
         model: "claude-sonnet-4-6",
         tools: ["Read", "Write", "Bash"],
       });
     });
 
-    it("returns null if file does not exist", async () => {
+    it("extracts min_pass_rate from base config", async () => {
+      const { loadBaseConfig } = await import("../src/config.js");
+      const basePath = join(tmpDir, "base.yml");
+      await writeFile(
+        basePath,
+        stringify({
+          min_pass_rate: 0.8,
+          model: "claude-sonnet-4-6",
+        }),
+      );
+
+      const config = await loadBaseConfig(basePath);
+
+      expect(config.minPassRate).toBe(0.8);
+      expect(config.scuttlerunConfig).toEqual({
+        model: "claude-sonnet-4-6",
+      });
+    });
+
+    it("returns null scuttlerunConfig when only min_pass_rate is present", async () => {
+      const { loadBaseConfig } = await import("../src/config.js");
+      const basePath = join(tmpDir, "base.yml");
+      await writeFile(
+        basePath,
+        stringify({ min_pass_rate: 0.5 }),
+      );
+
+      const config = await loadBaseConfig(basePath);
+
+      expect(config.minPassRate).toBe(0.5);
+      expect(config.scuttlerunConfig).toBeNull();
+    });
+
+    it("throws on invalid min_pass_rate (not a number)", async () => {
+      const { loadBaseConfig } = await import("../src/config.js");
+      const basePath = join(tmpDir, "base.yml");
+      await writeFile(
+        basePath,
+        stringify({ min_pass_rate: "high" }),
+      );
+
+      await expect(loadBaseConfig(basePath)).rejects.toThrow(
+        "min_pass_rate must be a number between 0 and 1",
+      );
+    });
+
+    it("throws on min_pass_rate out of range", async () => {
+      const { loadBaseConfig } = await import("../src/config.js");
+      const basePath = join(tmpDir, "base.yml");
+      await writeFile(
+        basePath,
+        stringify({ min_pass_rate: 1.5 }),
+      );
+
+      await expect(loadBaseConfig(basePath)).rejects.toThrow(
+        "min_pass_rate must be a number between 0 and 1",
+      );
+    });
+
+    it("returns null scuttlerunConfig if file does not exist", async () => {
       const { loadBaseConfig } = await import("../src/config.js");
       const config = await loadBaseConfig(join(tmpDir, "nonexistent.yml"));
 
-      expect(config).toBeNull();
+      expect(config.minPassRate).toBeUndefined();
+      expect(config.scuttlerunConfig).toBeNull();
     });
   });
 });
