@@ -1,0 +1,9 @@
+name: craboodle
+description: Eval pipeline orchestrator for Claude Code
+language: typescript
+profiles: [base]
+
+standards:
+  tests:
+    framework: vitest
+    directory: tests

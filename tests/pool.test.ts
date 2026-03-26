@@ -77,8 +77,8 @@ describe("pool", () => {
 
       expect(results.get("s1")).toHaveLength(2);
       const s1Results = results.get("s1")!;
-      expect(s1Results.some((r: any) => r.type === "error")).toBe(true);
-      expect(s1Results.some((r: any) => r.type === "success")).toBe(true);
+      expect(s1Results.some((r) => r.type === "error")).toBe(true);
+      expect(s1Results.some((r) => r.type === "success")).toBe(true);
     });
   });
 });

@@ -2,13 +2,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 describe("output", () => {
   let written: string;
-  let writeSpy: ReturnType<typeof vi.spyOn>;
-
   beforeEach(() => {
     written = "";
-    writeSpy = vi
+    vi
       .spyOn(process.stdout, "write")
-      .mockImplementation((chunk: any) => {
+      .mockImplementation((chunk: string | Uint8Array) => {
         written += typeof chunk === "string" ? chunk : chunk.toString();
         return true;
       });

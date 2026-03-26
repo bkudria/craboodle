@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { tmpdir } from "node:os";
-import { mkdtemp, readFile, rm, mkdir } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
+import type { ChildProcess, ExecFileException, ExecFileOptions } from "node:child_process";
 
 vi.mock("node:child_process", () => ({
   execFile: vi.fn(),
@@ -10,6 +11,22 @@ vi.mock("node:child_process", () => ({
 import { execFile } from "node:child_process";
 
 const mockExecFile = vi.mocked(execFile);
+
+type ExecFileCallback = (error: ExecFileException | null, stdout: string, stderr: string) => void;
+
+function mockExecFileCall(respond: (cb: ExecFileCallback) => void): void {
+  mockExecFile.mockImplementation(
+    ((
+      _file: string,
+      _args: readonly string[] | null,
+      _options: ExecFileOptions | null,
+      callback?: ExecFileCallback | null,
+    ): ChildProcess => {
+      if (callback) respond(callback);
+      return {} as ChildProcess;
+    }) as typeof execFile,
+  );
+}
 
 describe("runner", () => {
   let tmpDir: string;
@@ -27,12 +44,7 @@ describe("runner", () => {
     it("invokes scuttlerun with base and override config files", async () => {
       const { runScuttlerun } = await import("../src/runner.js");
 
-      mockExecFile.mockImplementation(
-        (_cmd: any, _args: any, _opts: any, cb: any) => {
-          cb(null, "session: abc\nconversation: []\n", "");
-          return {} as any;
-        },
-      );
+      mockExecFileCall((cb) => cb(null, "session: abc\nconversation: []\n", ""));
 
       const result = await runScuttlerun({
         override: { prompt: "Write a haiku" },
@@ -52,12 +64,7 @@ describe("runner", () => {
     it("skips base.yml when basePath is null", async () => {
       const { runScuttlerun } = await import("../src/runner.js");
 
-      mockExecFile.mockImplementation(
-        (_cmd: any, _args: any, _opts: any, cb: any) => {
-          cb(null, "session: abc\n", "");
-          return {} as any;
-        },
-      );
+      mockExecFileCall((cb) => cb(null, "session: abc\n", ""));
 
       await runScuttlerun({
         override: { prompt: "Write a haiku" },
@@ -75,12 +82,7 @@ describe("runner", () => {
       const { runScuttlerun } = await import("../src/runner.js");
 
       const transcript = "session: abc\nconversation:\n  - user: hello\n";
-      mockExecFile.mockImplementation(
-        (_cmd: any, _args: any, _opts: any, cb: any) => {
-          cb(null, transcript, "");
-          return {} as any;
-        },
-      );
+      mockExecFileCall((cb) => cb(null, transcript, ""));
 
       const outputPath = join(tmpDir, "output.yml");
       await runScuttlerun({
@@ -97,12 +99,7 @@ describe("runner", () => {
     it("forwards --model when agentModel is provided", async () => {
       const { runScuttlerun } = await import("../src/runner.js");
 
-      mockExecFile.mockImplementation(
-        (_cmd: any, _args: any, _opts: any, cb: any) => {
-          cb(null, "session: abc\n", "");
-          return {} as any;
-        },
-      );
+      mockExecFileCall((cb) => cb(null, "session: abc\n", ""));
 
       await runScuttlerun({
         override: { prompt: "Write a haiku" },
@@ -126,12 +123,7 @@ describe("runner", () => {
       };
       error.code = 1;
       error.stderr = "scuttlerun: timeout after 120s";
-      mockExecFile.mockImplementation(
-        (_cmd: any, _args: any, _opts: any, cb: any) => {
-          cb(error, "", "scuttlerun: timeout after 120s");
-          return {} as any;
-        },
-      );
+      mockExecFileCall((cb) => cb(error, "", "scuttlerun: timeout after 120s"));
 
       const result = await runScuttlerun({
         override: { prompt: "Write a haiku" },
@@ -154,12 +146,7 @@ describe("runner", () => {
 
       const gradingYaml =
         'assertions:\n  - id: a1\n    check: "test"\n    pass: true\n    evidence: "ok"\npass_rate: 1.0\n';
-      mockExecFile.mockImplementation(
-        (_cmd: any, _args: any, _opts: any, cb: any) => {
-          cb(null, gradingYaml, "");
-          return {} as any;
-        },
-      );
+      mockExecFileCall((cb) => cb(null, gradingYaml, ""));
 
       const result = await runPincenez({
         rubricPath: "/path/to/rubric.yml",
@@ -178,12 +165,7 @@ describe("runner", () => {
     it("forwards --model when graderModel is provided", async () => {
       const { runPincenez } = await import("../src/runner.js");
 
-      mockExecFile.mockImplementation(
-        (_cmd: any, _args: any, _opts: any, cb: any) => {
-          cb(null, "assertions: []\npass_rate: 0\n", "");
-          return {} as any;
-        },
-      );
+      mockExecFileCall((cb) => cb(null, "assertions: []\npass_rate: 0\n", ""));
 
       await runPincenez({
         rubricPath: "/path/to/rubric.yml",
@@ -202,12 +184,7 @@ describe("runner", () => {
 
       const error = new Error("Command failed") as Error & { code: number };
       error.code = 2;
-      mockExecFile.mockImplementation(
-        (_cmd: any, _args: any, _opts: any, cb: any) => {
-          cb(error, "", "pincenez: API error");
-          return {} as any;
-        },
-      );
+      mockExecFileCall((cb) => cb(error, "", "pincenez: API error"));
 
       const result = await runPincenez({
         rubricPath: "/path/to/rubric.yml",
