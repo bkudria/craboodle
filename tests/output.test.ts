@@ -12,6 +12,31 @@ describe("output", () => {
       });
   });
 
+  describe("parseCostFromTranscript", () => {
+    it("extracts cost_usd from scuttlerun transcript YAML", async () => {
+      const { parseCostFromTranscript } = await import("../src/output.js");
+      const yaml = `session: abc\ncost_usd: 0.0523\nturns: 2`;
+      expect(parseCostFromTranscript(yaml)).toBe(0.0523);
+    });
+
+    it("returns null when cost_usd is missing", async () => {
+      const { parseCostFromTranscript } = await import("../src/output.js");
+      const yaml = `session: abc\nturns: 2`;
+      expect(parseCostFromTranscript(yaml)).toBeNull();
+    });
+
+    it("returns null when cost_usd is not a number", async () => {
+      const { parseCostFromTranscript } = await import("../src/output.js");
+      const yaml = `cost_usd: "expensive"`;
+      expect(parseCostFromTranscript(yaml)).toBeNull();
+    });
+
+    it("returns null for invalid YAML", async () => {
+      const { parseCostFromTranscript } = await import("../src/output.js");
+      expect(parseCostFromTranscript("{{invalid")).toBeNull();
+    });
+  });
+
   describe("parseGrading", () => {
     it("extracts assertion results from pincenez YAML output", async () => {
       const { parseGrading } = await import("../src/output.js");

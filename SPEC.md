@@ -152,7 +152,7 @@ Intermediate artifacts (scuttlerun outputs, pincenez gradings) are written to a 
 
 ### scenario.yml
 
-A scenario has four craboodle-understood fields (`prompt`, `assertions`, `labels`, `context`) and an optional `scuttlerun:` passthrough block. The scenario's ID is its directory basename. Validation is strict: `prompt` and `assertions` (with at least one assertion) are required, and unknown top-level keys cause a configuration error (exit 1). The `scuttlerun:` block is not validated by craboodle — it passes through to scuttlerun as-is.
+A scenario has five craboodle-understood fields (`prompt`, `assertions`, `labels`, `context`, `repeats`) and an optional `scuttlerun:` passthrough block. The scenario's ID is its directory basename. Validation is strict: `prompt` and `assertions` (with at least one assertion) are required, and unknown top-level keys cause a configuration error (exit 1). The `scuttlerun:` block is not validated by craboodle — it passes through to scuttlerun as-is.
 
 Scenario directories may contain additional files (fixtures, reference data, seed files) alongside scenario.yml. craboodle ignores all files except scenario.yml — additional files can be referenced by the scenario's scuttlerun config (e.g., via `project.files` relative paths).
 
@@ -181,6 +181,10 @@ assertions:
     note: "Look for regex or string parsing that checks for @ and domain"
   - check: "Function handles edge cases like empty string and missing @"
   - check: "Output includes at least one test or example usage"
+
+# --- Repeats override (optional) ---
+# Per-scenario repeat count. Overrides --repeats for this scenario.
+repeats: 5
 
 # --- Scuttlerun overrides (optional) ---
 # Passthrough: any scuttlerun config fields. Craboodle does not
@@ -304,6 +308,7 @@ Optional file at the evals directory root. Contains shared scuttlerun defaults a
 
 ```yaml
 # base.yml — shared defaults + craboodle settings
+version: "1"              # required: eval format version (craboodle rejects unknown versions)
 min_pass_rate: 0.8        # craboodle: minimum acceptable scenario pass rate (0-1)
 model: claude-sonnet-4-6  # scuttlerun: everything else passes through
 tools:
@@ -319,6 +324,10 @@ project:
   claude_md: |
     Use relative paths. Do not use absolute paths.
 ```
+
+#### `version` (required)
+
+The eval format version. Currently the only supported value is `"1"`. craboodle rejects unknown versions with a clear error, ensuring forward compatibility as the format evolves. When base.yml is missing entirely (eval dirs without shared config), version checking is skipped.
 
 #### `min_pass_rate` (ratchet)
 
@@ -345,8 +354,9 @@ Usage:
   craboodle run <evals-dir> [options]     Run eval pipeline
 
 Run options:
-  --repeats N            Number of repetitions per scenario (default: 3)
+  --repeats N            Number of repetitions per scenario (default: 3, overridable per-scenario)
   --concurrency N        Max parallel (scenario, rep) work items (default: 10)
+  --scenario PATTERN     Filter scenarios by ID (exact match, glob wildcard, or comma-separated)
   --agent-model MODEL    Override scuttlerun model for all scenarios
   --grader-model MODEL   Override pincenez model for all assertions
 
@@ -523,8 +533,3 @@ Track and report API costs per scenario and overall.
 ### Scenario Templates
 `craboodle init` to scaffold a new evals directory with base.yml and example scenarios.
 
-### Scenario Filtering
-`--scenario` flag (repeatable or glob) to run a subset of scenarios. Useful during development when iterating on a single scenario. For now, restructure directories or use downstream tooling.
-
-### Per-Scenario Repeat Overrides
-Allow scenarios to override the repeat count (e.g., `repeats: 5` for flaky scenarios). Deferred — start with uniform `--repeats` for all scenarios.

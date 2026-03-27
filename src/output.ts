@@ -18,7 +18,24 @@ export interface ScenarioOutput {
   labels?: Record<string, string>;
   assertions: AssertionOutput[];
   pass_rate: number | null;
+  cost_usd?: number;
   errors?: Array<{ rep: number; stage: string; error: string }>;
+}
+
+/**
+ * Parse cost_usd from a scuttlerun transcript YAML.
+ * Returns null if not found or not a number.
+ */
+export function parseCostFromTranscript(yaml: string): number | null {
+  try {
+    const parsed = parse(yaml) as Record<string, unknown>;
+    if (typeof parsed.cost_usd === "number") {
+      return parsed.cost_usd;
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 export function parseGrading(yaml: string): GradingAssertion[] {
@@ -89,10 +106,18 @@ export function streamScenarioYaml(scenario: ScenarioOutput): void {
   item.assertions = scenario.assertions;
   item.pass_rate = scenario.pass_rate;
 
+  if (scenario.cost_usd !== undefined) {
+    item.cost_usd = Math.round(scenario.cost_usd * 10000) / 10000;
+  }
+
   if (scenario.errors && scenario.errors.length > 0) {
     item.errors = scenario.errors;
   }
 
   const serialized = stringify([item], { lineWidth: 0 }).trimEnd();
   process.stdout.write(serialized + "\n");
+}
+
+export function streamTotalCost(totalCostUsd: number): void {
+  process.stdout.write(`total_cost_usd: ${Math.round(totalCostUsd * 10000) / 10000}\n`);
 }

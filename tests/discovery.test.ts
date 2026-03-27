@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { tmpdir } from "node:os";
 import { mkdtemp, writeFile, mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
+import { filterScenarios, type ScenarioRef } from "../src/discovery.js";
 
 describe("discovery", () => {
   let tmpDir: string;
@@ -82,5 +83,46 @@ describe("discovery", () => {
     const scenarios = await discoverScenarios(tmpDir);
 
     expect(scenarios).toHaveLength(1);
+  });
+});
+
+describe("filterScenarios", () => {
+  const scenarios: ScenarioRef[] = [
+    { id: "email-validator", dir: "/tmp/email-validator", configPath: "/tmp/email-validator/scenario.yml" },
+    { id: "email-parser", dir: "/tmp/email-parser", configPath: "/tmp/email-parser/scenario.yml" },
+    { id: "url-parser", dir: "/tmp/url-parser", configPath: "/tmp/url-parser/scenario.yml" },
+  ];
+
+  it("filters by exact match", () => {
+    const result = filterScenarios(scenarios, "email-validator");
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe("email-validator");
+  });
+
+  it("filters by glob wildcard", () => {
+    const result = filterScenarios(scenarios, "email-*");
+    expect(result).toHaveLength(2);
+    expect(result.map((s) => s.id)).toEqual(["email-validator", "email-parser"]);
+  });
+
+  it("filters by comma-separated list", () => {
+    const result = filterScenarios(scenarios, "email-validator,url-parser");
+    expect(result).toHaveLength(2);
+    expect(result.map((s) => s.id)).toEqual(["email-validator", "url-parser"]);
+  });
+
+  it("supports comma-separated globs", () => {
+    const result = filterScenarios(scenarios, "email-*,url-*");
+    expect(result).toHaveLength(3);
+  });
+
+  it("returns empty array when nothing matches", () => {
+    const result = filterScenarios(scenarios, "nonexistent");
+    expect(result).toEqual([]);
+  });
+
+  it("handles whitespace around commas", () => {
+    const result = filterScenarios(scenarios, "email-validator , url-parser");
+    expect(result).toHaveLength(2);
   });
 });

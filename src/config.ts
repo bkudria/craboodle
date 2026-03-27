@@ -13,6 +13,7 @@ const ScenarioConfigSchema = z
     assertions: z.array(AssertionSchema).min(1),
     labels: z.record(z.string(), z.string()).optional(),
     context: z.string().optional(),
+    repeats: z.number().int().min(1).optional(),
     scuttlerun: z.record(z.string(), z.unknown()).optional(),
   })
   .strict();
@@ -29,9 +30,12 @@ export async function loadScenarioConfig(
 }
 
 export interface BaseConfig {
+  version?: string;
   minPassRate?: number;
   scuttlerunConfig: Record<string, unknown> | null;
 }
+
+const SUPPORTED_VERSIONS = ["1"];
 
 export async function loadBaseConfig(
   path: string,
@@ -52,7 +56,16 @@ export async function loadBaseConfig(
   }
 
   // Extract craboodle-specific keys, pass the rest to scuttlerun
-  const { min_pass_rate, ...scuttlerunConfig } = raw;
+  const { version, min_pass_rate, ...scuttlerunConfig } = raw;
+
+  // Validate version (required when base.yml exists)
+  if (version === undefined) {
+    throw new Error('base.yml missing required "version" field (supported: ' + SUPPORTED_VERSIONS.join(", ") + ")");
+  }
+  const versionStr = String(version);
+  if (!SUPPORTED_VERSIONS.includes(versionStr)) {
+    throw new Error(`Unsupported eval format version: ${versionStr} (supported: ${SUPPORTED_VERSIONS.join(", ")})`);
+  }
 
   let minPassRate: number | undefined;
   if (min_pass_rate !== undefined) {
@@ -63,6 +76,7 @@ export async function loadBaseConfig(
   }
 
   return {
+    version: versionStr,
     minPassRate,
     scuttlerunConfig: Object.keys(scuttlerunConfig).length > 0 ? scuttlerunConfig : null,
   };

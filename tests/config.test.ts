@@ -122,6 +122,39 @@ describe("config", () => {
       expect(config.labels).toEqual({ config: "optimized", model: "sonnet" });
     });
 
+    it("parses optional repeats override", async () => {
+      const { loadScenarioConfig } = await import("../src/config.js");
+      const scenarioPath = join(tmpDir, "scenario.yml");
+      await writeFile(
+        scenarioPath,
+        stringify({
+          prompt: "Write something",
+          assertions: [{ check: "something" }],
+          repeats: 5,
+        }),
+      );
+
+      const config = await loadScenarioConfig(scenarioPath);
+
+      expect(config.repeats).toBe(5);
+    });
+
+    it("leaves repeats undefined when not specified", async () => {
+      const { loadScenarioConfig } = await import("../src/config.js");
+      const scenarioPath = join(tmpDir, "scenario.yml");
+      await writeFile(
+        scenarioPath,
+        stringify({
+          prompt: "Write something",
+          assertions: [{ check: "something" }],
+        }),
+      );
+
+      const config = await loadScenarioConfig(scenarioPath);
+
+      expect(config.repeats).toBeUndefined();
+    });
+
     it("parses optional context", async () => {
       const { loadScenarioConfig } = await import("../src/config.js");
       const scenarioPath = join(tmpDir, "scenario.yml");
@@ -149,6 +182,7 @@ describe("config", () => {
       await writeFile(
         basePath,
         stringify({
+          version: "1",
           model: "claude-sonnet-4-6",
           tools: ["Read", "Write", "Bash"],
         }),
@@ -156,6 +190,7 @@ describe("config", () => {
 
       const config = await loadBaseConfig(basePath);
 
+      expect(config.version).toBe("1");
       expect(config.minPassRate).toBeUndefined();
       expect(config.scuttlerunConfig).toEqual({
         model: "claude-sonnet-4-6",
@@ -169,6 +204,7 @@ describe("config", () => {
       await writeFile(
         basePath,
         stringify({
+          version: "1",
           min_pass_rate: 0.8,
           model: "claude-sonnet-4-6",
         }),
@@ -182,12 +218,12 @@ describe("config", () => {
       });
     });
 
-    it("returns null scuttlerunConfig when only min_pass_rate is present", async () => {
+    it("returns null scuttlerunConfig when only craboodle keys present", async () => {
       const { loadBaseConfig } = await import("../src/config.js");
       const basePath = join(tmpDir, "base.yml");
       await writeFile(
         basePath,
-        stringify({ min_pass_rate: 0.5 }),
+        stringify({ version: "1", min_pass_rate: 0.5 }),
       );
 
       const config = await loadBaseConfig(basePath);
@@ -201,7 +237,7 @@ describe("config", () => {
       const basePath = join(tmpDir, "base.yml");
       await writeFile(
         basePath,
-        stringify({ min_pass_rate: "high" }),
+        stringify({ version: "1", min_pass_rate: "high" }),
       );
 
       await expect(loadBaseConfig(basePath)).rejects.toThrow(
@@ -214,7 +250,7 @@ describe("config", () => {
       const basePath = join(tmpDir, "base.yml");
       await writeFile(
         basePath,
-        stringify({ min_pass_rate: 1.5 }),
+        stringify({ version: "1", min_pass_rate: 1.5 }),
       );
 
       await expect(loadBaseConfig(basePath)).rejects.toThrow(
@@ -226,8 +262,47 @@ describe("config", () => {
       const { loadBaseConfig } = await import("../src/config.js");
       const config = await loadBaseConfig(join(tmpDir, "nonexistent.yml"));
 
+      expect(config.version).toBeUndefined();
       expect(config.minPassRate).toBeUndefined();
       expect(config.scuttlerunConfig).toBeNull();
+    });
+
+    it("throws when version is missing from base.yml", async () => {
+      const { loadBaseConfig } = await import("../src/config.js");
+      const basePath = join(tmpDir, "base.yml");
+      await writeFile(
+        basePath,
+        stringify({ min_pass_rate: 0.8 }),
+      );
+
+      await expect(loadBaseConfig(basePath)).rejects.toThrow(
+        'missing required "version" field',
+      );
+    });
+
+    it("throws on unsupported version", async () => {
+      const { loadBaseConfig } = await import("../src/config.js");
+      const basePath = join(tmpDir, "base.yml");
+      await writeFile(
+        basePath,
+        stringify({ version: "99" }),
+      );
+
+      await expect(loadBaseConfig(basePath)).rejects.toThrow(
+        "Unsupported eval format version: 99",
+      );
+    });
+
+    it("accepts version 1 as a number (coerced to string)", async () => {
+      const { loadBaseConfig } = await import("../src/config.js");
+      const basePath = join(tmpDir, "base.yml");
+      await writeFile(
+        basePath,
+        stringify({ version: 1 }),
+      );
+
+      const config = await loadBaseConfig(basePath);
+      expect(config.version).toBe("1");
     });
   });
 });

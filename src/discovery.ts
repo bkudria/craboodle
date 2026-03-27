@@ -23,3 +23,19 @@ export async function discoverScenarios(
 
   return scenarios;
 }
+
+function matchPattern(id: string, pattern: string): boolean {
+  if (!pattern.includes("*")) return id === pattern;
+  const regex = new RegExp("^" + pattern.replace(/\*/g, ".*") + "$");
+  return regex.test(id);
+}
+
+export function filterScenarios(
+  scenarios: ScenarioRef[],
+  pattern: string,
+): ScenarioRef[] {
+  const patterns = pattern.split(",").map((p) => p.trim());
+  return scenarios.filter((s) =>
+    patterns.some((p) => matchPattern(s.id, p)),
+  );
+}

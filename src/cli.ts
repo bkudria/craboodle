@@ -8,15 +8,18 @@ import { stringify } from "yaml";
 import { resolve } from "node:path";
 
 import { loadScenarioConfig, loadBaseConfig } from "./config.js";
-import { discoverScenarios } from "./discovery.js";
+import { cleanOldArtifacts } from "./cleanup.js";
+import { discoverScenarios, filterScenarios } from "./discovery.js";
 import { buildScuttlerunOverride, buildRubric } from "./builder.js";
 import { runScuttlerun, runPincenez } from "./runner.js";
 import { executePool, type WorkItem } from "./pool.js";
 import {
   parseGrading,
+  parseCostFromTranscript,
   averageResults,
   streamHeader,
   streamScenarioYaml,
+  streamTotalCost,
   type GradingAssertion,
   type ScenarioOutput,
 } from "./output.js";
@@ -26,11 +29,12 @@ interface RunOptions {
   concurrency: number;
   agentModel?: string;
   graderModel?: string;
+  scenario?: string;
   verbose?: boolean;
 }
 
 type RepOutcome =
-  | { type: "success"; grading: GradingAssertion[] }
+  | { type: "success"; grading: GradingAssertion[]; costUsd: number | null }
   | { type: "error"; rep: number; stage: string; message: string };
 
 async function runCommand(
@@ -40,12 +44,23 @@ async function runCommand(
   const resolvedDir = resolve(evalsDir);
 
   // Discover scenarios
-  const scenarios = await discoverScenarios(resolvedDir);
+  let scenarios = await discoverScenarios(resolvedDir);
   if (scenarios.length === 0) {
     process.stderr.write(
       `[craboodle] No scenarios found in ${resolvedDir}\n`,
     );
     process.exit(2);
+  }
+
+  // Apply scenario filter
+  if (opts.scenario) {
+    scenarios = filterScenarios(scenarios, opts.scenario);
+    if (scenarios.length === 0) {
+      process.stderr.write(
+        `[craboodle] No scenarios match filter: ${opts.scenario}\n`,
+      );
+      process.exit(2);
+    }
   }
 
   if (opts.verbose) {
@@ -55,7 +70,14 @@ async function runCommand(
   }
 
   // Load base config
-  const { minPassRate, scuttlerunConfig: baseConfig } = await loadBaseConfig(join(resolvedDir, "base.yml"));
+  const { version, minPassRate, scuttlerunConfig: baseConfig } = await loadBaseConfig(join(resolvedDir, "base.yml"));
+
+  if (opts.verbose && version) {
+    process.stderr.write(`[craboodle] Eval format version: ${version}\n`);
+  }
+
+  // Clean old artifacts before creating new ones
+  await cleanOldArtifacts(7, { verbose: opts.verbose });
 
   // Create artifact directory
   const artifactDir = await mkdtemp(join(tmpdir(), "craboodle-run-"));
@@ -91,7 +113,8 @@ async function runCommand(
   const workItems: WorkItem<RepOutcome>[] = [];
   for (const scenario of scenarios) {
     const config = scenarioConfigs.get(scenario.id)!;
-    for (let rep = 1; rep <= opts.repeats; rep++) {
+    const scenarioRepeats = config.repeats ?? opts.repeats;
+    for (let rep = 1; rep <= scenarioRepeats; rep++) {
       workItems.push({
         scenarioId: scenario.id,
         rep,
@@ -160,7 +183,11 @@ async function runCommand(
           const gradingContent = await readFile(gradingPath, "utf8");
           const grading = parseGrading(gradingContent);
 
-          return { type: "success", grading };
+          // Parse cost from scuttlerun output
+          const outputContent = await readFile(outputPath, "utf8");
+          const costUsd = parseCostFromTranscript(outputContent);
+
+          return { type: "success", grading, costUsd };
         },
       });
     }
@@ -178,6 +205,7 @@ async function runCommand(
 
     const successfulGradings: GradingAssertion[][] = [];
     const errors: Array<{ rep: number; stage: string; error: string }> = [];
+    let scenarioCost = 0;
 
     for (const result of repResults) {
       if (result.type === "success") {
@@ -185,6 +213,9 @@ async function runCommand(
         if (outcome.type === "success") {
           successfulGradings.push(outcome.grading);
           hasAnySuccess = true;
+          if (outcome.costUsd !== null) {
+            scenarioCost += outcome.costUsd;
+          }
         } else {
           errors.push({
             rep: outcome.rep,
@@ -212,6 +243,7 @@ async function runCommand(
           pass_rate: 0,
         })),
         pass_rate: null,
+        ...(scenarioCost > 0 ? { cost_usd: scenarioCost } : {}),
         errors,
       };
     } else {
@@ -221,6 +253,7 @@ async function runCommand(
         ...(config.labels ? { labels: config.labels } : {}),
         assertions: averaged.assertions,
         pass_rate: averaged.pass_rate,
+        ...(scenarioCost > 0 ? { cost_usd: scenarioCost } : {}),
         ...(errors.length > 0 ? { errors } : {}),
       };
     }
@@ -233,6 +266,12 @@ async function runCommand(
         `[craboodle] ${scenario.id}: pass_rate=${scenarioOutput.pass_rate}\n`,
       );
     }
+  }
+
+  // Stream total cost
+  const totalCost = scenarioOutputs.reduce((sum, s) => sum + (s.cost_usd ?? 0), 0);
+  if (totalCost > 0) {
+    streamTotalCost(totalCost);
   }
 
   if (!hasAnySuccess) {
@@ -270,6 +309,7 @@ program
     "Max parallel (scenario, rep) work items",
     "10",
   )
+  .option("--scenario <pattern>", "Filter scenarios by ID (exact, glob, or comma-separated)")
   .option("--agent-model <model>", "Override scuttlerun model for all scenarios")
   .option("--grader-model <model>", "Override pincenez model for all assertions")
   .option("-v, --verbose", "Verbose logging (to stderr)")
@@ -280,6 +320,7 @@ program
         concurrency: parseInt(cmdOpts.concurrency, 10),
         agentModel: cmdOpts.agentModel,
         graderModel: cmdOpts.graderModel,
+        scenario: cmdOpts.scenario,
         verbose: !!cmdOpts.verbose,
       });
     } catch (err: unknown) {
