@@ -19,6 +19,8 @@ export interface ScenarioOutput {
   assertions: AssertionOutput[];
   pass_rate: number | null;
   cost_usd?: number;
+  agent_cost_usd?: number;
+  grading_cost_usd?: number;
   errors?: Array<{ rep: number; stage: string; error: string }>;
 }
 
@@ -38,12 +40,21 @@ export function parseCostFromTranscript(yaml: string): number | null {
   }
 }
 
-export function parseGrading(yaml: string): GradingAssertion[] {
+export interface GradingResult {
+  assertions: GradingAssertion[];
+  costUsd: number | null;
+}
+
+export function parseGrading(yaml: string): GradingResult {
   const parsed = parse(yaml) as {
     assertions: GradingAssertion[];
     pass_rate: number;
+    cost_usd?: number;
   };
-  return parsed.assertions;
+  return {
+    assertions: parsed.assertions,
+    costUsd: typeof parsed.cost_usd === "number" ? parsed.cost_usd : null,
+  };
 }
 
 export function averageResults(
@@ -108,6 +119,14 @@ export function streamScenarioYaml(scenario: ScenarioOutput): void {
 
   if (scenario.cost_usd !== undefined) {
     item.cost_usd = Math.round(scenario.cost_usd * 10000) / 10000;
+  }
+
+  if (scenario.agent_cost_usd !== undefined && scenario.agent_cost_usd > 0) {
+    item.agent_cost_usd = Math.round(scenario.agent_cost_usd * 10000) / 10000;
+  }
+
+  if (scenario.grading_cost_usd !== undefined && scenario.grading_cost_usd > 0) {
+    item.grading_cost_usd = Math.round(scenario.grading_cost_usd * 10000) / 10000;
   }
 
   if (scenario.errors && scenario.errors.length > 0) {

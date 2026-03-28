@@ -34,7 +34,7 @@ interface RunOptions {
 }
 
 type RepOutcome =
-  | { type: "success"; grading: GradingAssertion[]; costUsd: number | null }
+  | { type: "success"; grading: GradingAssertion[]; costUsd: number | null; gradingCostUsd: number | null }
   | { type: "error"; rep: number; stage: string; message: string };
 
 async function runCommand(
@@ -181,13 +181,13 @@ async function runCommand(
 
           // Parse grading
           const gradingContent = await readFile(gradingPath, "utf8");
-          const grading = parseGrading(gradingContent);
+          const gradingResult = parseGrading(gradingContent);
 
           // Parse cost from scuttlerun output
           const outputContent = await readFile(outputPath, "utf8");
           const costUsd = parseCostFromTranscript(outputContent);
 
-          return { type: "success", grading, costUsd };
+          return { type: "success", grading: gradingResult.assertions, costUsd, gradingCostUsd: gradingResult.costUsd };
         },
       });
     }
@@ -205,7 +205,8 @@ async function runCommand(
 
     const successfulGradings: GradingAssertion[][] = [];
     const errors: Array<{ rep: number; stage: string; error: string }> = [];
-    let scenarioCost = 0;
+    let agentCost = 0;
+    let gradingCost = 0;
 
     for (const result of repResults) {
       if (result.type === "success") {
@@ -214,7 +215,10 @@ async function runCommand(
           successfulGradings.push(outcome.grading);
           hasAnySuccess = true;
           if (outcome.costUsd !== null) {
-            scenarioCost += outcome.costUsd;
+            agentCost += outcome.costUsd;
+          }
+          if (outcome.gradingCostUsd !== null) {
+            gradingCost += outcome.gradingCostUsd;
           }
         } else {
           errors.push({
@@ -234,6 +238,13 @@ async function runCommand(
 
     let scenarioOutput: ScenarioOutput;
 
+    const totalScenarioCost = agentCost + gradingCost;
+    const costFields = {
+      ...(totalScenarioCost > 0 ? { cost_usd: totalScenarioCost } : {}),
+      ...(agentCost > 0 ? { agent_cost_usd: agentCost } : {}),
+      ...(gradingCost > 0 ? { grading_cost_usd: gradingCost } : {}),
+    };
+
     if (successfulGradings.length === 0) {
       scenarioOutput = {
         id: scenario.id,
@@ -243,7 +254,7 @@ async function runCommand(
           pass_rate: 0,
         })),
         pass_rate: null,
-        ...(scenarioCost > 0 ? { cost_usd: scenarioCost } : {}),
+        ...costFields,
         errors,
       };
     } else {
@@ -253,7 +264,7 @@ async function runCommand(
         ...(config.labels ? { labels: config.labels } : {}),
         assertions: averaged.assertions,
         pass_rate: averaged.pass_rate,
-        ...(scenarioCost > 0 ? { cost_usd: scenarioCost } : {}),
+        ...costFields,
         ...(errors.length > 0 ? { errors } : {}),
       };
     }
@@ -395,11 +406,14 @@ Output Format:
               - rep: 1
                 evidence: "No empty string handling found"
         pass_rate: 0.83
-        cost_usd: 0.0234
-    total_cost_usd: 0.0234
+        cost_usd: 0.0294
+        agent_cost_usd: 0.0234
+        grading_cost_usd: 0.006
+    total_cost_usd: 0.0294
 
   Passing assertions are compact (check + pass_rate). Failing assertions
   include per-rep evidence. pass_rate is a fraction (0.0-1.0), never binary.
+  cost_usd includes both agent (scuttlerun) and grading (pincenez) costs.
 
 Examples:
   # Run all scenarios in an evals directory

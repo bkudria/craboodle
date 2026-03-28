@@ -53,21 +53,22 @@ describe("output", () => {
 pass_rate: 0.5
 `;
 
-      const results = parseGrading(yaml);
+      const result = parseGrading(yaml);
 
-      expect(results).toHaveLength(2);
-      expect(results[0]).toEqual({
+      expect(result.assertions).toHaveLength(2);
+      expect(result.assertions[0]).toEqual({
         id: "a1",
         check: "Output contains a function",
         pass: true,
         evidence: "Function found",
       });
-      expect(results[1]).toEqual({
+      expect(result.assertions[1]).toEqual({
         id: "a2",
         check: "Handles edge cases",
         pass: false,
         evidence: "No empty string handling",
       });
+      expect(result.costUsd).toBeNull();
     });
 
     it("handles null pass values", async () => {
@@ -81,9 +82,26 @@ pass_rate: 0.5
 pass_rate: 0
 `;
 
-      const results = parseGrading(yaml);
+      const result = parseGrading(yaml);
 
-      expect(results[0].pass).toBeNull();
+      expect(result.assertions[0].pass).toBeNull();
+    });
+
+    it("extracts cost_usd from pincenez YAML when present", async () => {
+      const { parseGrading } = await import("../src/output.js");
+
+      const yaml = `assertions:
+  - id: a1
+    check: "test"
+    pass: true
+    evidence: "ok"
+pass_rate: 1
+cost_usd: 0.0042
+`;
+
+      const result = parseGrading(yaml);
+
+      expect(result.costUsd).toBe(0.0042);
     });
   });
 
