@@ -140,3 +140,55 @@ export function streamScenarioYaml(scenario: ScenarioOutput): void {
 export function streamTotalCost(totalCostUsd: number): void {
   process.stdout.write(`total_cost_usd: ${Math.round(totalCostUsd * 10000) / 10000}\n`);
 }
+
+// --- Lint output ---
+
+export interface LintAssertionOutput {
+  id: string;
+  check: string;
+  issues: string[];
+}
+
+export interface LintScenarioOutput {
+  id: string;
+  assertions: LintAssertionOutput[];
+  assertions_total: number;
+  assertions_with_issues: number;
+}
+
+export interface LintTotals {
+  scenarios_total: number;
+  scenarios_with_issues: number;
+  assertions_total: number;
+  assertions_with_issues: number;
+}
+
+export function parseLintResult(yaml: string): LintAssertionOutput[] {
+  const parsed = parse(yaml) as {
+    assertions: Array<{ id: string; check: string; issues: string[] }>;
+  };
+  return parsed.assertions.map((a) => ({
+    id: a.id,
+    check: a.check,
+    issues: a.issues ?? [],
+  }));
+}
+
+export function streamLintScenarioYaml(scenario: LintScenarioOutput): void {
+  const item: Record<string, unknown> = {
+    id: scenario.id,
+    assertions: scenario.assertions,
+    assertions_total: scenario.assertions_total,
+    assertions_with_issues: scenario.assertions_with_issues,
+  };
+
+  const serialized = stringify([item], { lineWidth: 0 }).trimEnd();
+  process.stdout.write(serialized + "\n");
+}
+
+export function streamLintTotals(totals: LintTotals): void {
+  process.stdout.write(`scenarios_total: ${totals.scenarios_total}\n`);
+  process.stdout.write(`scenarios_with_issues: ${totals.scenarios_with_issues}\n`);
+  process.stdout.write(`assertions_total: ${totals.assertions_total}\n`);
+  process.stdout.write(`assertions_with_issues: ${totals.assertions_with_issues}\n`);
+}

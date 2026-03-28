@@ -140,6 +140,76 @@ describe("runner", () => {
     });
   });
 
+  describe("runPincenezLint", () => {
+    it("invokes pincenez lint with rubric file", async () => {
+      const { runPincenezLint } = await import("../src/runner.js");
+
+      const lintYaml =
+        'assertions:\n  - id: a1\n    check: "test"\n    issues: []\nassertions_total: 1\nassertions_with_issues: 0\n';
+      mockExecFileCall((cb) => cb(null, lintYaml, ""));
+
+      const result = await runPincenezLint({
+        rubricPath: "/path/to/rubric.yml",
+      });
+
+      expect(mockExecFile).toHaveBeenCalledOnce();
+      const [cmd, args] = mockExecFile.mock.calls[0];
+      expect(cmd).toBe("pincenez");
+      expect(args![0]).toBe("lint");
+      expect(args).toContain("/path/to/rubric.yml");
+      expect(result.success).toBe(true);
+    });
+
+    it("returns stdout on success", async () => {
+      const { runPincenezLint } = await import("../src/runner.js");
+
+      const lintYaml = 'assertions:\n  - id: a1\n    check: "test"\n    issues: []\n';
+      mockExecFileCall((cb) => cb(null, lintYaml, ""));
+
+      const result = await runPincenezLint({
+        rubricPath: "/path/to/rubric.yml",
+      });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.stdout).toBe(lintYaml);
+      }
+    });
+
+    it("forwards --model when graderModel is provided", async () => {
+      const { runPincenezLint } = await import("../src/runner.js");
+
+      mockExecFileCall((cb) => cb(null, "assertions: []\n", ""));
+
+      await runPincenezLint({
+        rubricPath: "/path/to/rubric.yml",
+        graderModel: "claude-sonnet-4-6",
+      });
+
+      const [, args] = mockExecFile.mock.calls[0];
+      expect(args).toContain("--model");
+      expect(args).toContain("claude-sonnet-4-6");
+    });
+
+    it("returns error with stderr on failure", async () => {
+      const { runPincenezLint } = await import("../src/runner.js");
+
+      const error = new Error("Command failed") as Error & { code: number };
+      error.code = 2;
+      mockExecFileCall((cb) => cb(error, "", "pincenez: API error"));
+
+      const result = await runPincenezLint({
+        rubricPath: "/path/to/rubric.yml",
+      });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.stage).toBe("pincenez");
+        expect(result.error.message).toContain("API error");
+      }
+    });
+  });
+
   describe("runPincenez", () => {
     it("invokes pincenez with rubric and output file", async () => {
       const { runPincenez } = await import("../src/runner.js");

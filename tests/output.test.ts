@@ -269,6 +269,92 @@ cost_usd: 0.0042
     });
   });
 
+  describe("parseLintResult", () => {
+    it("parses pincenez lint YAML output", async () => {
+      const { parseLintResult } = await import("../src/output.js");
+
+      const yaml = `assertions:
+  - id: assertion-0
+    check: "Output contains a validation function"
+    issues: []
+  - id: assertion-1
+    check: "Handles edge cases"
+    issues:
+      - compound
+      - vague
+assertions_total: 2
+assertions_with_issues: 1
+`;
+
+      const result = parseLintResult(yaml);
+
+      expect(result).toHaveLength(2);
+      expect(result[0]).toEqual({
+        id: "assertion-0",
+        check: "Output contains a validation function",
+        issues: [],
+      });
+      expect(result[1]).toEqual({
+        id: "assertion-1",
+        check: "Handles edge cases",
+        issues: ["compound", "vague"],
+      });
+    });
+
+    it("handles assertions with no issues field", async () => {
+      const { parseLintResult } = await import("../src/output.js");
+
+      const yaml = `assertions:
+  - id: assertion-0
+    check: "test"
+assertions_total: 1
+assertions_with_issues: 0
+`;
+
+      const result = parseLintResult(yaml);
+      expect(result[0].issues).toEqual([]);
+    });
+  });
+
+  describe("streamLintScenarioYaml", () => {
+    it("writes YAML block for a lint scenario", async () => {
+      const { streamLintScenarioYaml } = await import("../src/output.js");
+
+      streamLintScenarioYaml({
+        id: "email-validator",
+        assertions: [
+          { id: "assertion-0", check: "validates email", issues: [] },
+          { id: "assertion-1", check: "handles edge cases", issues: ["compound"] },
+        ],
+        assertions_total: 2,
+        assertions_with_issues: 1,
+      });
+
+      expect(written).toContain("- id: email-validator");
+      expect(written).toContain("assertions_total: 2");
+      expect(written).toContain("assertions_with_issues: 1");
+      expect(written).toContain("compound");
+    });
+  });
+
+  describe("streamLintTotals", () => {
+    it("writes aggregate lint totals", async () => {
+      const { streamLintTotals } = await import("../src/output.js");
+
+      streamLintTotals({
+        scenarios_total: 3,
+        scenarios_with_issues: 1,
+        assertions_total: 10,
+        assertions_with_issues: 2,
+      });
+
+      expect(written).toContain("scenarios_total: 3");
+      expect(written).toContain("scenarios_with_issues: 1");
+      expect(written).toContain("assertions_total: 10");
+      expect(written).toContain("assertions_with_issues: 2");
+    });
+  });
+
   describe("full YAML integration", () => {
     it("produces valid YAML when header + scenarios are combined", async () => {
       const { parse } = await import("yaml");

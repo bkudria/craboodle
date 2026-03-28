@@ -78,6 +78,41 @@ export async function runScuttlerun(
   }
 }
 
+export interface RunPincenezLintOptions {
+  rubricPath: string;
+  graderModel?: string;
+}
+
+export type LintSubprocessResult =
+  | { success: true; stdout: string }
+  | { success: false; error: RepError };
+
+export async function runPincenezLint(
+  options: RunPincenezLintOptions,
+): Promise<LintSubprocessResult> {
+  const { rubricPath, graderModel } = options;
+
+  const args: string[] = ["lint"];
+  if (graderModel) {
+    args.push("--model", graderModel);
+  }
+  args.push(rubricPath);
+
+  try {
+    const { stdout } = await execFilePromise("pincenez", args);
+    return { success: true, stdout };
+  } catch (err: unknown) {
+    const error = err as Error & { stderr?: string };
+    return {
+      success: false,
+      error: {
+        stage: "pincenez",
+        message: error.stderr || error.message,
+      },
+    };
+  }
+}
+
 export async function runPincenez(
   options: RunPincenezOptions,
 ): Promise<SubprocessResult> {

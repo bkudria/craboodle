@@ -11,7 +11,7 @@ import { loadScenarioConfig, loadBaseConfig } from "./config.js";
 import { cleanOldArtifacts } from "./cleanup.js";
 import { discoverScenarios, filterScenarios } from "./discovery.js";
 import { buildScuttlerunOverride, buildRubric } from "./builder.js";
-import { runScuttlerun, runPincenez } from "./runner.js";
+import { runScuttlerun, runPincenez, runPincenezLint } from "./runner.js";
 import { executePool, type WorkItem } from "./pool.js";
 import {
   parseGrading,
@@ -20,8 +20,12 @@ import {
   streamHeader,
   streamScenarioYaml,
   streamTotalCost,
+  parseLintResult,
+  streamLintScenarioYaml,
+  streamLintTotals,
   type GradingAssertion,
   type ScenarioOutput,
+  type LintTotals,
 } from "./output.js";
 
 interface RunOptions {
@@ -419,6 +423,9 @@ Examples:
   # List and validate scenarios without running
   craboodle list ./evals
 
+  # Lint assertions for quality issues (no sessions run)
+  craboodle lint ./evals
+
   # Run all scenarios in an evals directory
   craboodle run ./evals
 
@@ -550,6 +557,162 @@ program
         `[craboodle] Error: ${err instanceof Error ? err.message : String(err)}\n`,
       );
       process.exit(1);
+    }
+  });
+
+interface LintOptions {
+  concurrency: number;
+  graderModel?: string;
+  scenario?: string;
+  verbose?: boolean;
+}
+
+async function lintCommand(
+  evalsDir: string,
+  opts: LintOptions,
+): Promise<void> {
+  const resolvedDir = resolve(evalsDir);
+
+  // Discover scenarios
+  let scenarios = await discoverScenarios(resolvedDir);
+  if (scenarios.length === 0) {
+    process.stderr.write(`[craboodle] No scenarios found in ${resolvedDir}\n`);
+    process.exit(2);
+  }
+
+  // Apply scenario filter
+  if (opts.scenario) {
+    scenarios = filterScenarios(scenarios, opts.scenario);
+    if (scenarios.length === 0) {
+      process.stderr.write(`[craboodle] No scenarios match filter: ${opts.scenario}\n`);
+      process.exit(2);
+    }
+  }
+
+  if (opts.verbose) {
+    process.stderr.write(`[craboodle] Linting ${scenarios.length} scenario(s)\n`);
+  }
+
+  // Load base config (validates structure)
+  await loadBaseConfig(join(resolvedDir, "base.yml"));
+
+  // Create transient temp dir for rubric files
+  const tmpDir = await mkdtemp(join(tmpdir(), "craboodle-lint-"));
+
+  // Load all scenario configs
+  const scenarioConfigs = new Map<
+    string,
+    Awaited<ReturnType<typeof loadScenarioConfig>>
+  >();
+  for (const scenario of scenarios) {
+    try {
+      const config = await loadScenarioConfig(scenario.configPath);
+      scenarioConfigs.set(scenario.id, config);
+    } catch (err: unknown) {
+      process.stderr.write(
+        `[craboodle] Config error in ${scenario.id}: ${err instanceof Error ? err.message : String(err)}\n`,
+      );
+      process.exit(1);
+    }
+  }
+
+  // Stream header
+  process.stdout.write("scenarios:\n");
+
+  // Run pincenez lint per scenario with concurrency control
+  const { default: pLimit } = await import("p-limit");
+  const limit = pLimit(opts.concurrency);
+
+  const totals: LintTotals = {
+    scenarios_total: scenarios.length,
+    scenarios_with_issues: 0,
+    assertions_total: 0,
+    assertions_with_issues: 0,
+  };
+  let hasAnySuccess = false;
+
+  const promises = scenarios.map((scenario) =>
+    limit(async () => {
+      const config = scenarioConfigs.get(scenario.id)!;
+      const rubric = buildRubric(config);
+
+      // Write rubric to temp file
+      const rubricPath = join(tmpDir, `${scenario.id}-rubric.yml`);
+      await writeFile(rubricPath, stringify(rubric));
+
+      if (opts.verbose) {
+        process.stderr.write(`[craboodle] ${scenario.id}: linting ${config.assertions.length} assertion(s)\n`);
+      }
+
+      const result = await runPincenezLint({
+        rubricPath,
+        graderModel: opts.graderModel,
+      });
+
+      if (!result.success) {
+        process.stderr.write(
+          `[craboodle] ${scenario.id}: pincenez lint failed: ${result.error.message}\n`,
+        );
+        return;
+      }
+
+      hasAnySuccess = true;
+      const assertions = parseLintResult(result.stdout);
+      const withIssues = assertions.filter((a) => a.issues.length > 0).length;
+
+      totals.assertions_total += assertions.length;
+      totals.assertions_with_issues += withIssues;
+      if (withIssues > 0) {
+        totals.scenarios_with_issues += 1;
+      }
+
+      streamLintScenarioYaml({
+        id: scenario.id,
+        assertions,
+        assertions_total: assertions.length,
+        assertions_with_issues: withIssues,
+      });
+    }),
+  );
+
+  await Promise.allSettled(promises);
+
+  // Stream totals
+  streamLintTotals(totals);
+
+  // Clean up temp dir
+  const { rm } = await import("node:fs/promises");
+  await rm(tmpDir, { recursive: true }).catch(() => {});
+
+  if (!hasAnySuccess) {
+    process.exit(2);
+  }
+
+  if (totals.assertions_with_issues > 0) {
+    process.exit(1);
+  }
+}
+
+program
+  .command("lint <evals-dir>")
+  .description("Lint assertions for quality issues without running evals")
+  .option("--concurrency <n>", "Max parallel pincenez lint invocations", "10")
+  .option("--scenario <pattern>", "Filter scenarios by ID (exact, glob, or comma-separated)")
+  .option("--grader-model <model>", "Override pincenez model for linting")
+  .option("-v, --verbose", "Verbose logging (to stderr)")
+  .action(async (evalsDir: string, cmdOpts: Record<string, string>) => {
+    try {
+      await lintCommand(evalsDir, {
+        concurrency: parseInt(cmdOpts.concurrency, 10),
+        graderModel: cmdOpts.graderModel,
+        scenario: cmdOpts.scenario,
+        verbose: !!cmdOpts.verbose,
+      });
+    } catch (err: unknown) {
+      process.stderr.write(
+        `[craboodle] Error: ${err instanceof Error ? err.message : String(err)}\n`,
+      );
+      process.exit(2);
     }
   });
 
