@@ -341,7 +341,7 @@ For each scenario, craboodle produces a scuttlerun config by merging:
 2. **scenario.yml's scuttlerun: block** (passthrough, not validated by craboodle)
 3. **scenario.yml's prompt** (mapped to scuttlerun's `prompt:` field)
 
-This uses scuttlerun's `run base.yml override.yml` merging behavior. craboodle writes a temporary override config (scuttlerun block + prompt) and passes it alongside base.yml to scuttlerun.
+This uses scuttlerun's `run base.yml override.yml` merging behavior. craboodle extracts its own fields (`version`, `min_pass_rate`) from base.yml and writes a cleaned copy (without those fields) for scuttlerun, ensuring scuttlerun only receives fields it understands. It then writes a temporary override config (scuttlerun block + prompt) and passes both files to scuttlerun.
 
 ---
 
