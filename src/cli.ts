@@ -293,12 +293,143 @@ async function runCommand(
   }
 }
 
+const HELP_TEXT = `
+Directory Structure:
+  craboodle discovers scenarios by globbing */scenario.yml within <evals-dir>:
+
+    <evals-dir>/
+    ├── base.yml                    # Shared defaults (optional)
+    ├── scenario-a/
+    │   └── scenario.yml            # Scenario definition
+    ├── scenario-b/
+    │   └── scenario.yml
+    └── ...
+
+scenario.yml Schema:
+  Only 'prompt' and 'assertions' are required. All other fields are optional.
+
+    # --- Prompt (required, sent to scuttlerun) ---
+    prompt: |
+      Write a function that validates email addresses.
+
+    # --- Assertions (required, sent to pincenez as rubric) ---
+    assertions:
+      - check: "Output contains a function that validates email format"
+        note: "Look for regex or string parsing that checks for @ and domain"
+      - check: "Function handles edge cases like empty string and missing @"
+
+    # --- Labels (optional, passthrough to output) ---
+    # Key-value pairs for downstream comparison/grouping.
+    # Craboodle does not interpret labels — they pass through to output as-is.
+    labels:
+      name: "Human-readable scenario name"
+      config: optimized
+
+    # --- Context (optional, sent to pincenez for grading orientation) ---
+    context: |
+      The agent was asked to write an email validation function.
+
+    # --- Repeats override (optional) ---
+    # Per-scenario repeat count. Overrides --repeats for this scenario.
+    repeats: 5
+
+    # --- Scuttlerun overrides (optional) ---
+    # Passthrough: any scuttlerun config fields. Craboodle does not
+    # validate these — they are forwarded to scuttlerun as-is.
+    # Common overrides: model, tools, user.persona, max_turns, project.files
+    # Run 'scuttlerun run --help' for the full scuttlerun config reference.
+    scuttlerun:
+      model: claude-sonnet-4-6
+      user:
+        persona: "A developer who wants thorough validation"
+      project:
+        files:
+          existing-code.py: |
+            def placeholder():
+                pass
+
+  Field Reference:
+    prompt              The task for the agent (required)
+    assertions[].check  Binary claim to evaluate (required)
+    assertions[].note   Grading hint for the judge (optional)
+    labels              Key-value metadata, passed through to output (optional)
+    context             Task description for the grader (optional, defaults to prompt)
+    repeats             Per-scenario repeat count override (optional)
+    scuttlerun          Scuttlerun config overrides, not validated (optional)
+
+base.yml Schema:
+  Shared defaults applied to all scenarios. Craboodle owns 'version' and
+  'min_pass_rate'; all other keys pass through to scuttlerun as base config.
+
+    version: "1"                    # Schema version (required)
+    min_pass_rate: 0.8              # Ratchet threshold — exit 3 if any scenario
+                                    #   falls below (optional, 0-1)
+    # --- Everything below passes through to scuttlerun ---
+    model: claude-sonnet-4-6
+    tools:
+      - Read
+      - Write
+      - Bash
+    user:
+      turn_policy: single
+    project:
+      claude_md: |
+        Use relative paths. Do not use absolute paths.
+      skills:
+        - ~/.claude/skills/my-skill
+
+Output Format:
+  YAML streamed to stdout, scenario by scenario (arrival order):
+
+    artifact_dir: /tmp/craboodle-run-abc123
+    scenarios:
+      - id: email-validator
+        labels:
+          config: optimized
+        assertions:
+          - check: "Output contains a function that validates email format"
+            pass_rate: 1.0
+          - check: "Function handles edge cases"
+            pass_rate: 0.5
+            failures:
+              - rep: 1
+                evidence: "No empty string handling found"
+        pass_rate: 0.83
+        cost_usd: 0.0234
+    total_cost_usd: 0.0234
+
+  Passing assertions are compact (check + pass_rate). Failing assertions
+  include per-rep evidence. pass_rate is a fraction (0.0-1.0), never binary.
+
+Examples:
+  # Run all scenarios in an evals directory
+  craboodle run ./evals
+
+  # Override model and repetition count
+  craboodle run ./evals --agent-model claude-sonnet-4-6 --repeats 5
+
+  # Run a single scenario by ID
+  craboodle run ./evals --scenario email-validator
+
+  # Use a stronger grader model
+  craboodle run ./evals --grader-model claude-sonnet-4-6
+
+  # CI quality gate with yq
+  craboodle run ./evals | yq '.scenarios[].pass_rate'
+
+Exit Codes:
+  0   Pipeline completed successfully
+  1   Configuration error (invalid YAML, missing fields, unknown keys)
+  2   Infrastructure error (no scenarios found, tools not installed)
+  3   Threshold failure (min_pass_rate ratchet violated)`;
+
 const program = new Command();
 
 program
   .name("craboodle")
   .description("Eval pipeline orchestrator for Claude Code")
-  .version("0.1.0");
+  .version("0.1.0")
+  .addHelpText("after", HELP_TEXT);
 
 program
   .command("run <evals-dir>")
