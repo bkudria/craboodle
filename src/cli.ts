@@ -416,6 +416,9 @@ Output Format:
   cost_usd includes both agent (scuttlerun) and grading (pincenez) costs.
 
 Examples:
+  # List and validate scenarios without running
+  craboodle list ./evals
+
   # Run all scenarios in an evals directory
   craboodle run ./evals
 
@@ -473,6 +476,80 @@ program
         `[craboodle] Error: ${err instanceof Error ? err.message : String(err)}\n`,
       );
       process.exit(2);
+    }
+  });
+
+program
+  .command("list <evals-dir>")
+  .description("List and validate scenarios without running them")
+  .option("--scenario <pattern>", "Filter scenarios by ID (exact, glob, or comma-separated)")
+  .action(async (evalsDir: string, cmdOpts: { scenario?: string }) => {
+    try {
+      const resolvedDir = resolve(evalsDir);
+
+      // Discover scenarios
+      let scenarios = await discoverScenarios(resolvedDir);
+      if (scenarios.length === 0) {
+        process.stderr.write(`[craboodle] No scenarios found in ${resolvedDir}\n`);
+        process.exit(2);
+      }
+
+      if (cmdOpts.scenario) {
+        scenarios = filterScenarios(scenarios, cmdOpts.scenario);
+        if (scenarios.length === 0) {
+          process.stderr.write(`[craboodle] No scenarios match filter: ${cmdOpts.scenario}\n`);
+          process.exit(2);
+        }
+      }
+
+      // Load and validate base config
+      const base = await loadBaseConfig(join(resolvedDir, "base.yml"));
+
+      // Output base config summary
+      const baseInfo: Record<string, unknown> = {};
+      if (base.version) baseInfo.version = base.version;
+      if (base.minPassRate !== undefined) baseInfo.min_pass_rate = base.minPassRate;
+      process.stdout.write(`base:\n`);
+      if (base.version) process.stdout.write(`  version: "${base.version}"\n`);
+      if (base.minPassRate !== undefined) process.stdout.write(`  min_pass_rate: ${base.minPassRate}\n`);
+
+      // Load and validate each scenario
+      process.stdout.write(`scenarios:\n`);
+      let totalAssertions = 0;
+
+      for (const scenario of scenarios) {
+        try {
+          const config = await loadScenarioConfig(scenario.configPath);
+          const assertionCount = config.assertions.length;
+          totalAssertions += assertionCount;
+
+          process.stdout.write(`  - id: ${scenario.id}\n`);
+          process.stdout.write(`    assertions: ${assertionCount}\n`);
+
+          if (config.repeats) {
+            process.stdout.write(`    repeats: ${config.repeats}\n`);
+          }
+
+          if (config.labels) {
+            process.stdout.write(`    labels:\n`);
+            for (const [key, value] of Object.entries(config.labels)) {
+              process.stdout.write(`      ${key}: ${stringify(value).trimEnd()}\n`);
+            }
+          }
+        } catch (err: unknown) {
+          process.stderr.write(
+            `[craboodle] Config error in ${scenario.id}: ${err instanceof Error ? err.message : String(err)}\n`,
+          );
+          process.exit(1);
+        }
+      }
+
+      process.stdout.write(`total: ${scenarios.length} scenarios, ${totalAssertions} assertions\n`);
+    } catch (err: unknown) {
+      process.stderr.write(
+        `[craboodle] Error: ${err instanceof Error ? err.message : String(err)}\n`,
+      );
+      process.exit(1);
     }
   });
 
