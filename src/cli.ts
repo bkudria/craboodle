@@ -39,7 +39,7 @@ interface RunOptions {
 
 type RepOutcome =
   | { type: "success"; grading: GradingAssertion[]; costUsd: number | null; gradingCostUsd: number | null }
-  | { type: "error"; rep: number; stage: string; message: string };
+  | { type: "error"; rep: number; stage: string; message: string; transcriptPath?: string };
 
 async function runCommand(
   evalsDir: string,
@@ -157,6 +157,7 @@ async function runCommand(
               rep,
               stage: scuttlerunResult.error.stage,
               message: scuttlerunResult.error.message,
+              transcriptPath: outputPath,
             };
           }
 
@@ -180,6 +181,7 @@ async function runCommand(
               rep,
               stage: pincenezResult.error.stage,
               message: pincenezResult.error.message,
+              transcriptPath: outputPath,
             };
           }
 
@@ -238,6 +240,7 @@ async function runCommand(
             rep: outcome.rep,
             stage: outcome.stage,
             error: outcome.message,
+            ...(outcome.transcriptPath ? { transcript: outcome.transcriptPath } : {}),
           });
         }
       } else {
