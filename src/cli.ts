@@ -11,7 +11,7 @@ import { loadScenarioConfig, loadBaseConfig } from "./config.js";
 import { cleanOldArtifacts } from "./cleanup.js";
 import { discoverScenarios, filterScenarios } from "./discovery.js";
 import { buildScuttlerunOverride, buildRubric } from "./builder.js";
-import { runScuttlerun, runPincenez, runPincenezLint } from "./runner.js";
+import { runScuttlerun, runPincenez, runPincenezLint, listScuttlerunConfig } from "./runner.js";
 import { executePool, type WorkItem } from "./pool.js";
 import {
   parseGrading,
@@ -74,7 +74,7 @@ async function runCommand(
   }
 
   // Load base config
-  const { version, minPassRate, scuttlerunConfig: baseConfig } = await loadBaseConfig(join(resolvedDir, "base.yml"));
+  const { version, minPassRate, maxBudgetUsd, scuttlerunConfig: baseConfig } = await loadBaseConfig(join(resolvedDir, "base.yml"));
 
   if (opts.verbose && version) {
     process.stderr.write(`[craboodle] Eval format version: ${version}\n`);
@@ -198,7 +198,16 @@ async function runCommand(
   }
 
   // Execute pool
-  const poolResults = await executePool(workItems, opts.concurrency);
+  const poolResults = await executePool(workItems, opts.concurrency, {
+    budgetUsd: maxBudgetUsd,
+    costOf: (outcome: RepOutcome) => {
+      if (outcome.type !== "success") return 0;
+      let cost = 0;
+      if (outcome.costUsd !== null) cost += outcome.costUsd;
+      if (outcome.gradingCostUsd !== null) cost += outcome.gradingCostUsd;
+      return cost;
+    },
+  });
 
   // Process results per scenario
   let hasAnySuccess = false;
@@ -488,9 +497,10 @@ program
 
 program
   .command("list <evals-dir>")
-  .description("List and validate scenarios without running them")
+  .description("List and validate scenarios (including scuttlerun config validation)")
   .option("--scenario <pattern>", "Filter scenarios by ID (exact, glob, or comma-separated)")
-  .action(async (evalsDir: string, cmdOpts: { scenario?: string }) => {
+  .option("-v, --verbose", "Verbose logging (to stderr)")
+  .action(async (evalsDir: string, cmdOpts: { scenario?: string; verbose?: boolean }) => {
     try {
       const resolvedDir = resolve(evalsDir);
 
@@ -512,10 +522,16 @@ program
       // Load and validate base config
       const base = await loadBaseConfig(join(resolvedDir, "base.yml"));
 
+      // Write base config for scuttlerun validation
+      let basePath: string | null = null;
+      let tmpDir: string | null = null;
+      if (base.scuttlerunConfig) {
+        tmpDir = await mkdtemp(join(tmpdir(), "craboodle-list-"));
+        basePath = join(tmpDir, "base.yml");
+        await writeFile(basePath, stringify(base.scuttlerunConfig));
+      }
+
       // Output base config summary
-      const baseInfo: Record<string, unknown> = {};
-      if (base.version) baseInfo.version = base.version;
-      if (base.minPassRate !== undefined) baseInfo.min_pass_rate = base.minPassRate;
       process.stdout.write(`base:\n`);
       if (base.version) process.stdout.write(`  version: "${base.version}"\n`);
       if (base.minPassRate !== undefined) process.stdout.write(`  min_pass_rate: ${base.minPassRate}\n`);
@@ -523,6 +539,7 @@ program
       // Load and validate each scenario
       process.stdout.write(`scenarios:\n`);
       let totalAssertions = 0;
+      let invalidCount = 0;
 
       for (const scenario of scenarios) {
         try {
@@ -543,6 +560,25 @@ program
               process.stdout.write(`      ${key}: ${stringify(value).trimEnd()}\n`);
             }
           }
+
+          // Validate merged scuttlerun config via subprocess
+          if (!tmpDir) {
+            tmpDir = await mkdtemp(join(tmpdir(), "craboodle-list-"));
+          }
+          const override = buildScuttlerunOverride(config);
+          const result = await listScuttlerunConfig({
+            override,
+            basePath,
+            tmpDir,
+          });
+
+          if (result.success) {
+            process.stdout.write(`    valid: true\n`);
+          } else {
+            process.stdout.write(`    valid: false\n`);
+            process.stdout.write(`    error: ${stringify(result.error.message).trimEnd()}\n`);
+            invalidCount++;
+          }
         } catch (err: unknown) {
           process.stderr.write(
             `[craboodle] Config error in ${scenario.id}: ${err instanceof Error ? err.message : String(err)}\n`,
@@ -552,6 +588,16 @@ program
       }
 
       process.stdout.write(`total: ${scenarios.length} scenarios, ${totalAssertions} assertions\n`);
+      if (invalidCount > 0) {
+        process.stdout.write(`invalid: ${invalidCount}\n`);
+        process.exit(1);
+      }
+
+      // Clean up temp dir
+      if (tmpDir) {
+        const { rm } = await import("node:fs/promises");
+        await rm(tmpDir, { recursive: true }).catch(() => {});
+      }
     } catch (err: unknown) {
       process.stderr.write(
         `[craboodle] Error: ${err instanceof Error ? err.message : String(err)}\n`,

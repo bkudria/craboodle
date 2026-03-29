@@ -32,6 +32,7 @@ export async function loadScenarioConfig(
 export interface BaseConfig {
   version?: string;
   minPassRate?: number;
+  maxBudgetUsd?: number;
   scuttlerunConfig: Record<string, unknown> | null;
 }
 
@@ -56,7 +57,7 @@ export async function loadBaseConfig(
   }
 
   // Extract craboodle-specific keys, pass the rest to scuttlerun
-  const { version, min_pass_rate, ...scuttlerunConfig } = raw;
+  const { version, min_pass_rate, max_budget_usd, ...scuttlerunConfig } = raw;
 
   // Validate version (required when base.yml exists)
   if (version === undefined) {
@@ -75,9 +76,18 @@ export async function loadBaseConfig(
     minPassRate = min_pass_rate;
   }
 
+  let maxBudgetUsd: number | undefined;
+  if (max_budget_usd !== undefined) {
+    if (typeof max_budget_usd !== "number" || max_budget_usd <= 0) {
+      throw new Error("max_budget_usd must be a positive number");
+    }
+    maxBudgetUsd = max_budget_usd;
+  }
+
   return {
     version: versionStr,
     minPassRate,
+    maxBudgetUsd,
     scuttlerunConfig: Object.keys(scuttlerunConfig).length > 0 ? scuttlerunConfig : null,
   };
 }

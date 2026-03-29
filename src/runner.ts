@@ -78,6 +78,41 @@ export async function runScuttlerun(
   }
 }
 
+export interface ListScuttlerunOptions {
+  override: Record<string, unknown>;
+  basePath: string | null;
+  tmpDir: string;
+}
+
+export async function listScuttlerunConfig(
+  options: ListScuttlerunOptions,
+): Promise<SubprocessResult & { stdout?: string }> {
+  const { override, basePath, tmpDir } = options;
+
+  const overridePath = join(tmpDir, "scuttlerun-list-override.yml");
+  await writeFile(overridePath, stringify(override));
+
+  const args = ["list"];
+  if (basePath) {
+    args.push(basePath);
+  }
+  args.push(overridePath);
+
+  try {
+    const { stdout } = await execFilePromise("scuttlerun", args);
+    return { success: true, stdout };
+  } catch (err: unknown) {
+    const error = err as Error & { stderr?: string };
+    return {
+      success: false,
+      error: {
+        stage: "scuttlerun",
+        message: error.stderr || error.message,
+      },
+    };
+  }
+}
+
 export interface RunPincenezLintOptions {
   rubricPath: string;
   graderModel?: string;
