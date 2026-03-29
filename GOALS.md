@@ -53,8 +53,7 @@ Each tool does one job. craboodle is the conductor; scuttlerun and pincenez are 
 - Web UI or dashboard. yq and the terminal are the UI.
 - Trend analysis across runs. A downstream concern.
 - Notification or alerting on regressions.
-- Scenario filtering (e.g., `--scenario` flag). If you want a subset, restructure directories or use downstream tooling. May be added later if the workflow demands it.
 
 ## Resolved Questions
 
-- **Skillcraft relationship**: Skillcraft is craboodle's motivating first caller. It plans to keep its own wrapper scripts for skill-specific conventions (paired variant generation, discrimination analysis, majority voting, delta computation). The wrapper design is a skillcraft concern — craboodle's design is not shaped by assumptions about what skillcraft needs. As an example of label-based composition: skillcraft tags scenarios with `variant: with_skill` / `variant: without_skill` and computes deltas from craboodle's raw output downstream.
+- **Skillcraft relationship**: Skillcraft is craboodle's motivating first caller. Skillcraft keeps a thin wrapper (`run-eval.sh`) for skill-specific conventions; craboodle's design is not shaped by assumptions about what skillcraft needs. Labels enable downstream composition (e.g., grouping or comparing scenarios by config variant).

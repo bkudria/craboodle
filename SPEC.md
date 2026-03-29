@@ -404,6 +404,9 @@ scenarios:
       - check: "Output includes at least one test or example usage"
         pass_rate: 1.0
     pass_rate: 0.83
+    cost_usd: 0.0294
+    agent_cost_usd: 0.0234
+    grading_cost_usd: 0.006
     errors:
       - rep: 3
         stage: scuttlerun
@@ -417,6 +420,7 @@ scenarios:
       - check: "Handles malformed URLs gracefully"
         pass_rate: 1.0
     pass_rate: 1.0
+total_cost_usd: 0.045
 ```
 
 ---
@@ -526,9 +530,6 @@ Out of scope for v1, noted for future work:
 
 ### Watch Mode
 Re-run scenarios when scenario.yml files change. Useful during scenario development.
-
-### Cost Tracking
-Track and report API costs per scenario and overall.
 
 ### Scenario Templates
 `craboodle init` to scaffold a new evals directory with base.yml and example scenarios.
