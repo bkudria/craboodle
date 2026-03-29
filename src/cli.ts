@@ -2,7 +2,7 @@
 
 import { Command } from "commander";
 import { join } from "node:path";
-import { mkdtemp, writeFile, mkdir, readFile } from "node:fs/promises";
+import { mkdtemp, writeFile, mkdir, readFile, access, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { stringify } from "yaml";
 import { resolve } from "node:path";
@@ -760,6 +760,55 @@ program
       );
       process.exit(2);
     }
+  });
+
+program
+  .command("init <dir>")
+  .description("Scaffold a new evals directory with base.yml and example scenario")
+  .action(async (dir: string) => {
+    const resolvedDir = resolve(dir);
+
+    // Check if directory already has eval files
+    try {
+      await access(join(resolvedDir, "base.yml"));
+      process.stderr.write(`[craboodle] ${resolvedDir} already contains base.yml\n`);
+      process.exit(1);
+    } catch {
+      // base.yml doesn't exist, good
+    }
+
+    try {
+      const dirStat = await stat(resolvedDir);
+      if (dirStat.isDirectory()) {
+        const { glob: globFn } = await import("glob");
+        const existing = await globFn("*/scenario.yml", { cwd: resolvedDir });
+        if (existing.length > 0) {
+          process.stderr.write(`[craboodle] ${resolvedDir} already contains scenario files\n`);
+          process.exit(1);
+        }
+      }
+    } catch {
+      // directory doesn't exist, we'll create it
+    }
+
+    // Create directory structure
+    await mkdir(join(resolvedDir, "hello-world"), { recursive: true });
+
+    // Write base.yml
+    const baseContent = `version: "1"\nmin_pass_rate: 0.8\n`;
+    await writeFile(join(resolvedDir, "base.yml"), baseContent);
+
+    // Write example scenario
+    const scenarioContent = `prompt: |\n  Write a function that adds two numbers. Include input validation.\nassertions:\n  - check: "Output contains a function that adds two numbers"\n    note: "Look for a function definition with addition logic"\n  - check: "Function validates inputs are numbers"\n    note: "Look for type checking, parsing, or error handling for non-numeric inputs"\n`;
+    await writeFile(join(resolvedDir, "hello-world", "scenario.yml"), scenarioContent);
+
+    process.stdout.write(`Created ${resolvedDir}/\n`);
+    process.stdout.write(`  base.yml\n`);
+    process.stdout.write(`  hello-world/scenario.yml\n`);
+    process.stdout.write(`\nNext steps:\n`);
+    process.stdout.write(`  craboodle list ${dir}     # validate scenarios\n`);
+    process.stdout.write(`  craboodle lint ${dir}     # check assertion quality\n`);
+    process.stdout.write(`  craboodle run ${dir}      # run eval pipeline\n`);
   });
 
 program.parse();
