@@ -6,10 +6,29 @@ craboodle discovers scenarios, runs them through [scuttlerun](https://github.com
 
 Think of craboodle as **rspec for eval scenarios**: given a directory of scenarios, run them, grade them, report results.
 
-## Usage
+## How It Works
+
+craboodle orchestrates two companion tools:
+
+1. **scuttlerun** runs a headless Claude session with a synthetic user, producing a transcript
+2. **pincenez** grades that transcript against a rubric of assertions using an LLM judge
+
+For each scenario, craboodle runs scuttlerun N times, grades each run with pincenez, and averages the pass rates across repetitions.
+
+## Quick Start
 
 ```bash
-craboodle run <evals-dir> [--repeats N] [--concurrency N]
+# Scaffold a new eval suite
+craboodle init ./evals
+
+# Validate scenarios
+craboodle list ./evals
+
+# Check assertion quality (no sessions run)
+craboodle lint ./evals
+
+# Run the eval pipeline
+craboodle run ./evals
 ```
 
 ## Documentation
