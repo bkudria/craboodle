@@ -87,6 +87,25 @@ pass_rate: 0
       expect(result.assertions[0].pass).toBeNull();
     });
 
+    it("throws on malformed grading YAML (missing assertions)", async () => {
+      const { parseGrading } = await import("../src/output.js");
+
+      const yaml = `pass_rate: 1.0\n`;
+
+      expect(() => parseGrading(yaml)).toThrow();
+    });
+
+    it("throws on grading with invalid assertion structure", async () => {
+      const { parseGrading } = await import("../src/output.js");
+
+      const yaml = `assertions:
+  - wrong_field: true
+pass_rate: 1
+`;
+
+      expect(() => parseGrading(yaml)).toThrow();
+    });
+
     it("extracts cost_usd from pincenez YAML when present", async () => {
       const { parseGrading } = await import("../src/output.js");
 

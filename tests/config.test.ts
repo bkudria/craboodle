@@ -304,5 +304,44 @@ describe("config", () => {
       const config = await loadBaseConfig(basePath);
       expect(config.version).toBe("1");
     });
+
+    it("extracts max_budget_usd from base config", async () => {
+      const { loadBaseConfig } = await import("../src/config.js");
+      const basePath = join(tmpDir, "base.yml");
+      await writeFile(
+        basePath,
+        stringify({ version: "1", max_budget_usd: 5.0 }),
+      );
+
+      const config = await loadBaseConfig(basePath);
+
+      expect(config.maxBudgetUsd).toBe(5.0);
+    });
+
+    it("throws on invalid max_budget_usd (not a number)", async () => {
+      const { loadBaseConfig } = await import("../src/config.js");
+      const basePath = join(tmpDir, "base.yml");
+      await writeFile(
+        basePath,
+        stringify({ version: "1", max_budget_usd: "expensive" }),
+      );
+
+      await expect(loadBaseConfig(basePath)).rejects.toThrow(
+        "max_budget_usd must be a positive number",
+      );
+    });
+
+    it("throws on non-positive max_budget_usd", async () => {
+      const { loadBaseConfig } = await import("../src/config.js");
+      const basePath = join(tmpDir, "base.yml");
+      await writeFile(
+        basePath,
+        stringify({ version: "1", max_budget_usd: 0 }),
+      );
+
+      await expect(loadBaseConfig(basePath)).rejects.toThrow(
+        "max_budget_usd must be a positive number",
+      );
+    });
   });
 });

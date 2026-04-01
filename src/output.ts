@@ -1,11 +1,20 @@
 import { parse, stringify } from "yaml";
+import { z } from "zod/v4";
 
-export interface GradingAssertion {
-  id: string;
-  check: string;
-  pass: boolean | null;
-  evidence: string;
-}
+const GradingAssertionSchema = z.object({
+  id: z.string(),
+  check: z.string(),
+  pass: z.boolean().nullable(),
+  evidence: z.string(),
+});
+
+const GradingOutputSchema = z.object({
+  assertions: z.array(GradingAssertionSchema).min(1),
+  pass_rate: z.number(),
+  cost_usd: z.number().optional(),
+});
+
+export type GradingAssertion = z.infer<typeof GradingAssertionSchema>;
 
 export interface AssertionOutput {
   check: string;
@@ -46,14 +55,11 @@ export interface GradingResult {
 }
 
 export function parseGrading(yaml: string): GradingResult {
-  const parsed = parse(yaml) as {
-    assertions: GradingAssertion[];
-    pass_rate: number;
-    cost_usd?: number;
-  };
+  const raw = parse(yaml);
+  const parsed = GradingOutputSchema.parse(raw);
   return {
     assertions: parsed.assertions,
-    costUsd: typeof parsed.cost_usd === "number" ? parsed.cost_usd : null,
+    costUsd: parsed.cost_usd ?? null,
   };
 }
 

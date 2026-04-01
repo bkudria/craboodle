@@ -13,6 +13,7 @@ export type WorkResult<T> =
 export interface PoolOptions<T> {
   budgetUsd?: number;
   costOf?: (result: T) => number;
+  onScenarioComplete?: (scenarioId: string, results: WorkResult<T>[]) => void;
 }
 
 export async function executePool<T>(
@@ -23,11 +24,23 @@ export async function executePool<T>(
   const limit = pLimit(concurrency);
   const results = new Map<string, WorkResult<T>[]>();
 
+  const remaining = new Map<string, number>();
   for (const item of workItems) {
     if (!results.has(item.scenarioId)) {
       results.set(item.scenarioId, []);
     }
+    remaining.set(item.scenarioId, (remaining.get(item.scenarioId) ?? 0) + 1);
   }
+
+  const onItemDone = options?.onScenarioComplete
+    ? (scenarioId: string) => {
+        const left = remaining.get(scenarioId)! - 1;
+        remaining.set(scenarioId, left);
+        if (left === 0) {
+          options.onScenarioComplete!(scenarioId, results.get(scenarioId)!);
+        }
+      }
+    : undefined;
 
   let totalCost = 0;
   let budgetExceeded = false;
@@ -42,6 +55,7 @@ export async function executePool<T>(
           rep: item.rep,
           error: `Budget exceeded ($${totalCost.toFixed(4)} > $${budgetUsd})`,
         });
+        onItemDone?.(item.scenarioId);
         return;
       }
 
@@ -52,6 +66,7 @@ export async function executePool<T>(
           rep: item.rep,
           data,
         });
+        onItemDone?.(item.scenarioId);
 
         if (budgetUsd !== undefined && costOf) {
           totalCost += costOf(data);
@@ -68,6 +83,7 @@ export async function executePool<T>(
           rep: item.rep,
           error: err instanceof Error ? err.message : String(err),
         });
+        onItemDone?.(item.scenarioId);
       }
     }),
   );

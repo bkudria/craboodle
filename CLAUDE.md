@@ -31,7 +31,8 @@ See [GOALS.md](GOALS.md) for design philosophy and [SPEC.md](SPEC.md) for full t
 - `src/builder.ts` — Config builder (merge base + scenario → scuttlerun config + rubric)
 - `src/pool.ts` — Flat (scenario, rep) work pool with concurrency control
 - `src/runner.ts` — scuttlerun/pincenez subprocess invocation
-- `src/results.ts` — Results averaging and streaming YAML output
+- `src/output.ts` — Results averaging and streaming YAML output
+- `src/cleanup.ts` — Old artifact directory cleanup
 
 ## Key decisions
 

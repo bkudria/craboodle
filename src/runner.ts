@@ -32,7 +32,7 @@ function execFilePromise(
   args: string[],
 ): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
-    execFile(cmd, args, { encoding: "utf8" }, (error, stdout, stderr) => {
+    execFile(cmd, args, { encoding: "utf8", maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
       if (error) {
         const err = error as Error & { stderr?: string };
         err.stderr = stderr;

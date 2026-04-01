@@ -199,8 +199,11 @@ async function runCommand(
     }
   }
 
-  // Execute pool
-  const poolResults = await executePool(workItems, opts.concurrency, {
+  // Execute pool with arrival-order streaming
+  let hasAnySuccess = false;
+  const scenarioOutputs: ScenarioOutput[] = [];
+
+  await executePool(workItems, opts.concurrency, {
     budgetUsd: maxBudgetUsd,
     costOf: (outcome: RepOutcome) => {
       if (outcome.type !== "success") return 0;
@@ -209,91 +212,86 @@ async function runCommand(
       if (outcome.gradingCostUsd !== null) cost += outcome.gradingCostUsd;
       return cost;
     },
-  });
+    onScenarioComplete: (scenarioId, repResults) => {
+      const config = scenarioConfigs.get(scenarioId)!;
 
-  // Process results per scenario
-  let hasAnySuccess = false;
-  const scenarioOutputs: ScenarioOutput[] = [];
-  for (const scenario of scenarios) {
-    const config = scenarioConfigs.get(scenario.id)!;
-    const repResults = poolResults.get(scenario.id) || [];
+      const successfulGradings: GradingAssertion[][] = [];
+      const errors: Array<{ rep: number; stage: string; error: string }> = [];
+      let agentCost = 0;
+      let gradingCost = 0;
 
-    const successfulGradings: GradingAssertion[][] = [];
-    const errors: Array<{ rep: number; stage: string; error: string }> = [];
-    let agentCost = 0;
-    let gradingCost = 0;
-
-    for (const result of repResults) {
-      if (result.type === "success") {
-        const outcome = result.data;
-        if (outcome.type === "success") {
-          successfulGradings.push(outcome.grading);
-          hasAnySuccess = true;
-          if (outcome.costUsd !== null) {
-            agentCost += outcome.costUsd;
-          }
-          if (outcome.gradingCostUsd !== null) {
-            gradingCost += outcome.gradingCostUsd;
+      for (const result of repResults) {
+        if (result.type === "success") {
+          const outcome = result.data;
+          if (outcome.type === "success") {
+            successfulGradings.push(outcome.grading);
+            hasAnySuccess = true;
+            if (outcome.costUsd !== null) {
+              agentCost += outcome.costUsd;
+            }
+            if (outcome.gradingCostUsd !== null) {
+              gradingCost += outcome.gradingCostUsd;
+            }
+          } else {
+            errors.push({
+              rep: outcome.rep,
+              stage: outcome.stage,
+              error: outcome.message,
+              ...(outcome.transcriptPath ? { transcript: outcome.transcriptPath } : {}),
+            });
           }
         } else {
           errors.push({
-            rep: outcome.rep,
-            stage: outcome.stage,
-            error: outcome.message,
-            ...(outcome.transcriptPath ? { transcript: outcome.transcriptPath } : {}),
+            rep: result.rep,
+            stage: "unknown",
+            error: result.error,
           });
         }
-      } else {
-        errors.push({
-          rep: result.rep,
-          stage: "unknown",
-          error: result.error,
-        });
       }
-    }
 
-    let scenarioOutput: ScenarioOutput;
+      let scenarioOutput: ScenarioOutput;
 
-    const totalScenarioCost = agentCost + gradingCost;
-    const costFields = {
-      ...(totalScenarioCost > 0 ? { cost_usd: totalScenarioCost } : {}),
-      ...(agentCost > 0 ? { agent_cost_usd: agentCost } : {}),
-      ...(gradingCost > 0 ? { grading_cost_usd: gradingCost } : {}),
-    };
-
-    if (successfulGradings.length === 0) {
-      scenarioOutput = {
-        id: scenario.id,
-        ...(config.labels ? { labels: config.labels } : {}),
-        assertions: config.assertions.map((a) => ({
-          check: a.check,
-          pass_rate: 0,
-        })),
-        pass_rate: null,
-        ...costFields,
-        errors,
+      const totalScenarioCost = agentCost + gradingCost;
+      const costFields = {
+        ...(totalScenarioCost > 0 ? { cost_usd: totalScenarioCost } : {}),
+        ...(agentCost > 0 ? { agent_cost_usd: agentCost } : {}),
+        ...(gradingCost > 0 ? { grading_cost_usd: gradingCost } : {}),
       };
-    } else {
-      const averaged = averageResults(successfulGradings);
-      scenarioOutput = {
-        id: scenario.id,
-        ...(config.labels ? { labels: config.labels } : {}),
-        assertions: averaged.assertions,
-        pass_rate: averaged.pass_rate,
-        ...costFields,
-        ...(errors.length > 0 ? { errors } : {}),
-      };
-    }
 
-    scenarioOutputs.push(scenarioOutput);
-    streamScenarioYaml(scenarioOutput);
+      if (successfulGradings.length === 0) {
+        scenarioOutput = {
+          id: scenarioId,
+          ...(config.labels ? { labels: config.labels } : {}),
+          assertions: config.assertions.map((a) => ({
+            check: a.check,
+            pass_rate: 0,
+          })),
+          pass_rate: null,
+          ...costFields,
+          errors,
+        };
+      } else {
+        const averaged = averageResults(successfulGradings);
+        scenarioOutput = {
+          id: scenarioId,
+          ...(config.labels ? { labels: config.labels } : {}),
+          assertions: averaged.assertions,
+          pass_rate: averaged.pass_rate,
+          ...costFields,
+          ...(errors.length > 0 ? { errors } : {}),
+        };
+      }
 
-    if (opts.verbose) {
-      process.stderr.write(
-        `[craboodle] ${scenario.id}: pass_rate=${scenarioOutput.pass_rate}\n`,
-      );
-    }
-  }
+      scenarioOutputs.push(scenarioOutput);
+      streamScenarioYaml(scenarioOutput);
+
+      if (opts.verbose) {
+        process.stderr.write(
+          `[craboodle] ${scenarioId}: pass_rate=${scenarioOutput.pass_rate}\n`,
+        );
+      }
+    },
+  });
 
   // Stream total cost
   const totalCost = scenarioOutputs.reduce((sum, s) => sum + (s.cost_usd ?? 0), 0);

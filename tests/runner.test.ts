@@ -210,6 +210,65 @@ describe("runner", () => {
     });
   });
 
+  describe("listScuttlerunConfig", () => {
+    it("invokes scuttlerun list with base and override config", async () => {
+      const { listScuttlerunConfig } = await import("../src/runner.js");
+
+      mockExecFileCall((cb) => cb(null, "model: claude-sonnet-4-6\n", ""));
+
+      const result = await listScuttlerunConfig({
+        override: { prompt: "Write a haiku" },
+        basePath: "/path/to/base.yml",
+        tmpDir,
+      });
+
+      expect(mockExecFile).toHaveBeenCalledOnce();
+      const [cmd, args] = mockExecFile.mock.calls[0];
+      expect(cmd).toBe("scuttlerun");
+      expect(args![0]).toBe("list");
+      expect(args).toContain("/path/to/base.yml");
+      expect(result.success).toBe(true);
+    });
+
+    it("returns stdout on success", async () => {
+      const { listScuttlerunConfig } = await import("../src/runner.js");
+
+      const configYaml = "model: claude-sonnet-4-6\ntools:\n  - Read\n";
+      mockExecFileCall((cb) => cb(null, configYaml, ""));
+
+      const result = await listScuttlerunConfig({
+        override: { prompt: "Write a haiku" },
+        basePath: null,
+        tmpDir,
+      });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.stdout).toBe(configYaml);
+      }
+    });
+
+    it("returns error on failure", async () => {
+      const { listScuttlerunConfig } = await import("../src/runner.js");
+
+      const error = new Error("Command failed") as Error & { code: number };
+      error.code = 1;
+      mockExecFileCall((cb) => cb(error, "", "scuttlerun: invalid config"));
+
+      const result = await listScuttlerunConfig({
+        override: { prompt: "Write a haiku" },
+        basePath: null,
+        tmpDir,
+      });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.stage).toBe("scuttlerun");
+        expect(result.error.message).toContain("invalid config");
+      }
+    });
+  });
+
   describe("runPincenez", () => {
     it("invokes pincenez with rubric and output file", async () => {
       const { runPincenez } = await import("../src/runner.js");

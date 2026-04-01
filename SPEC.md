@@ -304,12 +304,13 @@ scuttlerun:
 
 ### base.yml
 
-Optional file at the evals directory root. Contains shared scuttlerun defaults and optional craboodle settings. craboodle extracts its own keys (`min_pass_rate`) and passes the rest through to scuttlerun as config defaults:
+Optional file at the evals directory root. Contains shared scuttlerun defaults and optional craboodle settings. craboodle extracts its own keys (`min_pass_rate`, `max_budget_usd`) and passes the rest through to scuttlerun as config defaults:
 
 ```yaml
 # base.yml — shared defaults + craboodle settings
 version: "1"              # required: eval format version (craboodle rejects unknown versions)
 min_pass_rate: 0.8        # craboodle: minimum acceptable scenario pass rate (0-1)
+max_budget_usd: 5.0       # craboodle: stop scheduling reps after this total spend (optional)
 model: claude-sonnet-4-6  # scuttlerun: everything else passes through
 tools:
   - Read
@@ -333,6 +334,10 @@ The eval format version. Currently the only supported value is `"1"`. craboodle 
 
 When present, craboodle checks each scenario's pass_rate against this threshold after all scenarios complete. If any scenario falls below the threshold (or has `pass_rate: null` from all-failed reps), craboodle reports the failures to stderr and exits with code 3. This provides a CI-compatible binary signal from non-binary eval scores, analogous to a code coverage ratchet.
 
+#### `max_budget_usd` (budget cap)
+
+When present, craboodle tracks cumulative cost (agent + grading) across all work items. Once total spend exceeds the cap, remaining work items are skipped with a budget-exceeded error. Completed reps are still reported. This is best-effort — up to `concurrency` items may be in flight when the cap is reached.
+
 ### Config Merging
 
 For each scenario, craboodle produces a scuttlerun config by merging:
@@ -341,7 +346,7 @@ For each scenario, craboodle produces a scuttlerun config by merging:
 2. **scenario.yml's scuttlerun: block** (passthrough, not validated by craboodle)
 3. **scenario.yml's prompt** (mapped to scuttlerun's `prompt:` field)
 
-This uses scuttlerun's `run base.yml override.yml` merging behavior. craboodle extracts its own fields (`version`, `min_pass_rate`) from base.yml and writes a cleaned copy (without those fields) for scuttlerun, ensuring scuttlerun only receives fields it understands. It then writes a temporary override config (scuttlerun block + prompt) and passes both files to scuttlerun.
+This uses scuttlerun's `run base.yml override.yml` merging behavior. craboodle extracts its own fields (`version`, `min_pass_rate`, `max_budget_usd`) from base.yml and writes a cleaned copy (without those fields) for scuttlerun, ensuring scuttlerun only receives fields it understands. It then writes a temporary override config (scuttlerun block + prompt) and passes both files to scuttlerun.
 
 ---
 
@@ -352,6 +357,9 @@ craboodle — Eval pipeline orchestrator for Claude Code
 
 Usage:
   craboodle run <evals-dir> [options]     Run eval pipeline
+  craboodle list <evals-dir> [options]    List and validate scenarios
+  craboodle lint <evals-dir> [options]    Lint assertions for quality issues
+  craboodle init <dir>                    Scaffold a new evals directory
 
 Run options:
   --repeats N            Number of repetitions per scenario (default: 3, overridable per-scenario)
@@ -359,6 +367,14 @@ Run options:
   --scenario PATTERN     Filter scenarios by ID (exact match, glob wildcard, or comma-separated)
   --agent-model MODEL    Override scuttlerun model for all scenarios
   --grader-model MODEL   Override pincenez model for all assertions
+
+List options:
+  --scenario PATTERN     Filter scenarios by ID
+
+Lint options:
+  --concurrency N        Max parallel pincenez lint invocations (default: 10)
+  --scenario PATTERN     Filter scenarios by ID
+  --grader-model MODEL   Override pincenez model for linting
 
 General:
   --verbose, -v          Verbose logging (to stderr)
@@ -513,7 +529,8 @@ craboodle/
 │   ├── builder.ts           # Config builder (merge base + scenario → scuttlerun config + rubric)
 │   ├── pool.ts              # Flat (scenario, rep) work pool with concurrency control
 │   ├── runner.ts            # scuttlerun invocation (run) and pincenez invocation (grade) per rep
-│   └── results.ts           # Results averaging and streaming YAML output
+│   ├── output.ts            # Results averaging and streaming YAML output
+│   └── cleanup.ts           # Old artifact directory cleanup
 ├── tests/
 │   └── ...
 └── examples/
@@ -531,6 +548,4 @@ Out of scope for v1, noted for future work:
 ### Watch Mode
 Re-run scenarios when scenario.yml files change. Useful during scenario development.
 
-### Scenario Templates
-`craboodle init` to scaffold a new evals directory with base.yml and example scenarios.
 
