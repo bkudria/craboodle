@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { tmpdir } from "node:os";
 import { mkdir, rm, stat, utimes } from "node:fs/promises";
 import { join } from "node:path";
@@ -69,5 +69,68 @@ describe("cleanOldArtifacts", () => {
     // Just run with no old dirs — should return 0 or a small number
     const cleaned = await cleanOldArtifacts(9999);
     expect(cleaned).toBe(0);
+  });
+
+  it("logs to stderr when verbose and dirs were cleaned", async () => {
+    const { cleanOldArtifacts } = await import("../src/cleanup.js");
+    const oldDir = await createOldDir("craboodle-run-test-verbose-" + Date.now(), 10);
+
+    let stderrOutput = "";
+    const spy = vi.spyOn(process.stderr, "write").mockImplementation((chunk: string | Uint8Array) => {
+      stderrOutput += typeof chunk === "string" ? chunk : chunk.toString();
+      return true;
+    });
+
+    try {
+      const cleaned = await cleanOldArtifacts(7, { verbose: true });
+      expect(cleaned).toBeGreaterThanOrEqual(1);
+      expect(stderrOutput).toContain("Cleaned");
+    } finally {
+      spy.mockRestore();
+      await rm(oldDir, { recursive: true }).catch(() => {});
+    }
+  });
+});
+
+describe("cleanOldArtifacts error handling", () => {
+  it("handles stat errors on individual directories", async () => {
+    vi.resetModules();
+
+    vi.doMock("node:fs/promises", async (importOriginal) => {
+      const orig = await importOriginal<typeof import("node:fs/promises")>();
+      return {
+        ...orig,
+        readdir: vi.fn().mockResolvedValue([
+          { isDirectory: () => true, name: "craboodle-run-mock-stat-error" },
+        ]),
+        stat: vi.fn().mockRejectedValue(new Error("EPERM")),
+      };
+    });
+
+    const { cleanOldArtifacts } = await import("../src/cleanup.js");
+    const cleaned = await cleanOldArtifacts(0);
+    expect(cleaned).toBe(0);
+
+    vi.doUnmock("node:fs/promises");
+    vi.resetModules();
+  });
+
+  it("handles readdir errors gracefully", async () => {
+    vi.resetModules();
+
+    vi.doMock("node:fs/promises", async (importOriginal) => {
+      const orig = await importOriginal<typeof import("node:fs/promises")>();
+      return {
+        ...orig,
+        readdir: vi.fn().mockRejectedValue(new Error("EACCES")),
+      };
+    });
+
+    const { cleanOldArtifacts } = await import("../src/cleanup.js");
+    const cleaned = await cleanOldArtifacts(7);
+    expect(cleaned).toBe(0);
+
+    vi.doUnmock("node:fs/promises");
+    vi.resetModules();
   });
 });

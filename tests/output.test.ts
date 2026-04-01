@@ -125,6 +125,25 @@ cost_usd: 0.0042
   });
 
   describe("averageResults", () => {
+    it("returns empty results for empty input", async () => {
+      const { averageResults } = await import("../src/output.js");
+
+      const result = averageResults([]);
+
+      expect(result.assertions).toEqual([]);
+      expect(result.pass_rate).toBe(0);
+    });
+
+    it("returns 0 pass_rate when assertions array is empty per rep", async () => {
+      const { averageResults } = await import("../src/output.js");
+
+      // A rep with zero assertions (edge case)
+      const result = averageResults([[]]);
+
+      expect(result.assertions).toEqual([]);
+      expect(result.pass_rate).toBe(0);
+    });
+
     it("computes pass_rate for a single rep", async () => {
       const { averageResults } = await import("../src/output.js");
 
@@ -271,6 +290,23 @@ cost_usd: 0.0042
       expect(written).toContain("stage: scuttlerun");
     });
 
+    it("includes cost fields when present", async () => {
+      const { streamScenarioYaml } = await import("../src/output.js");
+
+      streamScenarioYaml({
+        id: "test",
+        assertions: [{ check: "test", pass_rate: 1.0 }],
+        pass_rate: 1.0,
+        cost_usd: 0.0294,
+        agent_cost_usd: 0.0234,
+        grading_cost_usd: 0.006,
+      });
+
+      expect(written).toContain("cost_usd: 0.0294");
+      expect(written).toContain("agent_cost_usd: 0.0234");
+      expect(written).toContain("grading_cost_usd: 0.006");
+    });
+
     it("handles null pass_rate for all-failed scenarios", async () => {
       const { streamScenarioYaml } = await import("../src/output.js");
 
@@ -332,6 +368,24 @@ assertions_with_issues: 0
 
       const result = parseLintResult(yaml);
       expect(result[0].issues).toEqual([]);
+    });
+  });
+
+  describe("streamTotalCost", () => {
+    it("writes total_cost_usd to stdout", async () => {
+      const { streamTotalCost } = await import("../src/output.js");
+
+      streamTotalCost(0.0456);
+
+      expect(written).toContain("total_cost_usd: 0.0456");
+    });
+
+    it("rounds to 4 decimal places", async () => {
+      const { streamTotalCost } = await import("../src/output.js");
+
+      streamTotalCost(0.12345678);
+
+      expect(written).toContain("total_cost_usd: 0.1235");
     });
   });
 

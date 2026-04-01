@@ -175,6 +175,48 @@ describe("pool", () => {
       expect(s1Results.every((r) => r.type === "success")).toBe(true);
     });
 
+    it("fires onScenarioComplete for budget-exceeded items", async () => {
+      const { executePool } = await import("../src/pool.js");
+
+      const completed: string[] = [];
+      const workItems = [
+        { scenarioId: "s1", rep: 1, fn: async () => ({ cost: 2.0 }) },
+        { scenarioId: "s2", rep: 1, fn: async () => ({ cost: 0.1 }) },
+      ];
+
+      await executePool(workItems, 1, {
+        budgetUsd: 1.0,
+        costOf: (data: { cost: number }) => data.cost,
+        onScenarioComplete: (scenarioId) => {
+          completed.push(scenarioId);
+        },
+      });
+
+      expect(completed).toContain("s1");
+      expect(completed).toContain("s2");
+    });
+
+    it("handles non-Error thrown values", async () => {
+      const { executePool } = await import("../src/pool.js");
+
+      const workItems = [
+        {
+          scenarioId: "s1",
+          rep: 1,
+          fn: () => { throw "string error"; },
+        },
+      ];
+
+      const results = await executePool(workItems, 10);
+
+      const s1Results = results.get("s1")!;
+      expect(s1Results).toHaveLength(1);
+      expect(s1Results[0].type).toBe("error");
+      if (s1Results[0].type === "error") {
+        expect(s1Results[0].error).toBe("string error");
+      }
+    });
+
     it("handles failed work items without stopping others", async () => {
       const { executePool } = await import("../src/pool.js");
 

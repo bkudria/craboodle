@@ -258,6 +258,12 @@ describe("config", () => {
       );
     });
 
+    it("re-throws non-ENOENT errors", async () => {
+      const { loadBaseConfig } = await import("../src/config.js");
+      // Reading a directory as a file gives EISDIR
+      await expect(loadBaseConfig(tmpDir)).rejects.toThrow();
+    });
+
     it("returns null scuttlerunConfig if file does not exist", async () => {
       const { loadBaseConfig } = await import("../src/config.js");
       const config = await loadBaseConfig(join(tmpDir, "nonexistent.yml"));

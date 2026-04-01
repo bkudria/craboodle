@@ -138,6 +138,26 @@ describe("runner", () => {
         expect(result.error.message).toContain("timeout after 120s");
       }
     });
+
+    it("falls back to error.message when stderr is empty", async () => {
+      const { runScuttlerun } = await import("../src/runner.js");
+
+      const error = new Error("ENOENT: scuttlerun not found") as Error & { code: number };
+      error.code = 127;
+      mockExecFileCall((cb) => cb(error, "", ""));
+
+      const result = await runScuttlerun({
+        override: { prompt: "Write a haiku" },
+        basePath: null,
+        outputPath: join(tmpDir, "output.yml"),
+        tmpDir,
+      });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.message).toContain("ENOENT: scuttlerun not found");
+      }
+    });
   });
 
   describe("runPincenezLint", () => {
@@ -208,6 +228,23 @@ describe("runner", () => {
         expect(result.error.message).toContain("API error");
       }
     });
+
+    it("falls back to error.message when stderr is empty", async () => {
+      const { runPincenezLint } = await import("../src/runner.js");
+
+      const error = new Error("pincenez not found") as Error & { code: number };
+      error.code = 127;
+      mockExecFileCall((cb) => cb(error, "", ""));
+
+      const result = await runPincenezLint({
+        rubricPath: "/path/to/rubric.yml",
+      });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.message).toContain("pincenez not found");
+      }
+    });
   });
 
   describe("listScuttlerunConfig", () => {
@@ -265,6 +302,25 @@ describe("runner", () => {
       if (!result.success) {
         expect(result.error.stage).toBe("scuttlerun");
         expect(result.error.message).toContain("invalid config");
+      }
+    });
+
+    it("falls back to error.message when stderr is empty", async () => {
+      const { listScuttlerunConfig } = await import("../src/runner.js");
+
+      const error = new Error("scuttlerun not found") as Error & { code: number };
+      error.code = 127;
+      mockExecFileCall((cb) => cb(error, "", ""));
+
+      const result = await listScuttlerunConfig({
+        override: { prompt: "Write a haiku" },
+        basePath: null,
+        tmpDir,
+      });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.message).toContain("scuttlerun not found");
       }
     });
   });
@@ -325,6 +381,25 @@ describe("runner", () => {
       if (!result.success) {
         expect(result.error.stage).toBe("pincenez");
         expect(result.error.message).toContain("API error");
+      }
+    });
+
+    it("falls back to error.message when stderr is empty", async () => {
+      const { runPincenez } = await import("../src/runner.js");
+
+      const error = new Error("pincenez not found") as Error & { code: number };
+      error.code = 127;
+      mockExecFileCall((cb) => cb(error, "", ""));
+
+      const result = await runPincenez({
+        rubricPath: "/path/to/rubric.yml",
+        outputPath: "/path/to/output.yml",
+        gradingPath: join(tmpDir, "grading.yml"),
+      });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.message).toContain("pincenez not found");
       }
     });
   });
