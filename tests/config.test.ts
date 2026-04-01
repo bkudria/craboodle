@@ -16,9 +16,9 @@ describe("config", () => {
   });
 
   describe("loadScenarioConfig", () => {
-    it("parses a valid scenario.yml with prompt and assertions", async () => {
+    it("parses a valid scenario.yaml with prompt and assertions", async () => {
       const { loadScenarioConfig } = await import("../src/config.js");
-      const scenarioPath = join(tmpDir, "scenario.yml");
+      const scenarioPath = join(tmpDir, "scenario.yaml");
       await writeFile(
         scenarioPath,
         stringify({
@@ -40,7 +40,7 @@ describe("config", () => {
 
     it("throws on missing prompt", async () => {
       const { loadScenarioConfig } = await import("../src/config.js");
-      const scenarioPath = join(tmpDir, "scenario.yml");
+      const scenarioPath = join(tmpDir, "scenario.yaml");
       await writeFile(
         scenarioPath,
         stringify({
@@ -53,7 +53,7 @@ describe("config", () => {
 
     it("throws on empty assertions array", async () => {
       const { loadScenarioConfig } = await import("../src/config.js");
-      const scenarioPath = join(tmpDir, "scenario.yml");
+      const scenarioPath = join(tmpDir, "scenario.yaml");
       await writeFile(
         scenarioPath,
         stringify({
@@ -67,7 +67,7 @@ describe("config", () => {
 
     it("throws on unknown top-level keys (strict mode)", async () => {
       const { loadScenarioConfig } = await import("../src/config.js");
-      const scenarioPath = join(tmpDir, "scenario.yml");
+      const scenarioPath = join(tmpDir, "scenario.yaml");
       await writeFile(
         scenarioPath,
         stringify({
@@ -82,7 +82,7 @@ describe("config", () => {
 
     it("passes through scuttlerun block without validation", async () => {
       const { loadScenarioConfig } = await import("../src/config.js");
-      const scenarioPath = join(tmpDir, "scenario.yml");
+      const scenarioPath = join(tmpDir, "scenario.yaml");
       await writeFile(
         scenarioPath,
         stringify({
@@ -107,7 +107,7 @@ describe("config", () => {
 
     it("parses optional labels", async () => {
       const { loadScenarioConfig } = await import("../src/config.js");
-      const scenarioPath = join(tmpDir, "scenario.yml");
+      const scenarioPath = join(tmpDir, "scenario.yaml");
       await writeFile(
         scenarioPath,
         stringify({
@@ -124,7 +124,7 @@ describe("config", () => {
 
     it("parses optional repeats override", async () => {
       const { loadScenarioConfig } = await import("../src/config.js");
-      const scenarioPath = join(tmpDir, "scenario.yml");
+      const scenarioPath = join(tmpDir, "scenario.yaml");
       await writeFile(
         scenarioPath,
         stringify({
@@ -141,7 +141,7 @@ describe("config", () => {
 
     it("leaves repeats undefined when not specified", async () => {
       const { loadScenarioConfig } = await import("../src/config.js");
-      const scenarioPath = join(tmpDir, "scenario.yml");
+      const scenarioPath = join(tmpDir, "scenario.yaml");
       await writeFile(
         scenarioPath,
         stringify({
@@ -157,7 +157,7 @@ describe("config", () => {
 
     it("parses optional context", async () => {
       const { loadScenarioConfig } = await import("../src/config.js");
-      const scenarioPath = join(tmpDir, "scenario.yml");
+      const scenarioPath = join(tmpDir, "scenario.yaml");
       await writeFile(
         scenarioPath,
         stringify({
@@ -178,7 +178,7 @@ describe("config", () => {
   describe("loadBaseConfig", () => {
     it("returns scuttlerun config without craboodle keys", async () => {
       const { loadBaseConfig } = await import("../src/config.js");
-      const basePath = join(tmpDir, "base.yml");
+      const basePath = join(tmpDir, "base.yaml");
       await writeFile(
         basePath,
         stringify({
@@ -200,7 +200,7 @@ describe("config", () => {
 
     it("extracts min_pass_rate from base config", async () => {
       const { loadBaseConfig } = await import("../src/config.js");
-      const basePath = join(tmpDir, "base.yml");
+      const basePath = join(tmpDir, "base.yaml");
       await writeFile(
         basePath,
         stringify({
@@ -220,7 +220,7 @@ describe("config", () => {
 
     it("returns null scuttlerunConfig when only craboodle keys present", async () => {
       const { loadBaseConfig } = await import("../src/config.js");
-      const basePath = join(tmpDir, "base.yml");
+      const basePath = join(tmpDir, "base.yaml");
       await writeFile(
         basePath,
         stringify({ version: "1", min_pass_rate: 0.5 }),
@@ -234,7 +234,7 @@ describe("config", () => {
 
     it("throws on invalid min_pass_rate (not a number)", async () => {
       const { loadBaseConfig } = await import("../src/config.js");
-      const basePath = join(tmpDir, "base.yml");
+      const basePath = join(tmpDir, "base.yaml");
       await writeFile(
         basePath,
         stringify({ version: "1", min_pass_rate: "high" }),
@@ -247,7 +247,7 @@ describe("config", () => {
 
     it("throws on min_pass_rate out of range", async () => {
       const { loadBaseConfig } = await import("../src/config.js");
-      const basePath = join(tmpDir, "base.yml");
+      const basePath = join(tmpDir, "base.yaml");
       await writeFile(
         basePath,
         stringify({ version: "1", min_pass_rate: 1.5 }),
@@ -266,16 +266,16 @@ describe("config", () => {
 
     it("returns null scuttlerunConfig if file does not exist", async () => {
       const { loadBaseConfig } = await import("../src/config.js");
-      const config = await loadBaseConfig(join(tmpDir, "nonexistent.yml"));
+      const config = await loadBaseConfig(join(tmpDir, "nonexistent.yaml"));
 
       expect(config.version).toBeUndefined();
       expect(config.minPassRate).toBeUndefined();
       expect(config.scuttlerunConfig).toBeNull();
     });
 
-    it("throws when version is missing from base.yml", async () => {
+    it("throws when version is missing from base.yaml", async () => {
       const { loadBaseConfig } = await import("../src/config.js");
-      const basePath = join(tmpDir, "base.yml");
+      const basePath = join(tmpDir, "base.yaml");
       await writeFile(
         basePath,
         stringify({ min_pass_rate: 0.8 }),
@@ -288,7 +288,7 @@ describe("config", () => {
 
     it("throws on unsupported version", async () => {
       const { loadBaseConfig } = await import("../src/config.js");
-      const basePath = join(tmpDir, "base.yml");
+      const basePath = join(tmpDir, "base.yaml");
       await writeFile(
         basePath,
         stringify({ version: "99" }),
@@ -301,7 +301,7 @@ describe("config", () => {
 
     it("accepts version 1 as a number (coerced to string)", async () => {
       const { loadBaseConfig } = await import("../src/config.js");
-      const basePath = join(tmpDir, "base.yml");
+      const basePath = join(tmpDir, "base.yaml");
       await writeFile(
         basePath,
         stringify({ version: 1 }),
@@ -313,7 +313,7 @@ describe("config", () => {
 
     it("extracts max_budget_usd from base config", async () => {
       const { loadBaseConfig } = await import("../src/config.js");
-      const basePath = join(tmpDir, "base.yml");
+      const basePath = join(tmpDir, "base.yaml");
       await writeFile(
         basePath,
         stringify({ version: "1", max_budget_usd: 5.0 }),
@@ -326,7 +326,7 @@ describe("config", () => {
 
     it("throws on invalid max_budget_usd (not a number)", async () => {
       const { loadBaseConfig } = await import("../src/config.js");
-      const basePath = join(tmpDir, "base.yml");
+      const basePath = join(tmpDir, "base.yaml");
       await writeFile(
         basePath,
         stringify({ version: "1", max_budget_usd: "expensive" }),
@@ -339,7 +339,7 @@ describe("config", () => {
 
     it("throws on non-positive max_budget_usd", async () => {
       const { loadBaseConfig } = await import("../src/config.js");
-      const basePath = join(tmpDir, "base.yml");
+      const basePath = join(tmpDir, "base.yaml");
       await writeFile(
         basePath,
         stringify({ version: "1", max_budget_usd: 0 }),

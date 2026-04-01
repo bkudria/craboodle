@@ -19,7 +19,7 @@ npm run test:coverage # vitest with v8 coverage
 
 ## Project overview
 
-TypeScript CLI that orchestrates eval pipelines. Discovers `*/scenario.yml` directories, builds merged scuttlerun configs, runs sessions, grades outputs against assertion rubrics via pincenez, averages across repetitions, and streams results as YAML.
+TypeScript CLI that orchestrates eval pipelines. Discovers `*/scenario.yaml` directories, builds merged scuttlerun configs, runs sessions, grades outputs against assertion rubrics via pincenez, averages across repetitions, and streams results as YAML.
 
 See [GOALS.md](GOALS.md) for design philosophy and [SPEC.md](SPEC.md) for full technical specification.
 

@@ -75,7 +75,7 @@ async function runCommand(
   }
 
   // Load base config
-  const { version, minPassRate, maxBudgetUsd, scuttlerunConfig: baseConfig } = await loadBaseConfig(join(resolvedDir, "base.yml"));
+  const { version, minPassRate, maxBudgetUsd, scuttlerunConfig: baseConfig } = await loadBaseConfig(join(resolvedDir, "base.yaml"));
 
   if (opts.verbose && version) {
     process.stderr.write(`[craboodle] Eval format version: ${version}\n`);
@@ -90,7 +90,7 @@ async function runCommand(
   // Write filtered base config (without craboodle keys) for scuttlerun
   let basePath: string | null = null;
   if (baseConfig) {
-    basePath = join(artifactDir, "base.yml");
+    basePath = join(artifactDir, "base.yaml");
     await writeFile(basePath, stringify(baseConfig));
   }
 
@@ -131,11 +131,11 @@ async function runCommand(
           const rubric = buildRubric(config);
 
           // Write rubric
-          const rubricPath = join(repDir, "rubric.yml");
+          const rubricPath = join(repDir, "rubric.yaml");
           await writeFile(rubricPath, stringify(rubric));
 
-          const outputPath = join(repDir, "output.yml");
-          const gradingPath = join(repDir, "grading.yml");
+          const outputPath = join(repDir, "output.yaml");
+          const gradingPath = join(repDir, "grading.yaml");
 
           if (opts.verbose) {
             process.stderr.write(
@@ -321,17 +321,17 @@ async function runCommand(
 
 const HELP_TEXT = `
 Directory Structure:
-  craboodle discovers scenarios by globbing */scenario.yml within <evals-dir>:
+  craboodle discovers scenarios by globbing */scenario.yaml within <evals-dir>:
 
     <evals-dir>/
-    ├── base.yml                    # Shared defaults (optional)
+    ├── base.yaml                    # Shared defaults (optional)
     ├── scenario-a/
-    │   └── scenario.yml            # Scenario definition
+    │   └── scenario.yaml            # Scenario definition
     ├── scenario-b/
-    │   └── scenario.yml
+    │   └── scenario.yaml
     └── ...
 
-scenario.yml Schema:
+scenario.yaml Schema:
   Only 'prompt' and 'assertions' are required. All other fields are optional.
 
     # --- Prompt (required, sent to scuttlerun) ---
@@ -383,7 +383,7 @@ scenario.yml Schema:
     repeats             Per-scenario repeat count override (optional)
     scuttlerun          Scuttlerun config overrides, not validated (optional)
 
-base.yml Schema:
+base.yaml Schema:
   Shared defaults applied to all scenarios. Craboodle owns 'version' and
   'min_pass_rate'; all other keys pass through to scuttlerun as base config.
 
@@ -522,14 +522,14 @@ program
       }
 
       // Load and validate base config
-      const base = await loadBaseConfig(join(resolvedDir, "base.yml"));
+      const base = await loadBaseConfig(join(resolvedDir, "base.yaml"));
 
       // Write base config for scuttlerun validation
       let basePath: string | null = null;
       let tmpDir: string | null = null;
       if (base.scuttlerunConfig) {
         tmpDir = await mkdtemp(join(tmpdir(), "craboodle-list-"));
-        basePath = join(tmpDir, "base.yml");
+        basePath = join(tmpDir, "base.yaml");
         await writeFile(basePath, stringify(base.scuttlerunConfig));
       }
 
@@ -636,7 +636,7 @@ async function lintCommand(
   }
 
   // Load base config (validates structure)
-  await loadBaseConfig(join(resolvedDir, "base.yml"));
+  await loadBaseConfig(join(resolvedDir, "base.yaml"));
 
   // Create transient temp dir for rubric files
   const tmpDir = await mkdtemp(join(tmpdir(), "craboodle-lint-"));
@@ -679,7 +679,7 @@ async function lintCommand(
       const rubric = buildRubric(config);
 
       // Write rubric to temp file
-      const rubricPath = join(tmpDir, `${scenario.id}-rubric.yml`);
+      const rubricPath = join(tmpDir, `${scenario.id}-rubric.yaml`);
       await writeFile(rubricPath, stringify(rubric));
 
       if (opts.verbose) {
@@ -760,24 +760,24 @@ program
 
 program
   .command("init <dir>")
-  .description("Scaffold a new evals directory with base.yml and example scenario")
+  .description("Scaffold a new evals directory with base.yaml and example scenario")
   .action(async (dir: string) => {
     const resolvedDir = resolve(dir);
 
     // Check if directory already has eval files
     try {
-      await access(join(resolvedDir, "base.yml"));
-      process.stderr.write(`[craboodle] ${resolvedDir} already contains base.yml\n`);
+      await access(join(resolvedDir, "base.yaml"));
+      process.stderr.write(`[craboodle] ${resolvedDir} already contains base.yaml\n`);
       process.exit(1);
     } catch {
-      // base.yml doesn't exist, good
+      // base.yaml doesn't exist, good
     }
 
     try {
       const dirStat = await stat(resolvedDir);
       if (dirStat.isDirectory()) {
         const { glob: globFn } = await import("glob");
-        const existing = await globFn("*/scenario.yml", { cwd: resolvedDir });
+        const existing = await globFn("*/scenario.yaml", { cwd: resolvedDir });
         if (existing.length > 0) {
           process.stderr.write(`[craboodle] ${resolvedDir} already contains scenario files\n`);
           process.exit(1);
@@ -790,9 +790,9 @@ program
     // Create directory structure
     await mkdir(join(resolvedDir, "hello-world"), { recursive: true });
 
-    // Write base.yml
+    // Write base.yaml
     const baseContent = stringify({ version: "1", min_pass_rate: 0.8 });
-    await writeFile(join(resolvedDir, "base.yml"), baseContent);
+    await writeFile(join(resolvedDir, "base.yaml"), baseContent);
 
     // Write example scenario
     const scenarioObj = {
@@ -810,11 +810,11 @@ program
         }
       },
     });
-    await writeFile(join(resolvedDir, "hello-world", "scenario.yml"), scenarioDoc.toString({ lineWidth: 0 }));
+    await writeFile(join(resolvedDir, "hello-world", "scenario.yaml"), scenarioDoc.toString({ lineWidth: 0 }));
 
     process.stdout.write(`Created ${resolvedDir}/\n`);
-    process.stdout.write(`  base.yml\n`);
-    process.stdout.write(`  hello-world/scenario.yml\n`);
+    process.stdout.write(`  base.yaml\n`);
+    process.stdout.write(`  hello-world/scenario.yaml\n`);
     process.stdout.write(`\nNext steps:\n`);
     process.stdout.write(`  craboodle list ${dir}     # validate scenarios\n`);
     process.stdout.write(`  craboodle lint ${dir}     # check assertion quality\n`);

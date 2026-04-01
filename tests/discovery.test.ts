@@ -15,13 +15,13 @@ describe("discovery", () => {
     await rm(tmpDir, { recursive: true });
   });
 
-  it("discovers scenario directories containing scenario.yml", async () => {
+  it("discovers scenario directories containing scenario.yaml", async () => {
     const { discoverScenarios } = await import("../src/discovery.js");
 
     await mkdir(join(tmpDir, "scenario-a"));
-    await writeFile(join(tmpDir, "scenario-a", "scenario.yml"), "prompt: hi\n");
+    await writeFile(join(tmpDir, "scenario-a", "scenario.yaml"), "prompt: hi\n");
     await mkdir(join(tmpDir, "scenario-b"));
-    await writeFile(join(tmpDir, "scenario-b", "scenario.yml"), "prompt: hi\n");
+    await writeFile(join(tmpDir, "scenario-b", "scenario.yaml"), "prompt: hi\n");
 
     const scenarios = await discoverScenarios(tmpDir);
 
@@ -29,7 +29,7 @@ describe("discovery", () => {
     expect(scenarios[0].id).toBe("scenario-a");
     expect(scenarios[1].id).toBe("scenario-b");
     expect(scenarios[0].configPath).toBe(
-      join(tmpDir, "scenario-a", "scenario.yml"),
+      join(tmpDir, "scenario-a", "scenario.yaml"),
     );
   });
 
@@ -37,11 +37,11 @@ describe("discovery", () => {
     const { discoverScenarios } = await import("../src/discovery.js");
 
     await mkdir(join(tmpDir, "zebra"));
-    await writeFile(join(tmpDir, "zebra", "scenario.yml"), "prompt: hi\n");
+    await writeFile(join(tmpDir, "zebra", "scenario.yaml"), "prompt: hi\n");
     await mkdir(join(tmpDir, "alpha"));
-    await writeFile(join(tmpDir, "alpha", "scenario.yml"), "prompt: hi\n");
+    await writeFile(join(tmpDir, "alpha", "scenario.yaml"), "prompt: hi\n");
     await mkdir(join(tmpDir, "middle"));
-    await writeFile(join(tmpDir, "middle", "scenario.yml"), "prompt: hi\n");
+    await writeFile(join(tmpDir, "middle", "scenario.yaml"), "prompt: hi\n");
 
     const scenarios = await discoverScenarios(tmpDir);
 
@@ -56,16 +56,16 @@ describe("discovery", () => {
     expect(scenarios).toEqual([]);
   });
 
-  it("ignores directories without scenario.yml", async () => {
+  it("ignores directories without scenario.yaml", async () => {
     const { discoverScenarios } = await import("../src/discovery.js");
 
     await mkdir(join(tmpDir, "has-scenario"));
     await writeFile(
-      join(tmpDir, "has-scenario", "scenario.yml"),
+      join(tmpDir, "has-scenario", "scenario.yaml"),
       "prompt: hi\n",
     );
     await mkdir(join(tmpDir, "no-scenario"));
-    await writeFile(join(tmpDir, "no-scenario", "other.yml"), "foo: bar\n");
+    await writeFile(join(tmpDir, "no-scenario", "other.yaml"), "foo: bar\n");
 
     const scenarios = await discoverScenarios(tmpDir);
 
@@ -76,9 +76,9 @@ describe("discovery", () => {
   it("ignores files at evals dir root", async () => {
     const { discoverScenarios } = await import("../src/discovery.js");
 
-    await writeFile(join(tmpDir, "base.yml"), "model: sonnet\n");
+    await writeFile(join(tmpDir, "base.yaml"), "model: sonnet\n");
     await mkdir(join(tmpDir, "scenario-a"));
-    await writeFile(join(tmpDir, "scenario-a", "scenario.yml"), "prompt: hi\n");
+    await writeFile(join(tmpDir, "scenario-a", "scenario.yaml"), "prompt: hi\n");
 
     const scenarios = await discoverScenarios(tmpDir);
 
@@ -88,9 +88,9 @@ describe("discovery", () => {
 
 describe("filterScenarios", () => {
   const scenarios: ScenarioRef[] = [
-    { id: "email-validator", dir: "/tmp/email-validator", configPath: "/tmp/email-validator/scenario.yml" },
-    { id: "email-parser", dir: "/tmp/email-parser", configPath: "/tmp/email-parser/scenario.yml" },
-    { id: "url-parser", dir: "/tmp/url-parser", configPath: "/tmp/url-parser/scenario.yml" },
+    { id: "email-validator", dir: "/tmp/email-validator", configPath: "/tmp/email-validator/scenario.yaml" },
+    { id: "email-parser", dir: "/tmp/email-parser", configPath: "/tmp/email-parser/scenario.yaml" },
+    { id: "url-parser", dir: "/tmp/url-parser", configPath: "/tmp/url-parser/scenario.yaml" },
   ];
 
   it("filters by exact match", () => {

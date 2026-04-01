@@ -59,9 +59,9 @@ export async function loadBaseConfig(
   // Extract craboodle-specific keys, pass the rest to scuttlerun
   const { version, min_pass_rate, max_budget_usd, ...scuttlerunConfig } = raw;
 
-  // Validate version (required when base.yml exists)
+  // Validate version (required when base.yaml exists)
   if (version === undefined) {
-    throw new Error('base.yml missing required "version" field (supported: ' + SUPPORTED_VERSIONS.join(", ") + ")");
+    throw new Error('base.yaml missing required "version" field (supported: ' + SUPPORTED_VERSIONS.join(", ") + ")");
   }
   const versionStr = String(version);
   if (!SUPPORTED_VERSIONS.includes(versionStr)) {

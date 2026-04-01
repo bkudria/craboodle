@@ -10,7 +10,7 @@ export interface ScenarioRef {
 export async function discoverScenarios(
   evalsDir: string,
 ): Promise<ScenarioRef[]> {
-  const matches = await glob("*/scenario.yml", { cwd: evalsDir });
+  const matches = await glob("*/scenario.yaml", { cwd: evalsDir });
 
   const scenarios: ScenarioRef[] = matches.map((match) => {
     const configPath = join(evalsDir, match);

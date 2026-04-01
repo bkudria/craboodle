@@ -49,7 +49,7 @@ export async function runScuttlerun(
 ): Promise<SubprocessResult> {
   const { override, basePath, outputPath, tmpDir, agentModel } = options;
 
-  const overridePath = join(tmpDir, "scuttlerun-override.yml");
+  const overridePath = join(tmpDir, "scuttlerun-override.yaml");
   await writeFile(overridePath, stringify(override));
 
   const args = ["run"];
@@ -89,7 +89,7 @@ export async function listScuttlerunConfig(
 ): Promise<SubprocessResult & { stdout?: string }> {
   const { override, basePath, tmpDir } = options;
 
-  const overridePath = join(tmpDir, "scuttlerun-list-override.yml");
+  const overridePath = join(tmpDir, "scuttlerun-list-override.yaml");
   await writeFile(overridePath, stringify(override));
 
   const args = ["list"];
