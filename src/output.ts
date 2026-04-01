@@ -1,4 +1,4 @@
-import { parse, stringify } from "yaml";
+import { parse, stringify, Document, Scalar, visit } from "yaml";
 import { z } from "zod/v4";
 
 const GradingAssertionSchema = z.object({
@@ -109,8 +109,25 @@ export function averageResults(
   return { assertions, pass_rate: scenarioPassRate };
 }
 
+export function writeYamlArrayItem(item: Record<string, unknown>): string {
+  const doc = new Document(item);
+  visit(doc, {
+    Scalar(_key, node) {
+      if (typeof node.value === "string" && node.value.includes("\n")) {
+        node.type = Scalar.BLOCK_LITERAL;
+      }
+    },
+  });
+  const serialized = doc.toString({ lineWidth: 0 }).trimEnd();
+  const lines = serialized.split("\n");
+  return lines
+    .map((line, i) => (i === 0 ? `  - ${line}` : `    ${line}`))
+    .join("\n");
+}
+
 export function streamHeader(artifactDir: string): void {
-  process.stdout.write(`artifact_dir: ${artifactDir}\nscenarios:\n`);
+  process.stdout.write(stringify({ artifact_dir: artifactDir }, { lineWidth: 0 }));
+  process.stdout.write("scenarios:\n");
 }
 
 export function streamScenarioYaml(scenario: ScenarioOutput): void {
@@ -139,12 +156,11 @@ export function streamScenarioYaml(scenario: ScenarioOutput): void {
     item.errors = scenario.errors;
   }
 
-  const serialized = stringify([item], { lineWidth: 0 }).trimEnd();
-  process.stdout.write(serialized + "\n");
+  process.stdout.write(writeYamlArrayItem(item) + "\n");
 }
 
 export function streamTotalCost(totalCostUsd: number): void {
-  process.stdout.write(`total_cost_usd: ${Math.round(totalCostUsd * 10000) / 10000}\n`);
+  process.stdout.write(stringify({ total_cost_usd: Math.round(totalCostUsd * 10000) / 10000 }, { lineWidth: 0 }));
 }
 
 // --- Lint output ---
@@ -188,13 +204,9 @@ export function streamLintScenarioYaml(scenario: LintScenarioOutput): void {
     assertions_with_issues: scenario.assertions_with_issues,
   };
 
-  const serialized = stringify([item], { lineWidth: 0 }).trimEnd();
-  process.stdout.write(serialized + "\n");
+  process.stdout.write(writeYamlArrayItem(item) + "\n");
 }
 
 export function streamLintTotals(totals: LintTotals): void {
-  process.stdout.write(`scenarios_total: ${totals.scenarios_total}\n`);
-  process.stdout.write(`scenarios_with_issues: ${totals.scenarios_with_issues}\n`);
-  process.stdout.write(`assertions_total: ${totals.assertions_total}\n`);
-  process.stdout.write(`assertions_with_issues: ${totals.assertions_with_issues}\n`);
+  process.stdout.write(stringify(totals, { lineWidth: 0 }));
 }

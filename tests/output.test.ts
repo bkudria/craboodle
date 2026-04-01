@@ -428,6 +428,51 @@ assertions_with_issues: 0
     });
   });
 
+  describe("writeYamlArrayItem", () => {
+    it("serializes an object as a YAML list item with proper indentation", async () => {
+      const { writeYamlArrayItem } = await import("../src/output.js");
+
+      const result = writeYamlArrayItem({ id: "test", count: 3 });
+
+      expect(result).toBe("  - id: test\n    count: 3");
+    });
+
+    it("uses block literal style for multiline strings", async () => {
+      const { writeYamlArrayItem } = await import("../src/output.js");
+
+      const result = writeYamlArrayItem({ id: "test", message: "line one\nline two\n" });
+
+      expect(result).toContain("message: |\n");
+      expect(result).toContain("      line one\n");
+      expect(result).toContain("      line two");
+    });
+
+    it("handles nested objects", async () => {
+      const { writeYamlArrayItem } = await import("../src/output.js");
+
+      const result = writeYamlArrayItem({ id: "test", labels: { env: "prod" } });
+
+      expect(result).toContain("  - id: test");
+      expect(result).toContain("    labels:");
+      expect(result).toContain("      env: prod");
+    });
+  });
+
+  describe("streamScenarioYaml multiline", () => {
+    it("uses block literal style for multiline error strings", async () => {
+      const { streamScenarioYaml } = await import("../src/output.js");
+
+      streamScenarioYaml({
+        id: "test",
+        assertions: [{ check: "test", pass_rate: 0 }],
+        pass_rate: null,
+        errors: [{ rep: 1, stage: "scuttlerun", error: "line one\nline two\n" }],
+      });
+
+      expect(written).toContain("error: |\n");
+    });
+  });
+
   describe("full YAML integration", () => {
     it("produces valid YAML when header + scenarios are combined", async () => {
       const { parse } = await import("yaml");

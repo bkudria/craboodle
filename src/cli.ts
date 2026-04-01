@@ -4,7 +4,7 @@ import { Command } from "commander";
 import { join } from "node:path";
 import { mkdtemp, writeFile, mkdir, readFile, access, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { stringify } from "yaml";
+import { stringify, Document, Scalar, visit } from "yaml";
 import { resolve } from "node:path";
 
 import { loadScenarioConfig, loadBaseConfig } from "./config.js";
@@ -23,6 +23,7 @@ import {
   parseLintResult,
   streamLintScenarioYaml,
   streamLintTotals,
+  writeYamlArrayItem,
   type GradingAssertion,
   type ScenarioOutput,
   type LintTotals,
@@ -533,9 +534,10 @@ program
       }
 
       // Output base config summary
-      process.stdout.write(`base:\n`);
-      if (base.version) process.stdout.write(`  version: "${base.version}"\n`);
-      if (base.minPassRate !== undefined) process.stdout.write(`  min_pass_rate: ${base.minPassRate}\n`);
+      const baseSummary: Record<string, unknown> = {};
+      if (base.version) baseSummary.version = base.version;
+      if (base.minPassRate !== undefined) baseSummary.min_pass_rate = base.minPassRate;
+      process.stdout.write(stringify({ base: baseSummary }, { lineWidth: 0 }));
 
       // Load and validate each scenario
       process.stdout.write(`scenarios:\n`);
@@ -548,19 +550,12 @@ program
           const assertionCount = config.assertions.length;
           totalAssertions += assertionCount;
 
-          process.stdout.write(`  - id: ${scenario.id}\n`);
-          process.stdout.write(`    assertions: ${assertionCount}\n`);
-
-          if (config.repeats) {
-            process.stdout.write(`    repeats: ${config.repeats}\n`);
-          }
-
-          if (config.labels) {
-            process.stdout.write(`    labels:\n`);
-            for (const [key, value] of Object.entries(config.labels)) {
-              process.stdout.write(`      ${key}: ${stringify(value).trimEnd()}\n`);
-            }
-          }
+          const item: Record<string, unknown> = {
+            id: scenario.id,
+            assertions: assertionCount,
+          };
+          if (config.repeats) item.repeats = config.repeats;
+          if (config.labels) item.labels = config.labels;
 
           // Validate merged scuttlerun config via subprocess
           if (!tmpDir) {
@@ -573,13 +568,13 @@ program
             tmpDir,
           });
 
-          if (result.success) {
-            process.stdout.write(`    valid: true\n`);
-          } else {
-            process.stdout.write(`    valid: false\n`);
-            process.stdout.write(`    error: ${stringify(result.error.message).trimEnd()}\n`);
+          item.valid = result.success;
+          if (!result.success) {
+            item.error = result.error.message;
             invalidCount++;
           }
+
+          process.stdout.write(writeYamlArrayItem(item) + "\n");
         } catch (err: unknown) {
           process.stderr.write(
             `[craboodle] Config error in ${scenario.id}: ${err instanceof Error ? err.message : String(err)}\n`,
@@ -588,9 +583,9 @@ program
         }
       }
 
-      process.stdout.write(`total: ${scenarios.length} scenarios, ${totalAssertions} assertions\n`);
+      process.stdout.write(stringify({ total: `${scenarios.length} scenarios, ${totalAssertions} assertions` }, { lineWidth: 0 }));
       if (invalidCount > 0) {
-        process.stdout.write(`invalid: ${invalidCount}\n`);
+        process.stdout.write(stringify({ invalid: invalidCount }, { lineWidth: 0 }));
         process.exit(1);
       }
 
@@ -796,12 +791,26 @@ program
     await mkdir(join(resolvedDir, "hello-world"), { recursive: true });
 
     // Write base.yml
-    const baseContent = `version: "1"\nmin_pass_rate: 0.8\n`;
+    const baseContent = stringify({ version: "1", min_pass_rate: 0.8 });
     await writeFile(join(resolvedDir, "base.yml"), baseContent);
 
     // Write example scenario
-    const scenarioContent = `prompt: |\n  Write a function that adds two numbers. Include input validation.\nassertions:\n  - check: "Output contains a function that adds two numbers"\n    note: "Look for a function definition with addition logic"\n  - check: "Function validates inputs are numbers"\n    note: "Look for type checking, parsing, or error handling for non-numeric inputs"\n`;
-    await writeFile(join(resolvedDir, "hello-world", "scenario.yml"), scenarioContent);
+    const scenarioObj = {
+      prompt: "Write a function that adds two numbers. Include input validation.\n",
+      assertions: [
+        { check: "Output contains a function that adds two numbers", note: "Look for a function definition with addition logic" },
+        { check: "Function validates inputs are numbers", note: "Look for type checking, parsing, or error handling for non-numeric inputs" },
+      ],
+    };
+    const scenarioDoc = new Document(scenarioObj);
+    visit(scenarioDoc, {
+      Scalar(_key, node) {
+        if (typeof node.value === "string" && node.value.includes("\n")) {
+          node.type = Scalar.BLOCK_LITERAL;
+        }
+      },
+    });
+    await writeFile(join(resolvedDir, "hello-world", "scenario.yml"), scenarioDoc.toString({ lineWidth: 0 }));
 
     process.stdout.write(`Created ${resolvedDir}/\n`);
     process.stdout.write(`  base.yml\n`);
