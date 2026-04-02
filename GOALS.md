@@ -18,7 +18,7 @@ Each tool does one job. craboodle is the conductor; scuttlerun and pincenez are 
 
 ### Principles
 
-- **Run + grade + report.** No built-in comparison mode. The primitive is: run configs, grade outputs, report. Comparison (with/without skill, model A vs B, etc.) is a pattern that callers compose on top by defining scenario variants. **Labels are the composition mechanism**: callers tag scenarios with key-value labels (e.g., `config: optimized`, `model: sonnet`) and compute deltas, group results, or build comparison views downstream. Craboodle emits labeled raw data; callers interpret.
+- **Run + grade + report.** No built-in comparison mode. The primitive is: run configs, grade outputs, report. Comparison (with/without skill, model A vs B, etc.) is a pattern that callers compose on top by defining scenario variants.
 - **Layered configuration.** A base scuttlerun config (`base.yaml`) defines shared defaults (model, tools, permissions). Each scenario overrides via a `scuttlerun:` passthrough block. Uses scuttlerun's existing config merging — no new config system.
 - **Raw data, not verdicts.** Craboodle runs each scenario N times and reports fractional pass rates per check (0.33, 0.67, 1.0). It does not apply thresholds or majority voting — callers decide what constitutes pass/fail. Majority voting (e.g., "pass if ≥50% of reps pass") is an interpretation that belongs to callers; craboodle never reduces fractions to binary.
 - **Streaming output.** Results stream to stdout as YAML, scenario by scenario. Each scenario's block is written atomically as it completes, providing human-readable progress during long runs. The output is valid YAML after each scenario block is fully written. Consumers process the final complete output after craboodle exits.
@@ -41,11 +41,9 @@ Each tool does one job. craboodle is the conductor; scuttlerun and pincenez are 
 
 5. **Streaming YAML output.** Results stream to stdout as YAML — `artifact_dir` is emitted first, then scenarios appear as they complete (arrival order). The output is valid YAML after each scenario block is fully written, giving human-readable progress. Compact output for passing checks (check + pass_rate), verbose for failures (check + pass_rate + per-rep evidence). Per-scenario error details are included in the output.
 
-6. **Scenario labels.** Scenarios support an optional `labels` map (key-value pairs) that passes through to the output YAML. Craboodle does not interpret labels — they enable callers to tag variants (e.g., `config: optimized`, `model: sonnet`) for downstream comparison and grouping.
-
 ## Non-Goals (for now)
 
-- Built-in comparison modes (A/B, with/without). Callers define variants as separate scenarios with labels and compute deltas downstream.
+- Built-in comparison modes (A/B, with/without). Callers define variants as separate scenarios and compute deltas downstream.
 - Pass/fail gating beyond the ratchet. The `min_pass_rate` ratchet provides a binary gate; any finer-grained interpretation (majority voting, weighted scoring, etc.) remains a caller concern.
 - Pluggable runners or graders. scuttlerun + pincenez only.
 - Iteration or history management. Each `craboodle run` is independent. Callers manage versioning externally (git, timestamped copies, etc.).
@@ -56,4 +54,4 @@ Each tool does one job. craboodle is the conductor; scuttlerun and pincenez are 
 
 ## Resolved Questions
 
-- **Skillcraft relationship**: Skillcraft is craboodle's motivating first caller. Skillcraft keeps a thin wrapper (`run-eval.sh`) for skill-specific conventions; craboodle's design is not shaped by assumptions about what skillcraft needs. Labels enable downstream composition (e.g., grouping or comparing scenarios by config variant).
+- **Skillcraft relationship**: Skillcraft is craboodle's motivating first caller. Skillcraft keeps a thin wrapper (`run-eval.sh`) for skill-specific conventions; craboodle's design is not shaped by assumptions about what skillcraft needs.
