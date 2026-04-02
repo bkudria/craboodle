@@ -2,7 +2,7 @@
 
 Eval pipeline orchestrator for Claude Code.
 
-craboodle discovers scenarios, runs them through [scuttlerun](https://github.com/bkudria/scuttlerun) (headless session driver), grades outputs with [pincenez](https://github.com/bkudria/pincenez) (LLM rubric grader), manages repetitions with averaging, and streams results to stdout as YAML.
+craboodle discovers scenarios, runs them through [scuttlerun](https://github.com/bkudria/scuttlerun) (headless session driver), grades outputs with [pincenez](https://github.com/bkudria/pincenez) (LLM judge), manages repetitions with averaging, and streams results to stdout as YAML.
 
 Think of craboodle as **rspec for eval scenarios**: given a directory of scenarios, run them, grade them, report results.
 
@@ -11,7 +11,7 @@ Think of craboodle as **rspec for eval scenarios**: given a directory of scenari
 craboodle orchestrates two companion tools:
 
 1. **scuttlerun** runs a headless Claude session with a synthetic user, producing a transcript
-2. **pincenez** grades that transcript against a rubric of assertions using an LLM judge
+2. **pincenez** grades that transcript against a checks file using an LLM judge
 
 For each scenario, craboodle runs scuttlerun N times, grades each run with pincenez, and averages the pass rates across repetitions.
 
@@ -24,7 +24,7 @@ craboodle init ./evals
 # Validate scenarios
 craboodle list ./evals
 
-# Check assertion quality (no sessions run)
+# Check checks quality (no sessions run)
 craboodle lint ./evals
 
 # Run the eval pipeline

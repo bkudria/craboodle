@@ -1,7 +1,7 @@
-import type { Assertion, ScenarioConfig } from "./config.js";
+import type { Check, ScenarioConfig } from "./config.js";
 
-export interface Rubric {
-  assertions: Assertion[];
+export interface ChecksFile {
+  checks: Check[];
   context: string;
 }
 
@@ -14,9 +14,9 @@ export function buildScuttlerunOverride(
   };
 }
 
-export function buildRubric(scenario: ScenarioConfig): Rubric {
+export function buildChecksFile(scenario: ScenarioConfig): ChecksFile {
   return {
-    assertions: scenario.assertions,
+    checks: scenario.checks,
     context: scenario.context ?? scenario.prompt,
   };
 }

@@ -6,7 +6,7 @@ prompt: |
   Write a function called isPalindrome that checks if a string is a palindrome.
   Save it to palindrome.js.
 
-assertions:
+checks:
   - check: "A test file was written before or alongside the production code"
     note: "Look for a test file being created via Write tool. The test should appear before or at the same time as palindrome.js"
   - check: "The function isPalindrome exists in palindrome.js"

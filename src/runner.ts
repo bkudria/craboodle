@@ -21,7 +21,7 @@ export interface RunScuttlerunOptions {
 }
 
 export interface RunPincenezOptions {
-  rubricPath: string;
+  checksPath: string;
   outputPath: string;
   gradingPath: string;
   graderModel?: string;
@@ -52,7 +52,7 @@ export async function runScuttlerun(
   const overridePath = join(tmpDir, "scuttlerun-override.yaml");
   await writeFile(overridePath, stringify(override));
 
-  const args = ["run"];
+  const args: string[] = [];
   if (basePath) {
     args.push(basePath);
   }
@@ -92,7 +92,7 @@ export async function listScuttlerunConfig(
   const overridePath = join(tmpDir, "scuttlerun-list-override.yaml");
   await writeFile(overridePath, stringify(override));
 
-  const args = ["list"];
+  const args = ["--dry-run"];
   if (basePath) {
     args.push(basePath);
   }
@@ -114,7 +114,7 @@ export async function listScuttlerunConfig(
 }
 
 export interface RunPincenezLintOptions {
-  rubricPath: string;
+  checksPath: string;
   graderModel?: string;
 }
 
@@ -125,13 +125,13 @@ export type LintSubprocessResult =
 export async function runPincenezLint(
   options: RunPincenezLintOptions,
 ): Promise<LintSubprocessResult> {
-  const { rubricPath, graderModel } = options;
+  const { checksPath, graderModel } = options;
 
   const args: string[] = ["lint"];
   if (graderModel) {
     args.push("--model", graderModel);
   }
-  args.push(rubricPath);
+  args.push(checksPath);
 
   try {
     const { stdout } = await execFilePromise("pincenez", args);
@@ -151,13 +151,13 @@ export async function runPincenezLint(
 export async function runPincenez(
   options: RunPincenezOptions,
 ): Promise<SubprocessResult> {
-  const { rubricPath, outputPath, gradingPath, graderModel } = options;
+  const { checksPath, outputPath, gradingPath, graderModel } = options;
 
   const args: string[] = [];
   if (graderModel) {
     args.push("--model", graderModel);
   }
-  args.push(rubricPath, outputPath);
+  args.push(checksPath, outputPath);
 
   try {
     const { stdout } = await execFilePromise("pincenez", args);

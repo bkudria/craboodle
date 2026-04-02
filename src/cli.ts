@@ -10,7 +10,7 @@ import { resolve } from "node:path";
 import { loadScenarioConfig, loadBaseConfig } from "./config.js";
 import { cleanOldArtifacts } from "./cleanup.js";
 import { discoverScenarios, filterScenarios } from "./discovery.js";
-import { buildScuttlerunOverride, buildRubric } from "./builder.js";
+import { buildScuttlerunOverride, buildChecksFile } from "./builder.js";
 import { runScuttlerun, runPincenez, runPincenezLint, listScuttlerunConfig } from "./runner.js";
 import { executePool, type WorkItem } from "./pool.js";
 import {
@@ -24,7 +24,7 @@ import {
   streamLintScenarioYaml,
   streamLintTotals,
   writeYamlArrayItem,
-  type GradingAssertion,
+  type GradingCheck,
   type ScenarioOutput,
   type LintTotals,
 } from "./output.js";
@@ -39,7 +39,7 @@ interface RunOptions {
 }
 
 type RepOutcome =
-  | { type: "success"; grading: GradingAssertion[]; costUsd: number | null; gradingCostUsd: number | null }
+  | { type: "success"; grading: GradingCheck[]; costUsd: number | null; gradingCostUsd: number | null }
   | { type: "error"; rep: number; stage: string; message: string; transcriptPath?: string };
 
 async function runCommand(
@@ -128,11 +128,11 @@ async function runCommand(
           await mkdir(repDir, { recursive: true });
 
           const override = buildScuttlerunOverride(config);
-          const rubric = buildRubric(config);
+          const checksFile = buildChecksFile(config);
 
-          // Write rubric
-          const rubricPath = join(repDir, "rubric.yaml");
-          await writeFile(rubricPath, stringify(rubric));
+          // Write checks file
+          const checksPath = join(repDir, "checks.yaml");
+          await writeFile(checksPath, stringify(checksFile));
 
           const outputPath = join(repDir, "output.yaml");
           const gradingPath = join(repDir, "grading.yaml");
@@ -170,7 +170,7 @@ async function runCommand(
 
           // Run pincenez
           const pincenezResult = await runPincenez({
-            rubricPath,
+            checksPath,
             outputPath,
             gradingPath,
             graderModel: opts.graderModel,
@@ -194,7 +194,7 @@ async function runCommand(
           const outputContent = await readFile(outputPath, "utf8");
           const costUsd = parseCostFromTranscript(outputContent);
 
-          return { type: "success", grading: gradingResult.assertions, costUsd, gradingCostUsd: gradingResult.costUsd };
+          return { type: "success", grading: gradingResult.checks, costUsd, gradingCostUsd: gradingResult.costUsd };
         },
       });
     }
@@ -216,7 +216,7 @@ async function runCommand(
     onScenarioComplete: (scenarioId, repResults) => {
       const config = scenarioConfigs.get(scenarioId)!;
 
-      const successfulGradings: GradingAssertion[][] = [];
+      const successfulGradings: GradingCheck[][] = [];
       const errors: Array<{ rep: number; stage: string; error: string }> = [];
       let agentCost = 0;
       let gradingCost = 0;
@@ -263,7 +263,7 @@ async function runCommand(
         scenarioOutput = {
           id: scenarioId,
           ...(config.labels ? { labels: config.labels } : {}),
-          assertions: config.assertions.map((a) => ({
+          checks: config.checks.map((a) => ({
             check: a.check,
             pass_rate: 0,
           })),
@@ -276,7 +276,7 @@ async function runCommand(
         scenarioOutput = {
           id: scenarioId,
           ...(config.labels ? { labels: config.labels } : {}),
-          assertions: averaged.assertions,
+          checks: averaged.checks,
           pass_rate: averaged.pass_rate,
           ...costFields,
           ...(errors.length > 0 ? { errors } : {}),
@@ -332,14 +332,14 @@ Directory Structure:
     └── ...
 
 scenario.yaml Schema:
-  Only 'prompt' and 'assertions' are required. All other fields are optional.
+  Only 'prompt' and 'checks' are required. All other fields are optional.
 
     # --- Prompt (required, sent to scuttlerun) ---
     prompt: |
       Write a function that validates email addresses.
 
-    # --- Assertions (required, sent to pincenez as rubric) ---
-    assertions:
+    # --- Checks (required, sent to pincenez) ---
+    checks:
       - check: "Output contains a function that validates email format"
         note: "Look for regex or string parsing that checks for @ and domain"
       - check: "Function handles edge cases like empty string and missing @"
@@ -376,8 +376,8 @@ scenario.yaml Schema:
 
   Field Reference:
     prompt              The task for the agent (required)
-    assertions[].check  Binary claim to evaluate (required)
-    assertions[].note   Grading hint for the judge (optional)
+    checks[].check      Binary claim to evaluate (required)
+    checks[].note       Grading hint for the judge (optional)
     labels              Key-value metadata, passed through to output (optional)
     context             Task description for the grader (optional, defaults to prompt)
     repeats             Per-scenario repeat count override (optional)
@@ -412,7 +412,7 @@ Output Format:
       - id: email-validator
         labels:
           config: optimized
-        assertions:
+        checks:
           - check: "Output contains a function that validates email format"
             pass_rate: 1.0
           - check: "Function handles edge cases"
@@ -426,7 +426,7 @@ Output Format:
         grading_cost_usd: 0.006
     total_cost_usd: 0.0294
 
-  Passing assertions are compact (check + pass_rate). Failing assertions
+  Passing checks are compact (check + pass_rate). Failing checks
   include per-rep evidence. pass_rate is a fraction (0.0-1.0), never binary.
   cost_usd includes both agent (scuttlerun) and grading (pincenez) costs.
 
@@ -434,7 +434,7 @@ Examples:
   # List and validate scenarios without running
   craboodle list ./evals
 
-  # Lint assertions for quality issues (no sessions run)
+  # Lint checks for quality issues (no sessions run)
   craboodle lint ./evals
 
   # Run all scenarios in an evals directory
@@ -477,7 +477,7 @@ program
   )
   .option("--scenario <pattern>", "Filter scenarios by ID (exact, glob, or comma-separated)")
   .option("--agent-model <model>", "Override scuttlerun model for all scenarios")
-  .option("--grader-model <model>", "Override pincenez model for all assertions")
+  .option("--grader-model <model>", "Override pincenez model for all checks")
   .option("-v, --verbose", "Verbose logging (to stderr)")
   .action(async (evalsDir: string, cmdOpts: Record<string, string>) => {
     try {
@@ -541,18 +541,18 @@ program
 
       // Load and validate each scenario
       process.stdout.write(`scenarios:\n`);
-      let totalAssertions = 0;
+      let totalChecks = 0;
       let invalidCount = 0;
 
       for (const scenario of scenarios) {
         try {
           const config = await loadScenarioConfig(scenario.configPath);
-          const assertionCount = config.assertions.length;
-          totalAssertions += assertionCount;
+          const checkCount = config.checks.length;
+          totalChecks += checkCount;
 
           const item: Record<string, unknown> = {
             id: scenario.id,
-            assertions: assertionCount,
+            checks: checkCount,
           };
           if (config.repeats) item.repeats = config.repeats;
           if (config.labels) item.labels = config.labels;
@@ -583,7 +583,7 @@ program
         }
       }
 
-      process.stdout.write(stringify({ total: `${scenarios.length} scenarios, ${totalAssertions} assertions` }, { lineWidth: 0 }));
+      process.stdout.write(stringify({ total: `${scenarios.length} scenarios, ${totalChecks} checks` }, { lineWidth: 0 }));
       if (invalidCount > 0) {
         process.stdout.write(stringify({ invalid: invalidCount }, { lineWidth: 0 }));
         process.exit(1);
@@ -668,26 +668,26 @@ async function lintCommand(
   const totals: LintTotals = {
     scenarios_total: scenarios.length,
     scenarios_with_issues: 0,
-    assertions_total: 0,
-    assertions_with_issues: 0,
+    checks_total: 0,
+    checks_with_issues: 0,
   };
   let hasAnySuccess = false;
 
   const promises = scenarios.map((scenario) =>
     limit(async () => {
       const config = scenarioConfigs.get(scenario.id)!;
-      const rubric = buildRubric(config);
+      const checksFile = buildChecksFile(config);
 
-      // Write rubric to temp file
-      const rubricPath = join(tmpDir, `${scenario.id}-rubric.yaml`);
-      await writeFile(rubricPath, stringify(rubric));
+      // Write checks file to temp
+      const checksPath = join(tmpDir, `${scenario.id}-checks.yaml`);
+      await writeFile(checksPath, stringify(checksFile));
 
       if (opts.verbose) {
-        process.stderr.write(`[craboodle] ${scenario.id}: linting ${config.assertions.length} assertion(s)\n`);
+        process.stderr.write(`[craboodle] ${scenario.id}: linting ${config.checks.length} check(s)\n`);
       }
 
       const result = await runPincenezLint({
-        rubricPath,
+        checksPath,
         graderModel: opts.graderModel,
       });
 
@@ -699,20 +699,20 @@ async function lintCommand(
       }
 
       hasAnySuccess = true;
-      const assertions = parseLintResult(result.stdout);
-      const withIssues = assertions.filter((a) => a.issues.length > 0).length;
+      const checks = parseLintResult(result.stdout);
+      const withIssues = checks.filter((a) => a.issues.length > 0).length;
 
-      totals.assertions_total += assertions.length;
-      totals.assertions_with_issues += withIssues;
+      totals.checks_total += checks.length;
+      totals.checks_with_issues += withIssues;
       if (withIssues > 0) {
         totals.scenarios_with_issues += 1;
       }
 
       streamLintScenarioYaml({
         id: scenario.id,
-        assertions,
-        assertions_total: assertions.length,
-        assertions_with_issues: withIssues,
+        checks,
+        checks_total: checks.length,
+        checks_with_issues: withIssues,
       });
     }),
   );
@@ -730,14 +730,14 @@ async function lintCommand(
     process.exit(2);
   }
 
-  if (totals.assertions_with_issues > 0) {
+  if (totals.checks_with_issues > 0) {
     process.exit(1);
   }
 }
 
 program
   .command("lint <evals-dir>")
-  .description("Lint assertions for quality issues without running evals")
+  .description("Lint checks for quality issues without running evals")
   .option("--concurrency <n>", "Max parallel pincenez lint invocations", "10")
   .option("--scenario <pattern>", "Filter scenarios by ID (exact, glob, or comma-separated)")
   .option("--grader-model <model>", "Override pincenez model for linting")
@@ -797,7 +797,7 @@ program
     // Write example scenario
     const scenarioObj = {
       prompt: "Write a function that adds two numbers. Include input validation.\n",
-      assertions: [
+      checks: [
         { check: "Output contains a function that adds two numbers", note: "Look for a function definition with addition logic" },
         { check: "Function validates inputs are numbers", note: "Look for type checking, parsing, or error handling for non-numeric inputs" },
       ],
@@ -817,7 +817,7 @@ program
     process.stdout.write(`  hello-world/scenario.yaml\n`);
     process.stdout.write(`\nNext steps:\n`);
     process.stdout.write(`  craboodle list ${dir}     # validate scenarios\n`);
-    process.stdout.write(`  craboodle lint ${dir}     # check assertion quality\n`);
+    process.stdout.write(`  craboodle lint ${dir}     # check quality\n`);
     process.stdout.write(`  craboodle run ${dir}      # run eval pipeline\n`);
   });
 

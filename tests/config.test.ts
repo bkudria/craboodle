@@ -16,14 +16,14 @@ describe("config", () => {
   });
 
   describe("loadScenarioConfig", () => {
-    it("parses a valid scenario.yaml with prompt and assertions", async () => {
+    it("parses a valid scenario.yaml with prompt and checks", async () => {
       const { loadScenarioConfig } = await import("../src/config.js");
       const scenarioPath = join(tmpDir, "scenario.yaml");
       await writeFile(
         scenarioPath,
         stringify({
           prompt: "Write a haiku about the ocean",
-          assertions: [
+          checks: [
             { check: "Output contains a haiku" },
             { check: "Haiku follows 5-7-5 pattern", note: "Count syllables" },
           ],
@@ -33,9 +33,9 @@ describe("config", () => {
       const config = await loadScenarioConfig(scenarioPath);
 
       expect(config.prompt).toBe("Write a haiku about the ocean");
-      expect(config.assertions).toHaveLength(2);
-      expect(config.assertions[0].check).toBe("Output contains a haiku");
-      expect(config.assertions[1].note).toBe("Count syllables");
+      expect(config.checks).toHaveLength(2);
+      expect(config.checks[0].check).toBe("Output contains a haiku");
+      expect(config.checks[1].note).toBe("Count syllables");
     });
 
     it("throws on missing prompt", async () => {
@@ -44,21 +44,21 @@ describe("config", () => {
       await writeFile(
         scenarioPath,
         stringify({
-          assertions: [{ check: "something" }],
+          checks: [{ check: "something" }],
         }),
       );
 
       await expect(loadScenarioConfig(scenarioPath)).rejects.toThrow();
     });
 
-    it("throws on empty assertions array", async () => {
+    it("throws on empty checks array", async () => {
       const { loadScenarioConfig } = await import("../src/config.js");
       const scenarioPath = join(tmpDir, "scenario.yaml");
       await writeFile(
         scenarioPath,
         stringify({
           prompt: "Write something",
-          assertions: [],
+          checks: [],
         }),
       );
 
@@ -72,7 +72,7 @@ describe("config", () => {
         scenarioPath,
         stringify({
           prompt: "Write something",
-          assertions: [{ check: "something" }],
+          checks: [{ check: "something" }],
           unknown_key: "should fail",
         }),
       );
@@ -87,7 +87,7 @@ describe("config", () => {
         scenarioPath,
         stringify({
           prompt: "Write something",
-          assertions: [{ check: "something" }],
+          checks: [{ check: "something" }],
           scuttlerun: {
             model: "claude-sonnet-4-6",
             user: { persona: "A beginner" },
@@ -112,7 +112,7 @@ describe("config", () => {
         scenarioPath,
         stringify({
           prompt: "Write something",
-          assertions: [{ check: "something" }],
+          checks: [{ check: "something" }],
           labels: { config: "optimized", model: "sonnet" },
         }),
       );
@@ -129,7 +129,7 @@ describe("config", () => {
         scenarioPath,
         stringify({
           prompt: "Write something",
-          assertions: [{ check: "something" }],
+          checks: [{ check: "something" }],
           repeats: 5,
         }),
       );
@@ -146,7 +146,7 @@ describe("config", () => {
         scenarioPath,
         stringify({
           prompt: "Write something",
-          assertions: [{ check: "something" }],
+          checks: [{ check: "something" }],
         }),
       );
 
@@ -162,7 +162,7 @@ describe("config", () => {
         scenarioPath,
         stringify({
           prompt: "Write something",
-          assertions: [{ check: "something" }],
+          checks: [{ check: "something" }],
           context: "The agent was asked to write an email validator.",
         }),
       );

@@ -38,10 +38,10 @@ describe("output", () => {
   });
 
   describe("parseGrading", () => {
-    it("extracts assertion results from pincenez YAML output", async () => {
+    it("extracts check results from pincenez YAML output", async () => {
       const { parseGrading } = await import("../src/output.js");
 
-      const yaml = `assertions:
+      const yaml = `checks:
   - id: a1
     check: "Output contains a function"
     pass: true
@@ -55,14 +55,14 @@ pass_rate: 0.5
 
       const result = parseGrading(yaml);
 
-      expect(result.assertions).toHaveLength(2);
-      expect(result.assertions[0]).toEqual({
+      expect(result.checks).toHaveLength(2);
+      expect(result.checks[0]).toEqual({
         id: "a1",
         check: "Output contains a function",
         pass: true,
         evidence: "Function found",
       });
-      expect(result.assertions[1]).toEqual({
+      expect(result.checks[1]).toEqual({
         id: "a2",
         check: "Handles edge cases",
         pass: false,
@@ -74,7 +74,7 @@ pass_rate: 0.5
     it("handles null pass values", async () => {
       const { parseGrading } = await import("../src/output.js");
 
-      const yaml = `assertions:
+      const yaml = `checks:
   - id: a1
     check: "test"
     pass: null
@@ -84,10 +84,10 @@ pass_rate: 0
 
       const result = parseGrading(yaml);
 
-      expect(result.assertions[0].pass).toBeNull();
+      expect(result.checks[0].pass).toBeNull();
     });
 
-    it("throws on malformed grading YAML (missing assertions)", async () => {
+    it("throws on malformed grading YAML (missing checks)", async () => {
       const { parseGrading } = await import("../src/output.js");
 
       const yaml = `pass_rate: 1.0\n`;
@@ -95,10 +95,10 @@ pass_rate: 0
       expect(() => parseGrading(yaml)).toThrow();
     });
 
-    it("throws on grading with invalid assertion structure", async () => {
+    it("throws on grading with invalid check structure", async () => {
       const { parseGrading } = await import("../src/output.js");
 
-      const yaml = `assertions:
+      const yaml = `checks:
   - wrong_field: true
 pass_rate: 1
 `;
@@ -109,7 +109,7 @@ pass_rate: 1
     it("extracts cost_usd from pincenez YAML when present", async () => {
       const { parseGrading } = await import("../src/output.js");
 
-      const yaml = `assertions:
+      const yaml = `checks:
   - id: a1
     check: "test"
     pass: true
@@ -130,17 +130,17 @@ cost_usd: 0.0042
 
       const result = averageResults([]);
 
-      expect(result.assertions).toEqual([]);
+      expect(result.checks).toEqual([]);
       expect(result.pass_rate).toBe(0);
     });
 
-    it("returns 0 pass_rate when assertions array is empty per rep", async () => {
+    it("returns 0 pass_rate when checks array is empty per rep", async () => {
       const { averageResults } = await import("../src/output.js");
 
-      // A rep with zero assertions (edge case)
+      // A rep with zero checks (edge case)
       const result = averageResults([[]]);
 
-      expect(result.assertions).toEqual([]);
+      expect(result.checks).toEqual([]);
       expect(result.pass_rate).toBe(0);
     });
 
@@ -156,8 +156,8 @@ cost_usd: 0.0042
 
       const result = averageResults(repGradings);
 
-      expect(result.assertions[0].pass_rate).toBe(1.0);
-      expect(result.assertions[1].pass_rate).toBe(0.0);
+      expect(result.checks[0].pass_rate).toBe(1.0);
+      expect(result.checks[1].pass_rate).toBe(0.0);
       expect(result.pass_rate).toBe(0.5);
     });
 
@@ -172,7 +172,7 @@ cost_usd: 0.0042
 
       const result = averageResults(repGradings);
 
-      expect(result.assertions[0].pass_rate).toBeCloseTo(0.67, 2);
+      expect(result.checks[0].pass_rate).toBeCloseTo(0.67, 2);
     });
 
     it("treats null as failure (0)", async () => {
@@ -185,10 +185,10 @@ cost_usd: 0.0042
 
       const result = averageResults(repGradings);
 
-      expect(result.assertions[0].pass_rate).toBe(0.5);
+      expect(result.checks[0].pass_rate).toBe(0.5);
     });
 
-    it("computes scenario pass_rate as mean of assertion pass_rates", async () => {
+    it("computes scenario pass_rate as mean of check pass_rates", async () => {
       const { averageResults } = await import("../src/output.js");
 
       const repGradings = [
@@ -205,7 +205,7 @@ cost_usd: 0.0042
   });
 
   describe("compact/verbose output", () => {
-    it("produces compact output for passing assertions", async () => {
+    it("produces compact output for passing checks", async () => {
       const { averageResults } = await import("../src/output.js");
 
       const repGradings = [
@@ -214,14 +214,14 @@ cost_usd: 0.0042
 
       const result = averageResults(repGradings);
 
-      expect(result.assertions[0]).toEqual({
+      expect(result.checks[0]).toEqual({
         check: "test passes",
         pass_rate: 1.0,
       });
-      expect(result.assertions[0]).not.toHaveProperty("failures");
+      expect(result.checks[0]).not.toHaveProperty("failures");
     });
 
-    it("produces verbose output for failing assertions with per-rep evidence", async () => {
+    it("produces verbose output for failing checks with per-rep evidence", async () => {
       const { averageResults } = await import("../src/output.js");
 
       const repGradings = [
@@ -231,8 +231,8 @@ cost_usd: 0.0042
 
       const result = averageResults(repGradings);
 
-      expect(result.assertions[0].pass_rate).toBe(0.5);
-      expect(result.assertions[0].failures).toEqual([
+      expect(result.checks[0].pass_rate).toBe(0.5);
+      expect(result.checks[0].failures).toEqual([
         { rep: 2, evidence: "missing X" },
       ]);
     });
@@ -254,7 +254,7 @@ cost_usd: 0.0042
 
       streamScenarioYaml({
         id: "email-validator",
-        assertions: [{ check: "test passes", pass_rate: 1.0 }],
+        checks: [{ check: "test passes", pass_rate: 1.0 }],
         pass_rate: 1.0,
       });
 
@@ -269,7 +269,7 @@ cost_usd: 0.0042
       streamScenarioYaml({
         id: "test",
         labels: { config: "optimized" },
-        assertions: [{ check: "test", pass_rate: 1.0 }],
+        checks: [{ check: "test", pass_rate: 1.0 }],
         pass_rate: 1.0,
       });
 
@@ -281,7 +281,7 @@ cost_usd: 0.0042
 
       streamScenarioYaml({
         id: "test",
-        assertions: [{ check: "test", pass_rate: 1.0 }],
+        checks: [{ check: "test", pass_rate: 1.0 }],
         pass_rate: 1.0,
         errors: [{ rep: 3, stage: "scuttlerun", error: "timeout after 120s" }],
       });
@@ -295,7 +295,7 @@ cost_usd: 0.0042
 
       streamScenarioYaml({
         id: "test",
-        assertions: [{ check: "test", pass_rate: 1.0 }],
+        checks: [{ check: "test", pass_rate: 1.0 }],
         pass_rate: 1.0,
         cost_usd: 0.0294,
         agent_cost_usd: 0.0234,
@@ -312,7 +312,7 @@ cost_usd: 0.0042
 
       streamScenarioYaml({
         id: "broken",
-        assertions: [{ check: "test", pass_rate: 0 }],
+        checks: [{ check: "test", pass_rate: 0 }],
         pass_rate: null,
         errors: [
           { rep: 1, stage: "scuttlerun", error: "crash" },
@@ -328,42 +328,42 @@ cost_usd: 0.0042
     it("parses pincenez lint YAML output", async () => {
       const { parseLintResult } = await import("../src/output.js");
 
-      const yaml = `assertions:
-  - id: assertion-0
+      const yaml = `checks:
+  - id: check-0
     check: "Output contains a validation function"
     issues: []
-  - id: assertion-1
+  - id: check-1
     check: "Handles edge cases"
     issues:
       - compound
       - vague
-assertions_total: 2
-assertions_with_issues: 1
+checks_total: 2
+checks_with_issues: 1
 `;
 
       const result = parseLintResult(yaml);
 
       expect(result).toHaveLength(2);
       expect(result[0]).toEqual({
-        id: "assertion-0",
+        id: "check-0",
         check: "Output contains a validation function",
         issues: [],
       });
       expect(result[1]).toEqual({
-        id: "assertion-1",
+        id: "check-1",
         check: "Handles edge cases",
         issues: ["compound", "vague"],
       });
     });
 
-    it("handles assertions with no issues field", async () => {
+    it("handles checks with no issues field", async () => {
       const { parseLintResult } = await import("../src/output.js");
 
-      const yaml = `assertions:
-  - id: assertion-0
+      const yaml = `checks:
+  - id: check-0
     check: "test"
-assertions_total: 1
-assertions_with_issues: 0
+checks_total: 1
+checks_with_issues: 0
 `;
 
       const result = parseLintResult(yaml);
@@ -395,17 +395,17 @@ assertions_with_issues: 0
 
       streamLintScenarioYaml({
         id: "email-validator",
-        assertions: [
-          { id: "assertion-0", check: "validates email", issues: [] },
-          { id: "assertion-1", check: "handles edge cases", issues: ["compound"] },
+        checks: [
+          { id: "check-0", check: "validates email", issues: [] },
+          { id: "check-1", check: "handles edge cases", issues: ["compound"] },
         ],
-        assertions_total: 2,
-        assertions_with_issues: 1,
+        checks_total: 2,
+        checks_with_issues: 1,
       });
 
       expect(written).toContain("- id: email-validator");
-      expect(written).toContain("assertions_total: 2");
-      expect(written).toContain("assertions_with_issues: 1");
+      expect(written).toContain("checks_total: 2");
+      expect(written).toContain("checks_with_issues: 1");
       expect(written).toContain("compound");
     });
   });
@@ -417,14 +417,14 @@ assertions_with_issues: 0
       streamLintTotals({
         scenarios_total: 3,
         scenarios_with_issues: 1,
-        assertions_total: 10,
-        assertions_with_issues: 2,
+        checks_total: 10,
+        checks_with_issues: 2,
       });
 
       expect(written).toContain("scenarios_total: 3");
       expect(written).toContain("scenarios_with_issues: 1");
-      expect(written).toContain("assertions_total: 10");
-      expect(written).toContain("assertions_with_issues: 2");
+      expect(written).toContain("checks_total: 10");
+      expect(written).toContain("checks_with_issues: 2");
     });
   });
 
@@ -464,7 +464,7 @@ assertions_with_issues: 0
 
       streamScenarioYaml({
         id: "test",
-        assertions: [{ check: "test", pass_rate: 0 }],
+        checks: [{ check: "test", pass_rate: 0 }],
         pass_rate: null,
         errors: [{ rep: 1, stage: "scuttlerun", error: "line one\nline two\n" }],
       });
@@ -484,7 +484,7 @@ assertions_with_issues: 0
       streamScenarioYaml({
         id: "scenario-a",
         labels: { config: "optimized" },
-        assertions: [
+        checks: [
           { check: "passes", pass_rate: 1.0 },
           {
             check: "sometimes fails",
@@ -496,7 +496,7 @@ assertions_with_issues: 0
       });
       streamScenarioYaml({
         id: "scenario-b",
-        assertions: [{ check: "always passes", pass_rate: 1.0 }],
+        checks: [{ check: "always passes", pass_rate: 1.0 }],
         pass_rate: 1.0,
       });
 

@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { parse } from "yaml";
 import { z } from "zod/v4";
 
-const AssertionSchema = z.object({
+const CheckSchema = z.object({
   check: z.string(),
   note: z.string().optional(),
 });
@@ -10,7 +10,7 @@ const AssertionSchema = z.object({
 const ScenarioConfigSchema = z
   .object({
     prompt: z.string().min(1),
-    assertions: z.array(AssertionSchema).min(1),
+    checks: z.array(CheckSchema).min(1),
     labels: z.record(z.string(), z.string()).optional(),
     context: z.string().optional(),
     repeats: z.number().int().min(1).optional(),
@@ -18,7 +18,7 @@ const ScenarioConfigSchema = z
   })
   .strict();
 
-export type Assertion = z.infer<typeof AssertionSchema>;
+export type Check = z.infer<typeof CheckSchema>;
 export type ScenarioConfig = z.infer<typeof ScenarioConfigSchema>;
 
 export async function loadScenarioConfig(

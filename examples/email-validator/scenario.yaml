@@ -9,7 +9,7 @@ context: |
 prompt: |
   Write a function that validates email addresses.
 
-assertions:
+checks:
   - check: "Output contains a function that validates email format"
     note: "Look for regex or string parsing that checks for @ and domain"
   - check: "Function handles edge cases like empty string and missing @"

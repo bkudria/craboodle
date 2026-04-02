@@ -1,7 +1,7 @@
 import { parse, stringify, Document, Scalar, visit } from "yaml";
 import { z } from "zod/v4";
 
-const GradingAssertionSchema = z.object({
+const GradingCheckSchema = z.object({
   id: z.string(),
   check: z.string(),
   pass: z.boolean().nullable(),
@@ -9,14 +9,14 @@ const GradingAssertionSchema = z.object({
 });
 
 const GradingOutputSchema = z.object({
-  assertions: z.array(GradingAssertionSchema).min(1),
+  checks: z.array(GradingCheckSchema).min(1),
   pass_rate: z.number(),
   cost_usd: z.number().optional(),
 });
 
-export type GradingAssertion = z.infer<typeof GradingAssertionSchema>;
+export type GradingCheck = z.infer<typeof GradingCheckSchema>;
 
-export interface AssertionOutput {
+export interface CheckOutput {
   check: string;
   pass_rate: number;
   failures?: Array<{ rep: number; evidence: string }>;
@@ -25,7 +25,7 @@ export interface AssertionOutput {
 export interface ScenarioOutput {
   id: string;
   labels?: Record<string, string>;
-  assertions: AssertionOutput[];
+  checks: CheckOutput[];
   pass_rate: number | null;
   cost_usd?: number;
   agent_cost_usd?: number;
@@ -50,7 +50,7 @@ export function parseCostFromTranscript(yaml: string): number | null {
 }
 
 export interface GradingResult {
-  assertions: GradingAssertion[];
+  checks: GradingCheck[];
   costUsd: number | null;
 }
 
@@ -58,22 +58,22 @@ export function parseGrading(yaml: string): GradingResult {
   const raw = parse(yaml);
   const parsed = GradingOutputSchema.parse(raw);
   return {
-    assertions: parsed.assertions,
+    checks: parsed.checks,
     costUsd: parsed.cost_usd ?? null,
   };
 }
 
 export function averageResults(
-  repGradings: GradingAssertion[][],
-): { assertions: AssertionOutput[]; pass_rate: number } {
+  repGradings: GradingCheck[][],
+): { checks: CheckOutput[]; pass_rate: number } {
   if (repGradings.length === 0) {
-    return { assertions: [], pass_rate: 0 };
+    return { checks: [], pass_rate: 0 };
   }
 
-  const assertionCount = repGradings[0].length;
-  const assertions: AssertionOutput[] = [];
+  const checkCount = repGradings[0].length;
+  const checks: CheckOutput[] = [];
 
-  for (let i = 0; i < assertionCount; i++) {
+  for (let i = 0; i < checkCount; i++) {
     const check = repGradings[0][i].check;
     let passSum = 0;
     const failures: Array<{ rep: number; evidence: string }> = [];
@@ -91,22 +91,22 @@ export function averageResults(
       Math.round((passSum / repGradings.length) * 100) / 100;
 
     if (passRate === 1.0) {
-      assertions.push({ check, pass_rate: passRate });
+      checks.push({ check, pass_rate: passRate });
     } else {
-      assertions.push({ check, pass_rate: passRate, failures });
+      checks.push({ check, pass_rate: passRate, failures });
     }
   }
 
   const scenarioPassRate =
-    assertions.length > 0
+    checks.length > 0
       ? Math.round(
-          (assertions.reduce((sum, a) => sum + a.pass_rate, 0) /
-            assertions.length) *
+          (checks.reduce((sum, a) => sum + a.pass_rate, 0) /
+            checks.length) *
             100,
         ) / 100
       : 0;
 
-  return { assertions, pass_rate: scenarioPassRate };
+  return { checks, pass_rate: scenarioPassRate };
 }
 
 export function writeYamlArrayItem(item: Record<string, unknown>): string {
@@ -137,7 +137,7 @@ export function streamScenarioYaml(scenario: ScenarioOutput): void {
     item.labels = scenario.labels;
   }
 
-  item.assertions = scenario.assertions;
+  item.checks = scenario.checks;
   item.pass_rate = scenario.pass_rate;
 
   if (scenario.cost_usd !== undefined) {
@@ -165,7 +165,7 @@ export function streamTotalCost(totalCostUsd: number): void {
 
 // --- Lint output ---
 
-export interface LintAssertionOutput {
+export interface LintCheckOutput {
   id: string;
   check: string;
   issues: string[];
@@ -173,23 +173,23 @@ export interface LintAssertionOutput {
 
 export interface LintScenarioOutput {
   id: string;
-  assertions: LintAssertionOutput[];
-  assertions_total: number;
-  assertions_with_issues: number;
+  checks: LintCheckOutput[];
+  checks_total: number;
+  checks_with_issues: number;
 }
 
 export interface LintTotals {
   scenarios_total: number;
   scenarios_with_issues: number;
-  assertions_total: number;
-  assertions_with_issues: number;
+  checks_total: number;
+  checks_with_issues: number;
 }
 
-export function parseLintResult(yaml: string): LintAssertionOutput[] {
+export function parseLintResult(yaml: string): LintCheckOutput[] {
   const parsed = parse(yaml) as {
-    assertions: Array<{ id: string; check: string; issues: string[] }>;
+    checks: Array<{ id: string; check: string; issues: string[] }>;
   };
-  return parsed.assertions.map((a) => ({
+  return parsed.checks.map((a) => ({
     id: a.id,
     check: a.check,
     issues: a.issues ?? [],
@@ -199,9 +199,9 @@ export function parseLintResult(yaml: string): LintAssertionOutput[] {
 export function streamLintScenarioYaml(scenario: LintScenarioOutput): void {
   const item: Record<string, unknown> = {
     id: scenario.id,
-    assertions: scenario.assertions,
-    assertions_total: scenario.assertions_total,
-    assertions_with_issues: scenario.assertions_with_issues,
+    checks: scenario.checks,
+    checks_total: scenario.checks_total,
+    checks_with_issues: scenario.checks_with_issues,
   };
 
   process.stdout.write(writeYamlArrayItem(item) + "\n");

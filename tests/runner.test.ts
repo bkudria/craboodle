@@ -56,7 +56,6 @@ describe("runner", () => {
       expect(mockExecFile).toHaveBeenCalledOnce();
       const [cmd, args] = mockExecFile.mock.calls[0];
       expect(cmd).toBe("scuttlerun");
-      expect(args![0]).toBe("run");
       expect(args).toContain("/path/to/base.yaml");
       expect(result.success).toBe(true);
     });
@@ -74,7 +73,7 @@ describe("runner", () => {
       });
 
       const [, args] = mockExecFile.mock.calls[0];
-      // Should only have: run <override.yaml>
+      // Should only have: <override.yaml>
       expect(args!.filter((a: string) => a.endsWith(".yaml"))).toHaveLength(1);
     });
 
@@ -161,33 +160,33 @@ describe("runner", () => {
   });
 
   describe("runPincenezLint", () => {
-    it("invokes pincenez lint with rubric file", async () => {
+    it("invokes pincenez lint with checks file", async () => {
       const { runPincenezLint } = await import("../src/runner.js");
 
       const lintYaml =
-        'assertions:\n  - id: a1\n    check: "test"\n    issues: []\nassertions_total: 1\nassertions_with_issues: 0\n';
+        'checks:\n  - id: a1\n    check: "test"\n    issues: []\nchecks_total: 1\nchecks_with_issues: 0\n';
       mockExecFileCall((cb) => cb(null, lintYaml, ""));
 
       const result = await runPincenezLint({
-        rubricPath: "/path/to/rubric.yaml",
+        checksPath: "/path/to/checks.yaml",
       });
 
       expect(mockExecFile).toHaveBeenCalledOnce();
       const [cmd, args] = mockExecFile.mock.calls[0];
       expect(cmd).toBe("pincenez");
       expect(args![0]).toBe("lint");
-      expect(args).toContain("/path/to/rubric.yaml");
+      expect(args).toContain("/path/to/checks.yaml");
       expect(result.success).toBe(true);
     });
 
     it("returns stdout on success", async () => {
       const { runPincenezLint } = await import("../src/runner.js");
 
-      const lintYaml = 'assertions:\n  - id: a1\n    check: "test"\n    issues: []\n';
+      const lintYaml = 'checks:\n  - id: a1\n    check: "test"\n    issues: []\n';
       mockExecFileCall((cb) => cb(null, lintYaml, ""));
 
       const result = await runPincenezLint({
-        rubricPath: "/path/to/rubric.yaml",
+        checksPath: "/path/to/checks.yaml",
       });
 
       expect(result.success).toBe(true);
@@ -199,10 +198,10 @@ describe("runner", () => {
     it("forwards --model when graderModel is provided", async () => {
       const { runPincenezLint } = await import("../src/runner.js");
 
-      mockExecFileCall((cb) => cb(null, "assertions: []\n", ""));
+      mockExecFileCall((cb) => cb(null, "checks: []\n", ""));
 
       await runPincenezLint({
-        rubricPath: "/path/to/rubric.yaml",
+        checksPath: "/path/to/checks.yaml",
         graderModel: "claude-sonnet-4-6",
       });
 
@@ -219,7 +218,7 @@ describe("runner", () => {
       mockExecFileCall((cb) => cb(error, "", "pincenez: API error"));
 
       const result = await runPincenezLint({
-        rubricPath: "/path/to/rubric.yaml",
+        checksPath: "/path/to/checks.yaml",
       });
 
       expect(result.success).toBe(false);
@@ -237,7 +236,7 @@ describe("runner", () => {
       mockExecFileCall((cb) => cb(error, "", ""));
 
       const result = await runPincenezLint({
-        rubricPath: "/path/to/rubric.yaml",
+        checksPath: "/path/to/checks.yaml",
       });
 
       expect(result.success).toBe(false);
@@ -248,7 +247,7 @@ describe("runner", () => {
   });
 
   describe("listScuttlerunConfig", () => {
-    it("invokes scuttlerun list with base and override config", async () => {
+    it("invokes scuttlerun --dry-run with base and override config", async () => {
       const { listScuttlerunConfig } = await import("../src/runner.js");
 
       mockExecFileCall((cb) => cb(null, "model: claude-sonnet-4-6\n", ""));
@@ -262,7 +261,7 @@ describe("runner", () => {
       expect(mockExecFile).toHaveBeenCalledOnce();
       const [cmd, args] = mockExecFile.mock.calls[0];
       expect(cmd).toBe("scuttlerun");
-      expect(args![0]).toBe("list");
+      expect(args![0]).toBe("--dry-run");
       expect(args).toContain("/path/to/base.yaml");
       expect(result.success).toBe(true);
     });
@@ -326,15 +325,15 @@ describe("runner", () => {
   });
 
   describe("runPincenez", () => {
-    it("invokes pincenez with rubric and output file", async () => {
+    it("invokes pincenez with checks file and output file", async () => {
       const { runPincenez } = await import("../src/runner.js");
 
       const gradingYaml =
-        'assertions:\n  - id: a1\n    check: "test"\n    pass: true\n    evidence: "ok"\npass_rate: 1.0\n';
+        'checks:\n  - id: a1\n    check: "test"\n    pass: true\n    evidence: "ok"\npass_rate: 1.0\n';
       mockExecFileCall((cb) => cb(null, gradingYaml, ""));
 
       const result = await runPincenez({
-        rubricPath: "/path/to/rubric.yaml",
+        checksPath: "/path/to/checks.yaml",
         outputPath: "/path/to/output.yaml",
         gradingPath: join(tmpDir, "grading.yaml"),
       });
@@ -342,7 +341,7 @@ describe("runner", () => {
       expect(mockExecFile).toHaveBeenCalledOnce();
       const [cmd, args] = mockExecFile.mock.calls[0];
       expect(cmd).toBe("pincenez");
-      expect(args).toContain("/path/to/rubric.yaml");
+      expect(args).toContain("/path/to/checks.yaml");
       expect(args).toContain("/path/to/output.yaml");
       expect(result.success).toBe(true);
     });
@@ -350,10 +349,10 @@ describe("runner", () => {
     it("forwards --model when graderModel is provided", async () => {
       const { runPincenez } = await import("../src/runner.js");
 
-      mockExecFileCall((cb) => cb(null, "assertions: []\npass_rate: 0\n", ""));
+      mockExecFileCall((cb) => cb(null, "checks: []\npass_rate: 0\n", ""));
 
       await runPincenez({
-        rubricPath: "/path/to/rubric.yaml",
+        checksPath: "/path/to/checks.yaml",
         outputPath: "/path/to/output.yaml",
         gradingPath: join(tmpDir, "grading.yaml"),
         graderModel: "claude-sonnet-4-6",
@@ -372,7 +371,7 @@ describe("runner", () => {
       mockExecFileCall((cb) => cb(error, "", "pincenez: API error"));
 
       const result = await runPincenez({
-        rubricPath: "/path/to/rubric.yaml",
+        checksPath: "/path/to/checks.yaml",
         outputPath: "/path/to/output.yaml",
         gradingPath: join(tmpDir, "grading.yaml"),
       });
@@ -392,7 +391,7 @@ describe("runner", () => {
       mockExecFileCall((cb) => cb(error, "", ""));
 
       const result = await runPincenez({
-        rubricPath: "/path/to/rubric.yaml",
+        checksPath: "/path/to/checks.yaml",
         outputPath: "/path/to/output.yaml",
         gradingPath: join(tmpDir, "grading.yaml"),
       });

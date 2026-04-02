@@ -12,7 +12,7 @@ context: |
   The agent was asked to write a haiku and save it to a file.
   The haiku-writer skill requires asking the user for a topic first.
 
-assertions:
+checks:
   - check: "The agent asked the user what topic they wanted before composing the haiku"
     note: "The haiku-writer skill mandates asking for a topic first if one was not provided"
   - check: "A file was created or written to containing the haiku"
