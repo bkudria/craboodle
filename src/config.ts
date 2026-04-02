@@ -11,7 +11,6 @@ const ScenarioConfigSchema = z
   .object({
     prompt: z.string().min(1),
     checks: z.array(CheckSchema).min(1),
-    labels: z.record(z.string(), z.string()).optional(),
     context: z.string().optional(),
     repeats: z.number().int().min(1).optional(),
     scuttlerun: z.record(z.string(), z.unknown()).optional(),

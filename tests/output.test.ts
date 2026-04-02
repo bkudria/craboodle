@@ -263,19 +263,6 @@ cost_usd: 0.0042
       expect(written).toContain("check: test passes");
     });
 
-    it("includes labels when present", async () => {
-      const { streamScenarioYaml } = await import("../src/output.js");
-
-      streamScenarioYaml({
-        id: "test",
-        labels: { config: "optimized" },
-        checks: [{ check: "test", pass_rate: 1.0 }],
-        pass_rate: 1.0,
-      });
-
-      expect(written).toContain("config: optimized");
-    });
-
     it("includes errors when present", async () => {
       const { streamScenarioYaml } = await import("../src/output.js");
 
@@ -450,10 +437,10 @@ checks_with_issues: 0
     it("handles nested objects", async () => {
       const { writeYamlArrayItem } = await import("../src/output.js");
 
-      const result = writeYamlArrayItem({ id: "test", labels: { env: "prod" } });
+      const result = writeYamlArrayItem({ id: "test", metadata: { env: "prod" } });
 
       expect(result).toContain("  - id: test");
-      expect(result).toContain("    labels:");
+      expect(result).toContain("    metadata:");
       expect(result).toContain("      env: prod");
     });
   });
@@ -483,7 +470,6 @@ checks_with_issues: 0
       streamHeader("/tmp/craboodle-run-abc");
       streamScenarioYaml({
         id: "scenario-a",
-        labels: { config: "optimized" },
         checks: [
           { check: "passes", pass_rate: 1.0 },
           {
@@ -504,7 +490,6 @@ checks_with_issues: 0
       expect(parsed.artifact_dir).toBe("/tmp/craboodle-run-abc");
       expect(parsed.scenarios).toHaveLength(2);
       expect(parsed.scenarios[0].id).toBe("scenario-a");
-      expect(parsed.scenarios[0].labels.config).toBe("optimized");
       expect(parsed.scenarios[0].pass_rate).toBe(0.83);
       expect(parsed.scenarios[1].id).toBe("scenario-b");
       expect(parsed.scenarios[1].pass_rate).toBe(1.0);

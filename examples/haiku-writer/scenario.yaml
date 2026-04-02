@@ -1,9 +1,6 @@
 # Haiku-writer skill evaluation
 # This scenario matches the examples in scuttlerun (examples/skill-eval.yaml)
-# and pincenez (examples/rubric.yaml), showing the same eval across all three tools.
-labels:
-  name: "Haiku-writer skill produces correct haiku"
-  config: with-skill
+# and pincenez (examples/checks.yaml), showing the same eval across all three tools.
 
 prompt: |
   Write a haiku for the user

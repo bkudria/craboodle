@@ -1,7 +1,3 @@
-labels:
-  name: "CLAUDE.md TDD instruction changes agent behavior"
-  config: claude-md
-
 prompt: |
   Write a function called isPalindrome that checks if a string is a palindrome.
   Save it to palindrome.js.

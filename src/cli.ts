@@ -262,7 +262,7 @@ async function runCommand(
       if (successfulGradings.length === 0) {
         scenarioOutput = {
           id: scenarioId,
-          ...(config.labels ? { labels: config.labels } : {}),
+
           checks: config.checks.map((a) => ({
             check: a.check,
             pass_rate: 0,
@@ -275,7 +275,7 @@ async function runCommand(
         const averaged = averageResults(successfulGradings);
         scenarioOutput = {
           id: scenarioId,
-          ...(config.labels ? { labels: config.labels } : {}),
+
           checks: averaged.checks,
           pass_rate: averaged.pass_rate,
           ...costFields,
@@ -344,13 +344,6 @@ scenario.yaml Schema:
         note: "Look for regex or string parsing that checks for @ and domain"
       - check: "Function handles edge cases like empty string and missing @"
 
-    # --- Labels (optional, passthrough to output) ---
-    # Key-value pairs for downstream comparison/grouping.
-    # Craboodle does not interpret labels — they pass through to output as-is.
-    labels:
-      name: "Human-readable scenario name"
-      config: optimized
-
     # --- Context (optional, sent to pincenez for grading orientation) ---
     context: |
       The agent was asked to write an email validation function.
@@ -378,7 +371,6 @@ scenario.yaml Schema:
     prompt              The task for the agent (required)
     checks[].check      Binary claim to evaluate (required)
     checks[].note       Grading hint for the judge (optional)
-    labels              Key-value metadata, passed through to output (optional)
     context             Task description for the grader (optional, defaults to prompt)
     repeats             Per-scenario repeat count override (optional)
     scuttlerun          Scuttlerun config overrides, not validated (optional)
@@ -410,8 +402,6 @@ Output Format:
     artifact_dir: /tmp/craboodle-run-abc123
     scenarios:
       - id: email-validator
-        labels:
-          config: optimized
         checks:
           - check: "Output contains a function that validates email format"
             pass_rate: 1.0
@@ -555,7 +545,6 @@ program
             checks: checkCount,
           };
           if (config.repeats) item.repeats = config.repeats;
-          if (config.labels) item.labels = config.labels;
 
           // Validate merged scuttlerun config via subprocess
           if (!tmpDir) {

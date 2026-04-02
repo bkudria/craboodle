@@ -105,7 +105,7 @@ describe("config", () => {
       });
     });
 
-    it("parses optional labels", async () => {
+    it("rejects unknown keys like labels (strict mode)", async () => {
       const { loadScenarioConfig } = await import("../src/config.js");
       const scenarioPath = join(tmpDir, "scenario.yaml");
       await writeFile(
@@ -113,13 +113,11 @@ describe("config", () => {
         stringify({
           prompt: "Write something",
           checks: [{ check: "something" }],
-          labels: { config: "optimized", model: "sonnet" },
+          labels: { config: "optimized" },
         }),
       );
 
-      const config = await loadScenarioConfig(scenarioPath);
-
-      expect(config.labels).toEqual({ config: "optimized", model: "sonnet" });
+      await expect(loadScenarioConfig(scenarioPath)).rejects.toThrow();
     });
 
     it("parses optional repeats override", async () => {

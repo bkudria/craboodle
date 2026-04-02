@@ -24,7 +24,6 @@ export interface CheckOutput {
 
 export interface ScenarioOutput {
   id: string;
-  labels?: Record<string, string>;
   checks: CheckOutput[];
   pass_rate: number | null;
   cost_usd?: number;
@@ -132,10 +131,6 @@ export function streamHeader(artifactDir: string): void {
 
 export function streamScenarioYaml(scenario: ScenarioOutput): void {
   const item: Record<string, unknown> = { id: scenario.id };
-
-  if (scenario.labels) {
-    item.labels = scenario.labels;
-  }
 
   item.checks = scenario.checks;
   item.pass_rate = scenario.pass_rate;

@@ -43,7 +43,6 @@ For design philosophy and principles behind these choices, see GOALS.md.
 | Output | Streaming YAML to stdout | Per-scenario streaming; valid YAML after each scenario block completes. Arrival order. Consumers process final output |
 | Output style | Compact pass, verbose fail | Passing checks: check + pass_rate. Failures include per-rep evidence |
 | Artifacts | Temp dir (preserved) | Intermediate files kept for debugging; temp dir path included in output YAML |
-| Labels | Key-value map on scenarios | Passthrough to output; enables downstream comparison/grouping without craboodle interpreting semantics |
 | Validation | Strict (Zod strict mode) | Fail fast on zero checks, empty prompt, or unknown keys. No permissive/forward-compatible mode |
 | Error handling | Skip failed reps | Failed reps excluded from averaging, reported in per-scenario `errors` array. Other reps/scenarios unaffected |
 | Parallelism | Flat (scenario, rep) pool | All work items in one pool; `--concurrency` limits. Run-then-grade per rep (slot held for both) |
@@ -152,18 +151,11 @@ Intermediate artifacts (scuttlerun outputs, pincenez gradings) are written to a 
 
 ### scenario.yaml
 
-A scenario has five craboodle-understood fields (`prompt`, `checks`, `labels`, `context`, `repeats`) and an optional `scuttlerun:` passthrough block. The scenario's ID is its directory basename. Validation is strict: `prompt` and `checks` (with at least one check) are required, and unknown top-level keys cause a configuration error (exit 1). The `scuttlerun:` block is not validated by craboodle — it passes through to scuttlerun as-is.
+A scenario has four craboodle-understood fields (`prompt`, `checks`, `context`, `repeats`) and an optional `scuttlerun:` passthrough block. The scenario's ID is its directory basename. Validation is strict: `prompt` and `checks` (with at least one check) are required, and unknown top-level keys cause a configuration error (exit 1). The `scuttlerun:` block is not validated by craboodle — it passes through to scuttlerun as-is.
 
 Scenario directories may contain additional files (fixtures, reference data, seed files) alongside scenario.yaml. craboodle ignores all files except scenario.yaml — additional files can be referenced by the scenario's scuttlerun config (e.g., via `project.files` relative paths).
 
 ```yaml
-# --- Labels (optional, passthrough to output) ---
-# Key-value pairs for downstream comparison/grouping.
-# Craboodle does not interpret labels — they pass through to output as-is.
-labels:
-  config: optimized
-  model: sonnet-4-6
-
 # --- Context (optional, sent to pincenez checks file) ---
 # Orients the grading judge about what task produced this output.
 # Passes through to pincenez checks file's context field.
@@ -407,8 +399,6 @@ Passing checks (pass_rate == 1.0) are compact (check + pass_rate). Checks with p
 artifact_dir: /tmp/craboodle-run-a1b2c3
 scenarios:
   - id: email-validator
-    labels:
-      config: optimized
     checks:
       - check: "Output contains a function that validates email format"
         pass_rate: 1.0
@@ -428,8 +418,6 @@ scenarios:
         stage: scuttlerun
         error: "timeout after 120s"
   - id: url-parser
-    labels:
-      config: baseline
     checks:
       - check: "Parses query strings correctly"
         pass_rate: 1.0
