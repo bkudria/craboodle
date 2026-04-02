@@ -1,0 +1,12 @@
+context: |
+  The agent was asked to write an email validation function.
+  The user cares about edge case handling.
+
+checks:
+  - validates-format:
+      check: "Output contains a function that validates email format"
+      note: "Look for regex or string parsing that checks for @ and domain"
+  - handles-edge-cases:
+      check: "Function handles edge cases like empty string and missing @"
+  - includes-tests:
+      check: "Output includes at least one test or example usage"

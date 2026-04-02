@@ -41,22 +41,22 @@ describe("runner", () => {
   });
 
   describe("runScuttlerun", () => {
-    it("invokes scuttlerun with base and override config files", async () => {
+    it("invokes scuttlerun with base and scenario config files", async () => {
       const { runScuttlerun } = await import("../src/runner.js");
 
       mockExecFileCall((cb) => cb(null, "session: abc\nconversation: []\n", ""));
 
       const result = await runScuttlerun({
-        override: { prompt: "Write a haiku" },
+        scenarioPath: "/path/to/scenario.yaml",
         basePath: "/path/to/base.yaml",
         outputPath: join(tmpDir, "output.yaml"),
-        tmpDir,
       });
 
       expect(mockExecFile).toHaveBeenCalledOnce();
       const [cmd, args] = mockExecFile.mock.calls[0];
       expect(cmd).toBe("scuttlerun");
       expect(args).toContain("/path/to/base.yaml");
+      expect(args).toContain("/path/to/scenario.yaml");
       expect(result.success).toBe(true);
     });
 
@@ -66,14 +66,13 @@ describe("runner", () => {
       mockExecFileCall((cb) => cb(null, "session: abc\n", ""));
 
       await runScuttlerun({
-        override: { prompt: "Write a haiku" },
+        scenarioPath: "/path/to/scenario.yaml",
         basePath: null,
         outputPath: join(tmpDir, "output.yaml"),
-        tmpDir,
       });
 
       const [, args] = mockExecFile.mock.calls[0];
-      // Should only have: <override.yaml>
+      // Should only have: <scenario.yaml>
       expect(args!.filter((a: string) => a.endsWith(".yaml"))).toHaveLength(1);
     });
 
@@ -85,10 +84,9 @@ describe("runner", () => {
 
       const outputPath = join(tmpDir, "output.yaml");
       await runScuttlerun({
-        override: { prompt: "Write a haiku" },
+        scenarioPath: "/path/to/scenario.yaml",
         basePath: null,
         outputPath,
-        tmpDir,
       });
 
       const content = await readFile(outputPath, "utf8");
@@ -101,10 +99,9 @@ describe("runner", () => {
       mockExecFileCall((cb) => cb(null, "session: abc\n", ""));
 
       await runScuttlerun({
-        override: { prompt: "Write a haiku" },
+        scenarioPath: "/path/to/scenario.yaml",
         basePath: null,
         outputPath: join(tmpDir, "output.yaml"),
-        tmpDir,
         agentModel: "claude-sonnet-4-6",
       });
 
@@ -125,10 +122,9 @@ describe("runner", () => {
       mockExecFileCall((cb) => cb(error, "", "scuttlerun: timeout after 120s"));
 
       const result = await runScuttlerun({
-        override: { prompt: "Write a haiku" },
+        scenarioPath: "/path/to/scenario.yaml",
         basePath: null,
         outputPath: join(tmpDir, "output.yaml"),
-        tmpDir,
       });
 
       expect(result.success).toBe(false);
@@ -146,10 +142,9 @@ describe("runner", () => {
       mockExecFileCall((cb) => cb(error, "", ""));
 
       const result = await runScuttlerun({
-        override: { prompt: "Write a haiku" },
+        scenarioPath: "/path/to/scenario.yaml",
         basePath: null,
         outputPath: join(tmpDir, "output.yaml"),
-        tmpDir,
       });
 
       expect(result.success).toBe(false);
@@ -247,15 +242,14 @@ describe("runner", () => {
   });
 
   describe("listScuttlerunConfig", () => {
-    it("invokes scuttlerun --dry-run with base and override config", async () => {
+    it("invokes scuttlerun --dry-run with base and scenario config", async () => {
       const { listScuttlerunConfig } = await import("../src/runner.js");
 
       mockExecFileCall((cb) => cb(null, "model: claude-sonnet-4-6\n", ""));
 
       const result = await listScuttlerunConfig({
-        override: { prompt: "Write a haiku" },
+        scenarioPath: "/path/to/scenario.yaml",
         basePath: "/path/to/base.yaml",
-        tmpDir,
       });
 
       expect(mockExecFile).toHaveBeenCalledOnce();
@@ -263,6 +257,7 @@ describe("runner", () => {
       expect(cmd).toBe("scuttlerun");
       expect(args![0]).toBe("--dry-run");
       expect(args).toContain("/path/to/base.yaml");
+      expect(args).toContain("/path/to/scenario.yaml");
       expect(result.success).toBe(true);
     });
 
@@ -273,9 +268,8 @@ describe("runner", () => {
       mockExecFileCall((cb) => cb(null, configYaml, ""));
 
       const result = await listScuttlerunConfig({
-        override: { prompt: "Write a haiku" },
+        scenarioPath: "/path/to/scenario.yaml",
         basePath: null,
-        tmpDir,
       });
 
       expect(result.success).toBe(true);
@@ -292,9 +286,8 @@ describe("runner", () => {
       mockExecFileCall((cb) => cb(error, "", "scuttlerun: invalid config"));
 
       const result = await listScuttlerunConfig({
-        override: { prompt: "Write a haiku" },
+        scenarioPath: "/path/to/scenario.yaml",
         basePath: null,
-        tmpDir,
       });
 
       expect(result.success).toBe(false);
@@ -312,9 +305,8 @@ describe("runner", () => {
       mockExecFileCall((cb) => cb(error, "", ""));
 
       const result = await listScuttlerunConfig({
-        override: { prompt: "Write a haiku" },
+        scenarioPath: "/path/to/scenario.yaml",
         basePath: null,
-        tmpDir,
       });
 
       expect(result.success).toBe(false);

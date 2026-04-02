@@ -1,0 +1,8 @@
+checks:
+  - test-before-code:
+      check: "A test file was written before or alongside the production code"
+      note: "Look for a test file being created via Write tool. The test should appear before or at the same time as palindrome.js"
+  - function-exists:
+      check: "The function isPalindrome exists in palindrome.js"
+  - tests-validate:
+      check: "At least one test case validates palindrome behavior"

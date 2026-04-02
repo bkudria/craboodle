@@ -1,7 +1,3 @@
-# craboodle settings
-version: "1"
-
-# scuttlerun passthrough (merged into each scenario's session config)
 model: claude-sonnet-4-6
 tools:
   - Read

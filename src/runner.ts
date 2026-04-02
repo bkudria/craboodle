@@ -1,7 +1,5 @@
 import { execFile } from "node:child_process";
 import { writeFile } from "node:fs/promises";
-import { join } from "node:path";
-import { stringify } from "yaml";
 
 export interface RepError {
   stage: "scuttlerun" | "pincenez";
@@ -13,10 +11,9 @@ export type SubprocessResult =
   | { success: false; error: RepError };
 
 export interface RunScuttlerunOptions {
-  override: Record<string, unknown>;
+  scenarioPath: string;
   basePath: string | null;
   outputPath: string;
-  tmpDir: string;
   agentModel?: string;
 }
 
@@ -47,16 +44,13 @@ function execFilePromise(
 export async function runScuttlerun(
   options: RunScuttlerunOptions,
 ): Promise<SubprocessResult> {
-  const { override, basePath, outputPath, tmpDir, agentModel } = options;
-
-  const overridePath = join(tmpDir, "scuttlerun-override.yaml");
-  await writeFile(overridePath, stringify(override));
+  const { scenarioPath, basePath, outputPath, agentModel } = options;
 
   const args: string[] = [];
   if (basePath) {
     args.push(basePath);
   }
-  args.push(overridePath);
+  args.push(scenarioPath);
 
   if (agentModel) {
     args.push("--model", agentModel);
@@ -79,24 +73,20 @@ export async function runScuttlerun(
 }
 
 export interface ListScuttlerunOptions {
-  override: Record<string, unknown>;
+  scenarioPath: string;
   basePath: string | null;
-  tmpDir: string;
 }
 
 export async function listScuttlerunConfig(
   options: ListScuttlerunOptions,
 ): Promise<SubprocessResult & { stdout?: string }> {
-  const { override, basePath, tmpDir } = options;
-
-  const overridePath = join(tmpDir, "scuttlerun-list-override.yaml");
-  await writeFile(overridePath, stringify(override));
+  const { scenarioPath, basePath } = options;
 
   const args = ["--dry-run"];
   if (basePath) {
     args.push(basePath);
   }
-  args.push(overridePath);
+  args.push(scenarioPath);
 
   try {
     const { stdout } = await execFilePromise("scuttlerun", args);

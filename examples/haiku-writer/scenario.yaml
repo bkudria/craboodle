@@ -1,27 +1,9 @@
-# Haiku-writer skill evaluation
-# This scenario matches the examples in scuttlerun (examples/skill-eval.yaml)
-# and pincenez (examples/checks.yaml), showing the same eval across all three tools.
-
 prompt: |
   Write a haiku for the user
 
-context: |
-  The agent was asked to write a haiku and save it to a file.
-  The haiku-writer skill requires asking the user for a topic first.
-
-checks:
-  - check: "The agent asked the user what topic they wanted before composing the haiku"
-    note: "The haiku-writer skill mandates asking for a topic first if one was not provided"
-  - check: "A file was created or written to containing the haiku"
-    note: "Look for Write tool usage targeting a .txt file"
-  - check: "The haiku contains exactly 3 lines of poetry"
-  - check: "Lines follow a 5-7-5 syllable pattern"
-    note: "Count syllables carefully; common errors include diphthongs and silent vowels"
-
-scuttlerun:
-  project:
-    skills:
-      - ~/.claude/skills/haiku-writer
-  user:
-    turn_policy: reactive
-    max_user_turns: 2
+project:
+  skills:
+    - ~/.claude/skills/haiku-writer
+user:
+  turn_policy: reactive
+  max_user_turns: 2

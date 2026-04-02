@@ -1,16 +1,15 @@
 #!/usr/bin/env node
 
 import { Command } from "commander";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { mkdtemp, writeFile, mkdir, readFile, access, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { stringify, Document, Scalar, visit } from "yaml";
+import { stringify, parse, Document, Scalar, visit } from "yaml";
 import { resolve } from "node:path";
 
-import { loadScenarioConfig, loadBaseConfig } from "./config.js";
+import { loadCraboodleConfig, checkBaseConfig } from "./config.js";
 import { cleanOldArtifacts } from "./cleanup.js";
 import { discoverScenarios, filterScenarios } from "./discovery.js";
-import { buildScuttlerunOverride, buildChecksFile } from "./builder.js";
 import { runScuttlerun, runPincenez, runPincenezLint, listScuttlerunConfig } from "./runner.js";
 import { executePool, type WorkItem } from "./pool.js";
 import {
@@ -74,12 +73,15 @@ async function runCommand(
     );
   }
 
-  // Load base config
-  const { version, minPassRate, maxBudgetUsd, scuttlerunConfig: baseConfig } = await loadBaseConfig(join(resolvedDir, "base.yaml"));
+  // Load craboodle config
+  const craboodleConfig = await loadCraboodleConfig(join(resolvedDir, "craboodle.yaml"));
 
-  if (opts.verbose && version) {
-    process.stderr.write(`[craboodle] Eval format version: ${version}\n`);
+  if (opts.verbose && craboodleConfig.version) {
+    process.stderr.write(`[craboodle] Eval format version: ${craboodleConfig.version}\n`);
   }
+
+  // Check base config existence
+  const basePath = await checkBaseConfig(join(resolvedDir, "base.yaml"));
 
   // Clean old artifacts before creating new ones
   await cleanOldArtifacts(7, { verbose: opts.verbose });
@@ -87,52 +89,24 @@ async function runCommand(
   // Create artifact directory
   const artifactDir = await mkdtemp(join(tmpdir(), "craboodle-run-"));
 
-  // Write filtered base config (without craboodle keys) for scuttlerun
-  let basePath: string | null = null;
-  if (baseConfig) {
-    basePath = join(artifactDir, "base.yaml");
-    await writeFile(basePath, stringify(baseConfig));
-  }
-
   // Stream header
   streamHeader(artifactDir);
 
-  // Load all scenario configs
-  const scenarioConfigs = new Map<
-    string,
-    Awaited<ReturnType<typeof loadScenarioConfig>>
-  >();
-  for (const scenario of scenarios) {
-    try {
-      const config = await loadScenarioConfig(scenario.configPath);
-      scenarioConfigs.set(scenario.id, config);
-    } catch (err: unknown) {
-      process.stderr.write(
-        `[craboodle] Config error in ${scenario.id}: ${err instanceof Error ? err.message : String(err)}\n`,
-      );
-      process.exit(1);
-    }
-  }
+  // Determine repeats from craboodle config or CLI option
+  const repeats = craboodleConfig.repeats ?? opts.repeats;
 
   // Build work items
   const workItems: WorkItem<RepOutcome>[] = [];
   for (const scenario of scenarios) {
-    const config = scenarioConfigs.get(scenario.id)!;
-    const scenarioRepeats = config.repeats ?? opts.repeats;
-    for (let rep = 1; rep <= scenarioRepeats; rep++) {
+    const checksPath = join(dirname(scenario.configPath), "checks.yaml");
+
+    for (let rep = 1; rep <= repeats; rep++) {
       workItems.push({
         scenarioId: scenario.id,
         rep,
         fn: async (): Promise<RepOutcome> => {
           const repDir = join(artifactDir, scenario.id, `rep-${rep}`);
           await mkdir(repDir, { recursive: true });
-
-          const override = buildScuttlerunOverride(config);
-          const checksFile = buildChecksFile(config);
-
-          // Write checks file
-          const checksPath = join(repDir, "checks.yaml");
-          await writeFile(checksPath, stringify(checksFile));
 
           const outputPath = join(repDir, "output.yaml");
           const gradingPath = join(repDir, "grading.yaml");
@@ -145,10 +119,9 @@ async function runCommand(
 
           // Run scuttlerun
           const scuttlerunResult = await runScuttlerun({
-            override,
+            scenarioPath: scenario.configPath,
             basePath,
             outputPath,
-            tmpDir: repDir,
             agentModel: opts.agentModel,
           });
 
@@ -205,7 +178,7 @@ async function runCommand(
   const scenarioOutputs: ScenarioOutput[] = [];
 
   await executePool(workItems, opts.concurrency, {
-    budgetUsd: maxBudgetUsd,
+    budgetUsd: craboodleConfig.maxBudgetUsd,
     costOf: (outcome: RepOutcome) => {
       if (outcome.type !== "success") return 0;
       let cost = 0;
@@ -214,8 +187,6 @@ async function runCommand(
       return cost;
     },
     onScenarioComplete: (scenarioId, repResults) => {
-      const config = scenarioConfigs.get(scenarioId)!;
-
       const successfulGradings: GradingCheck[][] = [];
       const errors: Array<{ rep: number; stage: string; error: string }> = [];
       let agentCost = 0;
@@ -262,11 +233,7 @@ async function runCommand(
       if (successfulGradings.length === 0) {
         scenarioOutput = {
           id: scenarioId,
-
-          checks: config.checks.map((a) => ({
-            check: a.check,
-            pass_rate: 0,
-          })),
+          checks: [],
           pass_rate: null,
           ...costFields,
           errors,
@@ -305,14 +272,14 @@ async function runCommand(
   }
 
   // Check ratchet threshold
-  if (minPassRate !== undefined) {
+  if (craboodleConfig.minPassRate !== undefined) {
     const failures = scenarioOutputs.filter(
-      (s) => s.pass_rate === null || s.pass_rate < minPassRate,
+      (s) => s.pass_rate === null || s.pass_rate < craboodleConfig.minPassRate!,
     );
     if (failures.length > 0) {
-      process.stderr.write(`[craboodle] Threshold check failed (min_pass_rate: ${minPassRate}):\n`);
+      process.stderr.write(`[craboodle] Threshold check failed (min_pass_rate: ${craboodleConfig.minPassRate}):\n`);
       for (const f of failures) {
-        process.stderr.write(`  ${f.id}: ${f.pass_rate ?? "null"} < ${minPassRate}\n`);
+        process.stderr.write(`  ${f.id}: ${f.pass_rate ?? "null"} < ${craboodleConfig.minPassRate}\n`);
       }
       process.exit(3);
     }
@@ -324,65 +291,29 @@ Directory Structure:
   craboodle discovers scenarios by globbing */scenario.yaml within <evals-dir>:
 
     <evals-dir>/
-    ├── base.yaml                    # Shared defaults (optional)
+    ├── craboodle.yaml                 # Craboodle config (version, thresholds)
+    ├── base.yaml                      # Scuttlerun defaults (optional)
     ├── scenario-a/
-    │   └── scenario.yaml            # Scenario definition
+    │   ├── scenario.yaml              # Scuttlerun input (prompt, config)
+    │   └── checks.yaml                # Pincenez checks (id-as-key format)
     ├── scenario-b/
-    │   └── scenario.yaml
+    │   ├── scenario.yaml
+    │   └── checks.yaml
     └── ...
 
-scenario.yaml Schema:
-  Only 'prompt' and 'checks' are required. All other fields are optional.
+craboodle.yaml Schema:
+  Pipeline configuration. Controls version, thresholds, and repetitions.
 
-    # --- Prompt (required, sent to scuttlerun) ---
-    prompt: |
-      Write a function that validates email addresses.
-
-    # --- Checks (required, sent to pincenez) ---
-    checks:
-      - check: "Output contains a function that validates email format"
-        note: "Look for regex or string parsing that checks for @ and domain"
-      - check: "Function handles edge cases like empty string and missing @"
-
-    # --- Context (optional, sent to pincenez for grading orientation) ---
-    context: |
-      The agent was asked to write an email validation function.
-
-    # --- Repeats override (optional) ---
-    # Per-scenario repeat count. Overrides --repeats for this scenario.
-    repeats: 5
-
-    # --- Scuttlerun overrides (optional) ---
-    # Passthrough: any scuttlerun config fields. Craboodle does not
-    # validate these — they are forwarded to scuttlerun as-is.
-    # Common overrides: model, tools, user.persona, max_turns, project.files
-    # Run 'scuttlerun run --help' for the full scuttlerun config reference.
-    scuttlerun:
-      model: claude-sonnet-4-6
-      user:
-        persona: "A developer who wants thorough validation"
-      project:
-        files:
-          existing-code.py: |
-            def placeholder():
-                pass
-
-  Field Reference:
-    prompt              The task for the agent (required)
-    checks[].check      Binary claim to evaluate (required)
-    checks[].note       Grading hint for the judge (optional)
-    context             Task description for the grader (optional, defaults to prompt)
-    repeats             Per-scenario repeat count override (optional)
-    scuttlerun          Scuttlerun config overrides, not validated (optional)
+    version: "1"                       # Schema version (required)
+    min_pass_rate: 0.8                 # Ratchet threshold — exit 3 if any scenario
+                                       #   falls below (optional, 0-1)
+    max_budget_usd: 10.0               # Budget cap (optional)
+    repeats: 3                          # Repetitions per scenario (optional)
 
 base.yaml Schema:
-  Shared defaults applied to all scenarios. Craboodle owns 'version' and
-  'min_pass_rate'; all other keys pass through to scuttlerun as base config.
+  Pure scuttlerun defaults applied to all scenarios. Passed as base config
+  to scuttlerun. No craboodle-specific keys.
 
-    version: "1"                    # Schema version (required)
-    min_pass_rate: 0.8              # Ratchet threshold — exit 3 if any scenario
-                                    #   falls below (optional, 0-1)
-    # --- Everything below passes through to scuttlerun ---
     model: claude-sonnet-4-6
     tools:
       - Read
@@ -393,8 +324,26 @@ base.yaml Schema:
     project:
       claude_md: |
         Use relative paths. Do not use absolute paths.
-      skills:
-        - ~/.claude/skills/my-skill
+
+scenario.yaml Schema:
+  Pure scuttlerun input file. Contains prompt and any scuttlerun config overrides.
+
+    prompt: |
+      Write a function that validates email addresses.
+
+    # Any other scuttlerun config keys (model, tools, user, project, etc.)
+    model: claude-sonnet-4-6
+    user:
+      persona: "A developer who wants thorough validation"
+
+checks.yaml Schema:
+  Pure pincenez checks file using id-as-key format.
+
+    validates-email:
+      check: "Output contains a function that validates email format"
+      note: "Look for regex or string parsing that checks for @ and domain"
+    handles-edge-cases:
+      check: "Function handles edge cases like empty string and missing @"
 
 Output Format:
   YAML streamed to stdout, scenario by scenario (arrival order):
@@ -511,50 +460,41 @@ program
         }
       }
 
-      // Load and validate base config
-      const base = await loadBaseConfig(join(resolvedDir, "base.yaml"));
+      // Load craboodle config
+      const craboodleConfig = await loadCraboodleConfig(join(resolvedDir, "craboodle.yaml"));
 
-      // Write base config for scuttlerun validation
-      let basePath: string | null = null;
-      let tmpDir: string | null = null;
-      if (base.scuttlerunConfig) {
-        tmpDir = await mkdtemp(join(tmpdir(), "craboodle-list-"));
-        basePath = join(tmpDir, "base.yaml");
-        await writeFile(basePath, stringify(base.scuttlerunConfig));
-      }
+      // Check base config existence
+      const basePath = await checkBaseConfig(join(resolvedDir, "base.yaml"));
 
       // Output base config summary
       const baseSummary: Record<string, unknown> = {};
-      if (base.version) baseSummary.version = base.version;
-      if (base.minPassRate !== undefined) baseSummary.min_pass_rate = base.minPassRate;
+      if (craboodleConfig.version) baseSummary.version = craboodleConfig.version;
+      if (craboodleConfig.minPassRate !== undefined) baseSummary.min_pass_rate = craboodleConfig.minPassRate;
       process.stdout.write(stringify({ base: baseSummary }, { lineWidth: 0 }));
 
-      // Load and validate each scenario
+      // Validate each scenario
       process.stdout.write(`scenarios:\n`);
       let totalChecks = 0;
       let invalidCount = 0;
 
       for (const scenario of scenarios) {
         try {
-          const config = await loadScenarioConfig(scenario.configPath);
-          const checkCount = config.checks.length;
+          // Parse checks.yaml to count checks
+          const checksPath = join(dirname(scenario.configPath), "checks.yaml");
+          const checksContent = await readFile(checksPath, "utf8");
+          const checksData = parse(checksContent) as Record<string, unknown>;
+          const checkCount = Object.keys(checksData).length;
           totalChecks += checkCount;
 
           const item: Record<string, unknown> = {
             id: scenario.id,
             checks: checkCount,
           };
-          if (config.repeats) item.repeats = config.repeats;
 
           // Validate merged scuttlerun config via subprocess
-          if (!tmpDir) {
-            tmpDir = await mkdtemp(join(tmpdir(), "craboodle-list-"));
-          }
-          const override = buildScuttlerunOverride(config);
           const result = await listScuttlerunConfig({
-            override,
+            scenarioPath: scenario.configPath,
             basePath,
-            tmpDir,
           });
 
           item.valid = result.success;
@@ -576,12 +516,6 @@ program
       if (invalidCount > 0) {
         process.stdout.write(stringify({ invalid: invalidCount }, { lineWidth: 0 }));
         process.exit(1);
-      }
-
-      // Clean up temp dir
-      if (tmpDir) {
-        const { rm } = await import("node:fs/promises");
-        await rm(tmpDir, { recursive: true }).catch(() => {});
       }
     } catch (err: unknown) {
       process.stderr.write(
@@ -624,28 +558,8 @@ async function lintCommand(
     process.stderr.write(`[craboodle] Linting ${scenarios.length} scenario(s)\n`);
   }
 
-  // Load base config (validates structure)
-  await loadBaseConfig(join(resolvedDir, "base.yaml"));
-
-  // Create transient temp dir for rubric files
-  const tmpDir = await mkdtemp(join(tmpdir(), "craboodle-lint-"));
-
-  // Load all scenario configs
-  const scenarioConfigs = new Map<
-    string,
-    Awaited<ReturnType<typeof loadScenarioConfig>>
-  >();
-  for (const scenario of scenarios) {
-    try {
-      const config = await loadScenarioConfig(scenario.configPath);
-      scenarioConfigs.set(scenario.id, config);
-    } catch (err: unknown) {
-      process.stderr.write(
-        `[craboodle] Config error in ${scenario.id}: ${err instanceof Error ? err.message : String(err)}\n`,
-      );
-      process.exit(1);
-    }
-  }
+  // Load craboodle config (validates structure)
+  await loadCraboodleConfig(join(resolvedDir, "craboodle.yaml"));
 
   // Stream header
   process.stdout.write("scenarios:\n");
@@ -664,15 +578,10 @@ async function lintCommand(
 
   const promises = scenarios.map((scenario) =>
     limit(async () => {
-      const config = scenarioConfigs.get(scenario.id)!;
-      const checksFile = buildChecksFile(config);
-
-      // Write checks file to temp
-      const checksPath = join(tmpDir, `${scenario.id}-checks.yaml`);
-      await writeFile(checksPath, stringify(checksFile));
+      const checksPath = join(dirname(scenario.configPath), "checks.yaml");
 
       if (opts.verbose) {
-        process.stderr.write(`[craboodle] ${scenario.id}: linting ${config.checks.length} check(s)\n`);
+        process.stderr.write(`[craboodle] ${scenario.id}: linting checks\n`);
       }
 
       const result = await runPincenezLint({
@@ -711,10 +620,6 @@ async function lintCommand(
   // Stream totals
   streamLintTotals(totals);
 
-  // Clean up temp dir
-  const { rm } = await import("node:fs/promises");
-  await rm(tmpDir, { recursive: true }).catch(() => {});
-
   if (!hasAnySuccess) {
     process.exit(2);
   }
@@ -749,17 +654,17 @@ program
 
 program
   .command("init <dir>")
-  .description("Scaffold a new evals directory with base.yaml and example scenario")
+  .description("Scaffold a new evals directory with craboodle.yaml, base.yaml, and example scenario")
   .action(async (dir: string) => {
     const resolvedDir = resolve(dir);
 
     // Check if directory already has eval files
     try {
-      await access(join(resolvedDir, "base.yaml"));
-      process.stderr.write(`[craboodle] ${resolvedDir} already contains base.yaml\n`);
+      await access(join(resolvedDir, "craboodle.yaml"));
+      process.stderr.write(`[craboodle] ${resolvedDir} already contains craboodle.yaml\n`);
       process.exit(1);
     } catch {
-      // base.yaml doesn't exist, good
+      // craboodle.yaml doesn't exist, good
     }
 
     try {
@@ -779,17 +684,16 @@ program
     // Create directory structure
     await mkdir(join(resolvedDir, "hello-world"), { recursive: true });
 
-    // Write base.yaml
-    const baseContent = stringify({ version: "1", min_pass_rate: 0.8 });
-    await writeFile(join(resolvedDir, "base.yaml"), baseContent);
+    // Write craboodle.yaml
+    const craboodleContent = stringify({ version: "1", min_pass_rate: 0.8 });
+    await writeFile(join(resolvedDir, "craboodle.yaml"), craboodleContent);
 
-    // Write example scenario
+    // Write base.yaml (empty with comment)
+    await writeFile(join(resolvedDir, "base.yaml"), "# Scuttlerun defaults for all scenarios\n");
+
+    // Write example scenario.yaml (pure scuttlerun config)
     const scenarioObj = {
       prompt: "Write a function that adds two numbers. Include input validation.\n",
-      checks: [
-        { check: "Output contains a function that adds two numbers", note: "Look for a function definition with addition logic" },
-        { check: "Function validates inputs are numbers", note: "Look for type checking, parsing, or error handling for non-numeric inputs" },
-      ],
     };
     const scenarioDoc = new Document(scenarioObj);
     visit(scenarioDoc, {
@@ -801,9 +705,24 @@ program
     });
     await writeFile(join(resolvedDir, "hello-world", "scenario.yaml"), scenarioDoc.toString({ lineWidth: 0 }));
 
+    // Write example checks.yaml (pincenez id-as-key format)
+    const checksObj = {
+      "adds-numbers": {
+        check: "Output contains a function that adds two numbers",
+        note: "Look for a function definition with addition logic",
+      },
+      "validates-inputs": {
+        check: "Function validates inputs are numbers",
+        note: "Look for type checking, parsing, or error handling for non-numeric inputs",
+      },
+    };
+    await writeFile(join(resolvedDir, "hello-world", "checks.yaml"), stringify(checksObj, { lineWidth: 0 }));
+
     process.stdout.write(`Created ${resolvedDir}/\n`);
+    process.stdout.write(`  craboodle.yaml\n`);
     process.stdout.write(`  base.yaml\n`);
     process.stdout.write(`  hello-world/scenario.yaml\n`);
+    process.stdout.write(`  hello-world/checks.yaml\n`);
     process.stdout.write(`\nNext steps:\n`);
     process.stdout.write(`  craboodle list ${dir}     # validate scenarios\n`);
     process.stdout.write(`  craboodle lint ${dir}     # check quality\n`);

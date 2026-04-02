@@ -2,15 +2,8 @@ prompt: |
   Write a function called isPalindrome that checks if a string is a palindrome.
   Save it to palindrome.js.
 
-checks:
-  - check: "A test file was written before or alongside the production code"
-    note: "Look for a test file being created via Write tool. The test should appear before or at the same time as palindrome.js"
-  - check: "The function isPalindrome exists in palindrome.js"
-  - check: "At least one test case validates palindrome behavior"
-
-scuttlerun:
-  project:
-    claude_md: |
-      ## Development Rules
-      Always write tests before production code. Create a test file first,
-      then write the implementation to make the tests pass.
+project:
+  claude_md: |
+    ## Development Rules
+    Always write tests before production code. Create a test file first,
+    then write the implementation to make the tests pass.
