@@ -18,7 +18,7 @@ Each tool does one job. craboodle is the conductor; scuttlerun and pincenez are 
 
 ### Principles
 
-- **Run + grade + report.** No built-in comparison mode. The primitive is: run configs, grade outputs, report. Comparison (with/without skill, model A vs B, etc.) is a pattern that callers compose on top by defining scenario variants.
+- **Run + grade + report.** The primitive is: run configs, grade outputs, report.
 - **Layered configuration.** A base scuttlerun config (`base.yaml`) defines shared defaults (model, tools, permissions). Each scenario overrides via a `scuttlerun:` passthrough block. Uses scuttlerun's existing config merging — no new config system.
 - **Raw data, not verdicts.** Craboodle runs each scenario N times and reports fractional pass rates per check (0.33, 0.67, 1.0). It does not apply thresholds or majority voting — callers decide what constitutes pass/fail. Majority voting (e.g., "pass if ≥50% of reps pass") is an interpretation that belongs to callers; craboodle never reduces fractions to binary.
 - **Streaming output.** Results stream to stdout as YAML, scenario by scenario. Each scenario's block is written atomically as it completes, providing human-readable progress during long runs. The output is valid YAML after each scenario block is fully written. Consumers process the final complete output after craboodle exits.
@@ -33,7 +33,7 @@ Each tool does one job. craboodle is the conductor; scuttlerun and pincenez are 
 
 1. **Replace run-eval.sh.** The ~1000-line bash orchestrator becomes a TypeScript CLI with better error handling, types, and testability. Skillcraft's `run-eval.sh` and `aggregate-results.sh` are fully replaced.
 
-2. **General-purpose eval orchestrator.** Designed for generality; skill eval is the first proven use case. Works with any directory of scenarios — CLAUDE.md/system prompt tuning, sub-agent definitions, model comparison, combo config evaluation, regression testing, skill evals. The skill concept is unknown to craboodle — the abstraction is clean enough for any use case without being designed around a specific one.
+2. **General-purpose eval orchestrator.** Designed for generality; skill eval is the first proven use case. Works with any directory of scenarios — CLAUDE.md/system prompt tuning, sub-agent definitions, combo config evaluation, regression testing, skill evals. The skill concept is unknown to craboodle — the abstraction is clean enough for any use case without being designed around a specific one.
 
 3. **Scenario directory convention.** `craboodle run <evals-dir>` discovers scenarios by globbing `*/scenario.yaml`. Each scenario directory contains its definition. This convention is inherited from the skillcraft refactoring and proven in practice.
 
@@ -43,7 +43,6 @@ Each tool does one job. craboodle is the conductor; scuttlerun and pincenez are 
 
 ## Non-Goals (for now)
 
-- Built-in comparison modes (A/B, with/without). Callers define variants as separate scenarios and compute deltas downstream.
 - Pass/fail gating beyond the ratchet. The `min_pass_rate` ratchet provides a binary gate; any finer-grained interpretation (majority voting, weighted scoring, etc.) remains a caller concern.
 - Pluggable runners or graders. scuttlerun + pincenez only.
 - Iteration or history management. Each `craboodle run` is independent. Callers manage versioning externally (git, timestamped copies, etc.).

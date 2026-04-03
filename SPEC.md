@@ -6,7 +6,7 @@ craboodle is a TypeScript CLI that orchestrates evaluation pipelines for Claude 
 
 Think of craboodle as **rspec for eval scenarios**: given a directory of scenarios, run them, grade them, report results. Each invocation is a fresh run — no history, no iterations, no accumulated state.
 
-craboodle is **designed for generality**; skill eval is the first proven use case. It works with any directory of scenario definitions — CLAUDE.md tuning, sub-agent definitions, model comparisons, combo config evaluation, regression testing, skill evaluations, or any other use case requiring "run Claude, grade the output, report results."
+craboodle is **designed for generality**; skill eval is the first proven use case. It works with any directory of scenario definitions — CLAUDE.md tuning, sub-agent definitions, combo config evaluation, regression testing, skill evaluations, or any other use case requiring "run Claude, grade the output, report results."
 
 ### Motivating Problem
 
@@ -18,7 +18,6 @@ craboodle is a **test runner**, not:
 
 - **A session driver** — scuttlerun runs sessions. craboodle invokes scuttlerun.
 - **A grader** — pincenez grades outputs. craboodle invokes pincenez.
-- **A comparison framework** — craboodle runs and grades. Comparison semantics (with/without skill, model A vs B) are patterns that callers compose by defining scenario variants.
 - **A history manager** — each run is independent. No iterations, no benchmark accumulation.
 - **A CI system** — craboodle writes to stdout. CI captures it.
 
