@@ -319,8 +319,6 @@ base.yaml Schema:
       - Read
       - Write
       - Bash
-    user:
-      turn_policy: single
     project:
       claude_md: |
         Use relative paths. Do not use absolute paths.

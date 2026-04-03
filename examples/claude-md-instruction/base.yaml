@@ -6,8 +6,6 @@ tools:
   - Bash
   - Glob
   - Grep
-user:
-  turn_policy: single
 project:
   claude_md: |
     ## Development Rules

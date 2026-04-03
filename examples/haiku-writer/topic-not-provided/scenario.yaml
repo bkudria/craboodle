@@ -1,5 +1,4 @@
 prompt: |
   I want a haiku. Save it to a file when you're done.
 user:
-  turn_policy: reactive
-  max_user_turns: 2
+  max_turns: 2

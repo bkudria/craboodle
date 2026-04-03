@@ -1,5 +1,4 @@
 prompt: |
   I'd like a haiku about autumn leaves. Save it to a file.
 user:
-  turn_policy: reactive
-  max_user_turns: 2
+  max_turns: 2
