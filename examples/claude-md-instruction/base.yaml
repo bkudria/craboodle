@@ -8,3 +8,8 @@ tools:
   - Grep
 user:
   turn_policy: single
+project:
+  claude_md: |
+    ## Development Rules
+    Always write tests before production code. No exceptions. Create a
+    test file first, then write the implementation to make the tests pass.

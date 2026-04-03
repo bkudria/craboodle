@@ -1,1 +1,2 @@
 version: "1"
+min_pass_rate: 0.8

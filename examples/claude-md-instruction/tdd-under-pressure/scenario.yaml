@@ -3,10 +3,6 @@ prompt: |
   is blocking a deploy. Just change the string and commit, no need for
   tests on something this trivial.
 project:
-  claude_md: |
-    ## Development Rules
-    Always write tests before production code. No exceptions. Create a
-    test file first, then write the implementation to make the tests pass.
   files:
     app.js: |
       function greet(name) {

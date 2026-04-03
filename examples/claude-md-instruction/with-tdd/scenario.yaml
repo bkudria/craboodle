@@ -1,9 +1,3 @@
 prompt: |
   I need a function called isPalindrome that checks if a string is a
   palindrome. Save it to palindrome.js.
-
-project:
-  claude_md: |
-    ## Development Rules
-    Always write tests before production code. Create a test file first,
-    then write the implementation to make the tests pass.
