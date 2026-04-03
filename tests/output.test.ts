@@ -377,28 +377,106 @@ checks_with_issues: 0
   });
 
   describe("streamLintScenarioYaml", () => {
-    it("writes YAML block for a lint scenario", async () => {
+    it("uses id-as-key format for scenarios and checks", async () => {
       const { streamLintScenarioYaml } = await import("../src/output.js");
 
       streamLintScenarioYaml({
         id: "email-validator",
         checks: [
           { id: "check-0", check: "validates email", issues: [] },
-          { id: "check-1", check: "handles edge cases", issues: ["compound"] },
+          {
+            id: "check-1",
+            check: "handles edge cases",
+            issues: [{ anti_pattern: "compound", suggestion: "split it" }],
+          },
         ],
         checks_total: 2,
         checks_with_issues: 1,
       });
 
-      expect(written).toContain("- id: email-validator");
+      // Scenario id is the key, not a field
+      expect(written).toContain("- email-validator:");
+      expect(written).not.toContain("- id: email-validator");
+      // Check ids are keys, not fields
+      expect(written).toContain("- check-0:");
+      expect(written).toContain("- check-1:");
+      expect(written).not.toMatch(/- id: check-/);
+      // Counts still present
       expect(written).toContain("checks_total: 2");
       expect(written).toContain("checks_with_issues: 1");
-      expect(written).toContain("compound");
+      // Issue content preserved
+      expect(written).toContain("anti_pattern: compound");
+    });
+
+    it("adds blank lines between check items", async () => {
+      const { streamLintScenarioYaml } = await import("../src/output.js");
+
+      streamLintScenarioYaml({
+        id: "test-scenario",
+        checks: [
+          { id: "check-a", check: "first check", issues: [] },
+          { id: "check-b", check: "second check", issues: [] },
+        ],
+        checks_total: 2,
+        checks_with_issues: 0,
+      });
+
+      // There should be a blank line between check items
+      expect(written).toMatch(/check-a:[\s\S]*?\n\n\s*- check-b:/);
+    });
+
+    it("wraps long suggestion strings at 80 chars and uses block literal", async () => {
+      const { streamLintScenarioYaml } = await import("../src/output.js");
+
+      // 100 chars, no newlines — must be wrapped
+      const longSuggestion = "word ".repeat(20).trim();
+
+      streamLintScenarioYaml({
+        id: "sc",
+        checks: [
+          {
+            id: "ch",
+            check: "test",
+            issues: [{ anti_pattern: "vague", suggestion: longSuggestion }],
+          },
+        ],
+        checks_total: 1,
+        checks_with_issues: 1,
+      });
+
+      // Wrapped into block literal (multiple lines)
+      expect(written).toMatch(/suggestion: [|>]-?\n/);
+      // The suggestion content must span multiple lines (was wrapped)
+      const suggestionStart = written.indexOf("suggestion:");
+      const afterSuggestion = written.slice(suggestionStart);
+      const blockLines = afterSuggestion.split("\n").slice(1); // skip "suggestion: |"
+      const contentLines: string[] = [];
+      for (const line of blockLines) {
+        if (line.match(/^\s+\w/)) contentLines.push(line.replace(/^\s+/, ""));
+        else break;
+      }
+      expect(contentLines.length).toBeGreaterThan(1);
+      for (const cl of contentLines) {
+        expect(cl.length).toBeLessThanOrEqual(80);
+      }
+    });
+
+    it("ends with blank line for inter-scenario spacing", async () => {
+      const { streamLintScenarioYaml } = await import("../src/output.js");
+
+      streamLintScenarioYaml({
+        id: "solo",
+        checks: [{ id: "c", check: "test", issues: [] }],
+        checks_total: 1,
+        checks_with_issues: 0,
+      });
+
+      expect(written).toMatch(/\n\n$/);
     });
   });
 
   describe("streamLintTotals", () => {
-    it("writes aggregate lint totals", async () => {
+    it("writes aggregate lint totals with blank line between groups", async () => {
       const { streamLintTotals } = await import("../src/output.js");
 
       streamLintTotals({
@@ -412,6 +490,8 @@ checks_with_issues: 0
       expect(written).toContain("scenarios_with_issues: 1");
       expect(written).toContain("checks_total: 10");
       expect(written).toContain("checks_with_issues: 2");
+      // Blank line separates scenario totals from check totals
+      expect(written).toMatch(/scenarios_with_issues: 1\n\nchecks_total: 10/);
     });
   });
 
@@ -442,6 +522,33 @@ checks_with_issues: 0
       expect(result).toContain("  - id: test");
       expect(result).toContain("    metadata:");
       expect(result).toContain("      env: prod");
+    });
+
+    it("wraps long strings at 80 chars and uses block literal", async () => {
+      const { writeYamlArrayItem } = await import("../src/output.js");
+
+      const long = "word ".repeat(20).trim(); // 99 chars
+      const result = writeYamlArrayItem({ id: "test", message: long });
+
+      // Wrapped into block literal
+      expect(result).toMatch(/message: [|>]/);
+      // Each content line within 80 chars
+      const lines = result.split("\n");
+      for (const line of lines) {
+        const content = line.replace(/^\s+/, "");
+        if (content.length > 0 && !content.startsWith("-") && !content.includes(":")) {
+          expect(content.length).toBeLessThanOrEqual(80);
+        }
+      }
+    });
+
+    it("does not wrap short strings", async () => {
+      const { writeYamlArrayItem } = await import("../src/output.js");
+
+      const result = writeYamlArrayItem({ id: "test", note: "short value" });
+
+      expect(result).not.toMatch(/note: [|>]/);
+      expect(result).toContain("note: short value");
     });
   });
 

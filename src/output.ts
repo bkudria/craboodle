@@ -1,4 +1,4 @@
-import { parse, stringify, Document, Scalar, visit } from "yaml";
+import { parse, stringify, Document, Scalar, visit, isSeq, isNode } from "yaml";
 import { z } from "zod/v4";
 
 const GradingCheckSchema = z.object({
@@ -108,15 +108,39 @@ export function averageResults(
   return { checks, pass_rate: scenarioPassRate };
 }
 
+function wordWrap(text: string, width: number): string {
+  const words = text.split(" ");
+  const lines: string[] = [];
+  let cur = "";
+  for (const word of words) {
+    if (cur.length === 0) {
+      cur = word;
+    } else if (cur.length + 1 + word.length <= width) {
+      cur += " " + word;
+    } else {
+      lines.push(cur);
+      cur = word;
+    }
+  }
+  if (cur) lines.push(cur);
+  return lines.join("\n");
+}
+
+function wrapAndBlockify(_key: unknown, node: Scalar): void {
+  if (typeof node.value !== "string") return;
+  let value: string = node.value;
+  if (!value.includes("\n") && value.length > 80) {
+    value = wordWrap(value, 80);
+    node.value = value;
+  }
+  if (value.includes("\n")) {
+    node.type = Scalar.BLOCK_LITERAL;
+  }
+}
+
 export function writeYamlArrayItem(item: Record<string, unknown>): string {
   const doc = new Document(item);
-  visit(doc, {
-    Scalar(_key, node) {
-      if (typeof node.value === "string" && node.value.includes("\n")) {
-        node.type = Scalar.BLOCK_LITERAL;
-      }
-    },
-  });
+  visit(doc, { Scalar: wrapAndBlockify });
   const serialized = doc.toString({ lineWidth: 0 }).trimEnd();
   const lines = serialized.split("\n");
   return lines
@@ -163,7 +187,7 @@ export function streamTotalCost(totalCostUsd: number): void {
 export interface LintCheckOutput {
   id: string;
   check: string;
-  issues: string[];
+  issues: unknown[];
 }
 
 export interface LintScenarioOutput {
@@ -192,16 +216,54 @@ export function parseLintResult(yaml: string): LintCheckOutput[] {
 }
 
 export function streamLintScenarioYaml(scenario: LintScenarioOutput): void {
+  const checks = scenario.checks.map((c) => {
+    const { id, ...rest } = c;
+    return { [id]: rest };
+  });
+
   const item: Record<string, unknown> = {
-    id: scenario.id,
-    checks: scenario.checks,
-    checks_total: scenario.checks_total,
-    checks_with_issues: scenario.checks_with_issues,
+    [scenario.id]: {
+      checks,
+      checks_total: scenario.checks_total,
+      checks_with_issues: scenario.checks_with_issues,
+    },
   };
 
-  process.stdout.write(writeYamlArrayItem(item) + "\n");
+  const doc = new Document(item);
+  visit(doc, { Scalar: wrapAndBlockify });
+
+  // Add blank lines between check items
+  const checksNode = doc.getIn([scenario.id, "checks"], true);
+  if (isSeq(checksNode)) {
+    for (let i = 1; i < checksNode.items.length; i++) {
+      const checkItem = checksNode.items[i];
+      if (isNode(checkItem)) {
+        checkItem.spaceBefore = true;
+      }
+    }
+  }
+
+  const serialized = doc.toString({ lineWidth: 0 }).trimEnd();
+  const lines = serialized.split("\n");
+  const yamlItem = lines
+    .map((line, i) => {
+      if (i === 0) return `  - ${line}`;
+      if (line === "") return "";
+      return `    ${line}`;
+    })
+    .join("\n");
+
+  process.stdout.write(yamlItem + "\n\n");
 }
 
 export function streamLintTotals(totals: LintTotals): void {
-  process.stdout.write(stringify(totals, { lineWidth: 0 }));
+  process.stdout.write(stringify({
+    scenarios_total: totals.scenarios_total,
+    scenarios_with_issues: totals.scenarios_with_issues,
+  }, { lineWidth: 0 }));
+  process.stdout.write("\n");
+  process.stdout.write(stringify({
+    checks_total: totals.checks_total,
+    checks_with_issues: totals.checks_with_issues,
+  }, { lineWidth: 0 }));
 }
