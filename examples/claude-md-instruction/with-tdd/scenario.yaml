@@ -1,6 +1,6 @@
 prompt: |
-  Write a function called isPalindrome that checks if a string is a palindrome.
-  Save it to palindrome.js.
+  I need a function called isPalindrome that checks if a string is a
+  palindrome. Save it to palindrome.js.
 
 project:
   claude_md: |

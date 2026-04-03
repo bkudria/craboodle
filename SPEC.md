@@ -521,9 +521,19 @@ craboodle/
 ├── tests/
 │   └── ...
 └── examples/
-    ├── base.yaml             # Example base config
-    └── example-scenario/
-        └── scenario.yaml     # Example scenario
+    ├── hook-and-settings/    # Example: hook/settings constraint eval
+    │   ├── base.yaml
+    │   ├── works-without-bash/
+    │   └── hook-gates-commit/
+    ├── haiku-writer/         # Example: skill eval with multi-turn
+    │   ├── base.yaml
+    │   ├── topic-provided/
+    │   └── topic-not-provided/
+    └── claude-md-instruction/ # Example: TDD instruction eval
+        ├── base.yaml
+        ├── craboodle.yaml
+        ├── with-tdd/
+        └── tdd-under-pressure/
 ```
 
 ---

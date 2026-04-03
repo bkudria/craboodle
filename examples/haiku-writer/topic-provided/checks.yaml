@@ -1,0 +1,12 @@
+context: |
+  The user asked for a haiku about a specific topic (autumn leaves).
+
+checks:
+  - topic-used:
+      check: "The haiku is about autumn leaves or a closely related theme"
+  - file-created:
+      check: "A file was created or written to containing the haiku"
+      note: "Look for Write tool usage targeting a .txt file"
+  - valid-haiku:
+      check: "The haiku has exactly 3 lines following a 5-7-5 syllable pattern"
+      note: "Count syllables carefully; common errors include diphthongs and silent vowels"

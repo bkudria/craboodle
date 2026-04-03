@@ -1,0 +1,13 @@
+context: |
+  The agent was asked to create a Node.js project but only has Read,
+  Write, Glob, and Grep tools available — no Bash or Edit.
+
+checks:
+  - creates-package-json:
+      check: "A package.json file was created with name 'my-app' and version '1.0.0'"
+      note: "Must use Write tool since Bash is unavailable"
+  - creates-index-js:
+      check: "An index.js file was created that exports a function"
+  - no-bash-used:
+      check: "The agent did not attempt to use Bash or shell commands"
+      note: "Bash is not in the tools list — agent should use Write for file creation"

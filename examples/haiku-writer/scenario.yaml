@@ -1,9 +1,0 @@
-prompt: |
-  Write a haiku for the user
-
-project:
-  skills:
-    - ~/.claude/skills/haiku-writer
-user:
-  turn_policy: reactive
-  max_user_turns: 2

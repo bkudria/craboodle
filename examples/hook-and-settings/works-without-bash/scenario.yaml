@@ -1,0 +1,9 @@
+prompt: |
+  I need a simple Node.js project set up. Create a package.json with
+  name "my-app" and version "1.0.0", and an index.js that exports a
+  hello world function.
+tools:
+  - Read
+  - Write
+  - Glob
+  - Grep

@@ -1,6 +1,0 @@
-prompt: |
-  Write a function that validates email addresses.
-
-model: claude-sonnet-4-6
-user:
-  persona: "A developer who wants thorough validation"
