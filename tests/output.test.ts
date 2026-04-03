@@ -258,7 +258,8 @@ cost_usd: 0.0042
         pass_rate: 1.0,
       });
 
-      expect(written).toContain("- id: email-validator");
+      expect(written).toContain("- email-validator:");
+      expect(written).not.toContain("- id: email-validator");
       expect(written).toContain("pass_rate: 1");
       expect(written).toContain("check: test passes");
     });
@@ -292,6 +293,68 @@ cost_usd: 0.0042
       expect(written).toContain("cost_usd: 0.0294");
       expect(written).toContain("agent_cost_usd: 0.0234");
       expect(written).toContain("grading_cost_usd: 0.006");
+    });
+
+    it("adds blank lines between check items", async () => {
+      const { streamScenarioYaml } = await import("../src/output.js");
+
+      streamScenarioYaml({
+        id: "test-scenario",
+        checks: [
+          { check: "first check", pass_rate: 1.0 },
+          { check: "second check", pass_rate: 1.0 },
+        ],
+        pass_rate: 1.0,
+      });
+
+      expect(written).toMatch(/first check[\s\S]*?\n\n\s*- check: second check/);
+    });
+
+    it("adds blank lines between failure items", async () => {
+      const { streamScenarioYaml } = await import("../src/output.js");
+
+      streamScenarioYaml({
+        id: "test-scenario",
+        checks: [
+          {
+            check: "failing check",
+            pass_rate: 0,
+            failures: [
+              { rep: 1, evidence: "first failure" },
+              { rep: 2, evidence: "second failure" },
+            ],
+          },
+        ],
+        pass_rate: 0,
+      });
+
+      expect(written).toMatch(/rep: 1[\s\S]*?\n\n\s*- rep: 2/);
+    });
+
+    it("ends with blank line for inter-scenario spacing", async () => {
+      const { streamScenarioYaml } = await import("../src/output.js");
+
+      streamScenarioYaml({
+        id: "solo",
+        checks: [{ check: "test", pass_rate: 1.0 }],
+        pass_rate: 1.0,
+      });
+
+      expect(written).toMatch(/\n\n$/);
+    });
+
+    it("adds blank line before summary fields", async () => {
+      const { streamScenarioYaml } = await import("../src/output.js");
+
+      streamScenarioYaml({
+        id: "test",
+        checks: [{ check: "test", pass_rate: 1.0 }],
+        pass_rate: 1.0,
+        cost_usd: 0.05,
+      });
+
+      // Blank line between checks and pass_rate
+      expect(written).toMatch(/\n\n\s+pass_rate:/);
     });
 
     it("handles null pass_rate for all-failed scenarios", async () => {
@@ -596,10 +659,10 @@ checks_with_issues: 0
       const parsed = parse(written);
       expect(parsed.artifact_dir).toBe("/tmp/craboodle-run-abc");
       expect(parsed.scenarios).toHaveLength(2);
-      expect(parsed.scenarios[0].id).toBe("scenario-a");
-      expect(parsed.scenarios[0].pass_rate).toBe(0.83);
-      expect(parsed.scenarios[1].id).toBe("scenario-b");
-      expect(parsed.scenarios[1].pass_rate).toBe(1.0);
+      expect(Object.keys(parsed.scenarios[0])[0]).toBe("scenario-a");
+      expect(parsed.scenarios[0]["scenario-a"].pass_rate).toBe(0.83);
+      expect(Object.keys(parsed.scenarios[1])[0]).toBe("scenario-b");
+      expect(parsed.scenarios[1]["scenario-b"].pass_rate).toBe(1.0);
     });
   });
 });

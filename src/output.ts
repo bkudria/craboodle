@@ -1,4 +1,4 @@
-import { parse, stringify, Document, Scalar, visit, isSeq, isNode } from "yaml";
+import { parse, stringify, Document, Scalar, visit, isSeq, isMap, isNode } from "yaml";
 import { z } from "zod/v4";
 
 const GradingCheckSchema = z.object({
@@ -154,28 +154,67 @@ export function streamHeader(artifactDir: string): void {
 }
 
 export function streamScenarioYaml(scenario: ScenarioOutput): void {
-  const item: Record<string, unknown> = { id: scenario.id };
-
-  item.checks = scenario.checks;
-  item.pass_rate = scenario.pass_rate;
+  const content: Record<string, unknown> = {
+    checks: scenario.checks,
+    pass_rate: scenario.pass_rate,
+  };
 
   if (scenario.cost_usd !== undefined) {
-    item.cost_usd = Math.round(scenario.cost_usd * 10000) / 10000;
+    content.cost_usd = Math.round(scenario.cost_usd * 10000) / 10000;
   }
 
   if (scenario.agent_cost_usd !== undefined && scenario.agent_cost_usd > 0) {
-    item.agent_cost_usd = Math.round(scenario.agent_cost_usd * 10000) / 10000;
+    content.agent_cost_usd = Math.round(scenario.agent_cost_usd * 10000) / 10000;
   }
 
   if (scenario.grading_cost_usd !== undefined && scenario.grading_cost_usd > 0) {
-    item.grading_cost_usd = Math.round(scenario.grading_cost_usd * 10000) / 10000;
+    content.grading_cost_usd = Math.round(scenario.grading_cost_usd * 10000) / 10000;
   }
 
   if (scenario.errors && scenario.errors.length > 0) {
-    item.errors = scenario.errors;
+    content.errors = scenario.errors;
   }
 
-  process.stdout.write(writeYamlArrayItem(item) + "\n");
+  const item = { [scenario.id]: content };
+
+  const doc = new Document(item);
+  visit(doc, { Scalar: wrapAndBlockify });
+
+  // Add blank lines between items in all sequences (checks, failures, errors)
+  visit(doc, (_key, node) => {
+    if (isSeq(node)) {
+      for (let i = 1; i < node.items.length; i++) {
+        const seqItem = node.items[i];
+        if (isNode(seqItem)) {
+          seqItem.spaceBefore = true;
+        }
+      }
+    }
+  });
+
+  // Add blank line before summary fields (pass_rate, cost, etc.)
+  const contentNode = doc.getIn([scenario.id], true);
+  if (isMap(contentNode)) {
+    for (const pair of contentNode.items) {
+      const key = pair.key;
+      if (isNode(key) && (key as Scalar).value === "pass_rate") {
+        key.spaceBefore = true;
+        break;
+      }
+    }
+  }
+
+  const serialized = doc.toString({ lineWidth: 0 }).trimEnd();
+  const lines = serialized.split("\n");
+  const yamlItem = lines
+    .map((line, i) => {
+      if (i === 0) return `  - ${line}`;
+      if (line === "") return "";
+      return `    ${line}`;
+    })
+    .join("\n");
+
+  process.stdout.write(yamlItem + "\n\n");
 }
 
 export function streamTotalCost(totalCostUsd: number): void {
