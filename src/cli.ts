@@ -335,13 +335,14 @@ scenario.yaml Schema:
       persona: "A developer who wants thorough validation"
 
 checks.yaml Schema:
-  Pure pincenez checks file using id-as-key format.
+  Pure pincenez checks file. Each check is an id-as-key object in a list.
 
-    validates-email:
-      check: "Output contains a function that validates email format"
-      note: "Look for regex or string parsing that checks for @ and domain"
-    handles-edge-cases:
-      check: "Function handles edge cases like empty string and missing @"
+    checks:
+      - validates-email:
+          check: "Output contains a function that validates email format"
+          note: "Look for regex or string parsing that checks for @ and domain"
+      - handles-edge-cases:
+          check: "Function handles edge cases like empty string and missing @"
 
 Output Format:
   YAML streamed to stdout, scenario by scenario (arrival order):
@@ -703,16 +704,22 @@ program
     });
     await writeFile(join(resolvedDir, "hello-world", "scenario.yaml"), scenarioDoc.toString({ lineWidth: 0 }));
 
-    // Write example checks.yaml (pincenez id-as-key format)
+    // Write example checks.yaml (pincenez id-as-key format under checks: array)
     const checksObj = {
-      "adds-numbers": {
-        check: "Output contains a function that adds two numbers",
-        note: "Look for a function definition with addition logic",
-      },
-      "validates-inputs": {
-        check: "Function validates inputs are numbers",
-        note: "Look for type checking, parsing, or error handling for non-numeric inputs",
-      },
+      checks: [
+        {
+          "adds-numbers": {
+            check: "Output contains a function that adds two numbers",
+            note: "Look for a function definition with addition logic",
+          },
+        },
+        {
+          "validates-inputs": {
+            check: "Function validates inputs are numbers",
+            note: "Look for type checking, parsing, or error handling for non-numeric inputs",
+          },
+        },
+      ],
     };
     await writeFile(join(resolvedDir, "hello-world", "checks.yaml"), stringify(checksObj, { lineWidth: 0 }));
 
