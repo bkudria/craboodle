@@ -73,6 +73,20 @@ describe("discovery", () => {
     expect(scenarios[0].id).toBe("has-scenario");
   });
 
+  it("discovers scenario directories with .yml extension", async () => {
+    const { discoverScenarios } = await import("../src/discovery.js");
+
+    await mkdir(join(tmpDir, "yaml-ext"));
+    await writeFile(join(tmpDir, "yaml-ext", "scenario.yaml"), "prompt: hi\n");
+    await mkdir(join(tmpDir, "yml-ext"));
+    await writeFile(join(tmpDir, "yml-ext", "scenario.yml"), "prompt: hi\n");
+
+    const scenarios = await discoverScenarios(tmpDir);
+
+    expect(scenarios).toHaveLength(2);
+    expect(scenarios.map((s) => s.id)).toEqual(["yaml-ext", "yml-ext"]);
+  });
+
   it("ignores files at evals dir root", async () => {
     const { discoverScenarios } = await import("../src/discovery.js");
 

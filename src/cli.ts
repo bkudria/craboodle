@@ -288,7 +288,7 @@ async function runCommand(
 
 const HELP_TEXT = `
 Directory Structure:
-  craboodle discovers scenarios by globbing */scenario.yaml within <evals-dir>:
+  craboodle discovers scenarios by globbing */scenario.{yaml,yml} within <evals-dir>:
 
     <evals-dir>/
     ├── craboodle.yaml                 # Craboodle config (version, thresholds)
@@ -671,7 +671,7 @@ program
       const dirStat = await stat(resolvedDir);
       if (dirStat.isDirectory()) {
         const { glob: globFn } = await import("glob");
-        const existing = await globFn("*/scenario.yaml", { cwd: resolvedDir });
+        const existing = await globFn("*/scenario.{yaml,yml}", { cwd: resolvedDir });
         if (existing.length > 0) {
           process.stderr.write(`[craboodle] ${resolvedDir} already contains scenario files\n`);
           process.exit(1);
