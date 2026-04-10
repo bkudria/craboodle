@@ -482,7 +482,8 @@ program
           const checksPath = join(dirname(scenario.configPath), "checks.yaml");
           const checksContent = await readFile(checksPath, "utf8");
           const checksData = parse(checksContent) as Record<string, unknown>;
-          const checkCount = Object.keys(checksData).length;
+          const checksArray = checksData.checks;
+          const checkCount = Array.isArray(checksArray) ? checksArray.length : Object.keys(checksData).length;
           totalChecks += checkCount;
 
           const item: Record<string, unknown> = {
