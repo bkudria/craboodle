@@ -413,7 +413,7 @@ program
     "Max parallel (scenario, rep) work items",
     "10",
   )
-  .option("--scenario <pattern>", "Filter scenarios by ID (exact, glob, or comma-separated)")
+  .option("--scenario, --scenarios <pattern>", "Filter scenarios by ID (exact, glob, or comma-separated)")
   .option("--agent-model <model>", "Override scuttlerun model for all scenarios")
   .option("--grader-model <model>", "Override pincenez model for all checks")
   .option("-v, --verbose", "Verbose logging (to stderr)")
@@ -438,7 +438,7 @@ program
 program
   .command("list <evals-dir>")
   .description("List and validate scenarios (including scuttlerun config validation)")
-  .option("--scenario <pattern>", "Filter scenarios by ID (exact, glob, or comma-separated)")
+  .option("--scenario, --scenarios <pattern>", "Filter scenarios by ID (exact, glob, or comma-separated)")
   .option("-v, --verbose", "Verbose logging (to stderr)")
   .action(async (evalsDir: string, cmdOpts: { scenario?: string; verbose?: boolean }) => {
     try {
@@ -633,7 +633,7 @@ program
   .command("lint <evals-dir>")
   .description("Lint checks for quality issues without running evals")
   .option("--concurrency <n>", "Max parallel pincenez lint invocations", "10")
-  .option("--scenario <pattern>", "Filter scenarios by ID (exact, glob, or comma-separated)")
+  .option("--scenario, --scenarios <pattern>", "Filter scenarios by ID (exact, glob, or comma-separated)")
   .option("--grader-model <model>", "Override pincenez model for linting")
   .option("-v, --verbose", "Verbose logging (to stderr)")
   .action(async (evalsDir: string, cmdOpts: Record<string, string>) => {

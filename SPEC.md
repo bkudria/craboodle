@@ -10,7 +10,7 @@ craboodle is **designed for generality**; skill eval is the first proven use cas
 
 ### Motivating Problem
 
-Evaluating Claude Code configurations (skills, prompts, CLAUDE.md variants, sub-agents, combo configs) requires orchestrating a multi-step pipeline: build scuttlerun configs, run sessions, grade outputs against checks, handle repetitions, and average results. This orchestration was previously a ~1000-line bash script (`run-eval.sh`) tightly coupled to skillcraft. craboodle extracts the orchestration into a standalone, typed, testable tool.
+Evaluating Claude Code configurations (skills, prompts, CLAUDE.md variants, sub-agents, combo configs) requires orchestrating a multi-step pipeline: run sessions, grade outputs against checks, handle repetitions, and average results. This orchestration was previously a ~1000-line bash script (`run-eval.sh`) tightly coupled to skillcraft. craboodle extracts the orchestration into a standalone, typed, testable tool.
 
 ### Non-Goals
 
@@ -37,8 +37,8 @@ For design philosophy and principles behind these choices, see GOALS.md.
 | Dependencies | Hardwired to scuttlerun + pincenez | Opinionated stack; no pluggable runners/graders |
 | Scenario discovery | Directory convention | Glob `*/scenario.yaml` in evals dir |
 | Repeats | Built-in with averaging | Average pass rates across N reps |
-| Pass rate semantics | Raw fractional data with optional ratchet | Reports 0.33, 0.67, etc. Optional `min_pass_rate` in base.yaml gates the exit code |
-| Configuration | Layered (base.yaml + scenario scuttlerun: passthrough) | Uses scuttlerun's config merging; no craboodle-specific config file |
+| Pass rate semantics | Raw fractional data with optional ratchet | Reports 0.33, 0.67, etc. Optional `min_pass_rate` in craboodle.yaml gates the exit code |
+| Configuration | Separated tool configs | craboodle.yaml (pipeline), base.yaml (scuttlerun defaults), scenario.yaml (scuttlerun), checks.yaml (pincenez) |
 | Output | Streaming YAML to stdout | Per-scenario streaming; valid YAML after each scenario block completes. Arrival order. Consumers process final output |
 | Output style | Compact pass, verbose fail | Passing checks: check + pass_rate. Failures include per-rep evidence |
 | Artifacts | Temp dir (preserved) | Intermediate files kept for debugging; temp dir path included in output YAML |
@@ -59,29 +59,20 @@ For design philosophy and principles behind these choices, see GOALS.md.
                     ▼              ▼              ▼
              scenario-a/     scenario-b/     scenario-c/
              scenario.yaml    scenario.yaml    scenario.yaml
+             checks.yaml      checks.yaml      checks.yaml
                     │              │              │
-                    ▼              ▼              ▼
-            ┌───────────────────────────────────────────┐
-            │          Config Builder                    │
-            │                                           │
-            │  base.yaml + scenario.yaml scuttlerun:      │
-            │  → merged scuttlerun config               │
-            │                                           │
-            │  scenario.yaml checks + context              │
-            │  → pincenez checks file                   │
-            └───────┬───────────────────────────────────┘
-                    │
           ┌─────── │ ──── x repeats ────────┐
           │        ▼                        │
           │  ┌─────────────┐                │
           │  │ scuttlerun   │ → output.yaml  │
-          │  │ (temp dir)   │               │
+          │  │  base.yaml + │               │
+          │  │  scenario.yaml               │
           │  └─────────────┘                │
           │        │                        │
           │        ▼                        │
           │  ┌─────────────┐                │
           │  │ pincenez     │ → grading.yaml │
-          │  │ (temp dir)   │               │
+          │  │  checks.yaml │               │
           │  └─────────────┘                │
           └─────────────────────────────────┘
                     │
@@ -97,16 +88,13 @@ For design philosophy and principles behind these choices, see GOALS.md.
 
 Discovers scenarios by globbing `<evals-dir>/*/scenario.yaml`. Each scenario directory's basename is its ID. Scenarios are sorted alphabetically by ID for deterministic ordering.
 
-#### 2. Config Builder
+#### 2. Config Pass-through
 
-Builds a scuttlerun config for each scenario by merging:
-1. A **base config** (`<evals-dir>/base.yaml`, optional) defining shared defaults — model, tools, permissions, user persona
-2. The **scenario's scuttlerun overrides** (the `scuttlerun:` key in scenario.yaml) — any scuttlerun config fields
-3. The **scenario's prompt** (mapped to scuttlerun's `prompt:` field)
+Each scenario directory contains two files for the two subprocess tools:
+- **scenario.yaml** — a pure scuttlerun config file (prompt + any scuttlerun overrides)
+- **checks.yaml** — a pure pincenez checks file (checks array with optional context)
 
-Uses scuttlerun's native config merging: later files override earlier ones (deep merge on objects, replace on scalars/arrays). craboodle writes a temporary override config and passes it alongside base.yaml to scuttlerun.
-
-Also builds a pincenez checks file from the scenario's checks and optional context. The checks file contains the `checks` array and, when present, the scenario's `context` field (passed through to orient the grading judge).
+craboodle passes these files directly to the respective tools. For scuttlerun, the optional **base config** (`<evals-dir>/base.yaml`) provides shared defaults — model, tools, permissions, user persona. scuttlerun's native config merging handles the layering: `scuttlerun base.yaml scenario.yaml` (later files override earlier ones, deep merge on objects, replace on scalars/arrays).
 
 #### 3. Runner + Grader (Flat Pool)
 
@@ -132,177 +120,233 @@ craboodle does not impose its own timeouts. scuttlerun handles session timeouts;
 
 ### Directory Structure
 
-The evals directory contains only scenario definitions and configuration — no run artifacts:
+The evals directory contains scenario definitions, pipeline configuration, and shared defaults — no run artifacts:
 
 ```
 <evals-dir>/
+├── craboodle.yaml                   # Pipeline config (version, min_pass_rate, etc.)
 ├── base.yaml                        # Shared scuttlerun defaults (optional)
 ├── scenario-a/
-│   ├── scenario.yaml                # Scenario definition
-│   └── fixture.py                  # Additional files (optional, ignored by craboodle)
+│   ├── scenario.yaml                # Scuttlerun input (prompt, config overrides)
+│   ├── checks.yaml                  # Pincenez checks (id-as-key format)
+│   └── fixture.py                   # Additional files (optional, ignored by craboodle)
 ├── scenario-b/
-│   └── scenario.yaml
+│   ├── scenario.yaml
+│   └── checks.yaml
 └── scenario-c/
-    └── scenario.yaml
+    ├── scenario.yaml
+    └── checks.yaml
 ```
 
 Intermediate artifacts (scuttlerun outputs, pincenez gradings) are written to a temp directory that is preserved after the run for debugging. The temp directory path is included in the YAML output.
 
 ### scenario.yaml
 
-A scenario has four craboodle-understood fields (`prompt`, `checks`, `context`, `repeats`) and an optional `scuttlerun:` passthrough block. The scenario's ID is its directory basename. Validation is strict: `prompt` and `checks` (with at least one check) are required, and unknown top-level keys cause a configuration error (exit 1). The `scuttlerun:` block is not validated by craboodle — it passes through to scuttlerun as-is.
+A pure scuttlerun config file. Contains the prompt and any scuttlerun config overrides for this scenario. The scenario's ID is its directory basename. craboodle does not parse or validate scenario.yaml — it passes the file directly to scuttlerun alongside base.yaml.
 
-Scenario directories may contain additional files (fixtures, reference data, seed files) alongside scenario.yaml. craboodle ignores all files except scenario.yaml — additional files can be referenced by the scenario's scuttlerun config (e.g., via `project.files` relative paths).
+Scenario directories may contain additional files (fixtures, reference data, seed files) alongside scenario.yaml and checks.yaml. craboodle ignores all files except these two — additional files can be referenced by the scenario's scuttlerun config (e.g., via `project.files` relative paths).
 
 ```yaml
-# --- Context (optional, sent to pincenez checks file) ---
-# Orients the grading judge about what task produced this output.
-# Passes through to pincenez checks file's context field.
+# scenario.yaml — pure scuttlerun config
+prompt: |
+  Write a function that validates email addresses.
+model: claude-sonnet-4-6
+user:
+  persona: "A developer who wants thorough validation"
+project:
+  files:
+    existing-code.py: |
+      # This file is available to the agent during the session
+      def placeholder():
+          pass
+```
+
+### checks.yaml
+
+A pure pincenez checks file. Each check uses pincenez's id-as-key format. An optional `context:` field orients the grading judge about what task produced the output.
+
+```yaml
+# checks.yaml — pure pincenez checks
 context: |
   The agent was asked to write an email validation function.
   The user cares about edge case handling.
 
-# --- Prompt (sent to scuttlerun) ---
-prompt: |
-  Write a function that validates email addresses.
-
-# --- Checks (sent to pincenez as checks file) ---
 checks:
-  - check: "Output contains a function that validates email format"
-    note: "Look for regex or string parsing that checks for @ and domain"
-  - check: "Function handles edge cases like empty string and missing @"
-  - check: "Output includes at least one test or example usage"
-
-# --- Repeats override (optional) ---
-# Per-scenario repeat count. Overrides --repeats for this scenario.
-repeats: 5
-
-# --- Scuttlerun overrides (optional) ---
-# Passthrough: any scuttlerun config fields. Craboodle does not
-# validate these — they are forwarded to scuttlerun as-is.
-# Common overrides: model, tools, user.persona, max_turns, project.files
-scuttlerun:
-  model: claude-sonnet-4-6
-  user:
-    persona: "A developer who wants thorough validation"
-  project:
-    files:
-      existing-code.py: |
-        # This file is available to the agent during the session
-        def placeholder():
-            pass
+  - validates-format:
+      check: "Output contains a function that validates email format"
+      note: "Look for regex or string parsing that checks for @ and domain"
+  - handles-edge-cases:
+      check: "Function handles edge cases like empty string and missing @"
+  - includes-tests:
+      check: "Output includes at least one test or example usage"
 ```
 
 ### Evaluating Different Config Types
 
-The `scuttlerun:` passthrough block in scenario.yaml supports all Claude Code configuration types via scuttlerun's `project:` and `sdk:` fields. Here are scenario patterns for each:
+Since scenario.yaml is a pure scuttlerun config, it supports all Claude Code configuration types via scuttlerun's `project:` and `sdk:` fields directly. Here are scenario patterns for each (showing scenario.yaml and checks.yaml pairs):
 
 #### Skills
 
 ```yaml
+# scenario.yaml
 prompt: "Write a haiku about the ocean"
+project:
+  skills:
+    - ~/.claude/skills/haiku-writer
+```
+
+```yaml
+# checks.yaml
 checks:
-  - check: "Output follows 5-7-5 syllable pattern"
-scuttlerun:
-  project:
-    skills:
-      - ~/.claude/skills/haiku-writer
+  - follows-pattern:
+      check: "Output follows 5-7-5 syllable pattern"
 ```
 
 #### CLAUDE.md Instructions
 
 ```yaml
+# scenario.yaml
 prompt: "Write a function to parse URLs"
+project:
+  claude_md: |
+    Always validate user input before processing.
+    Include error handling for edge cases.
+```
+
+```yaml
+# checks.yaml
 checks:
-  - check: "Output includes input validation for malformed URLs"
-scuttlerun:
-  project:
-    claude_md: |
-      Always validate user input before processing.
-      Include error handling for edge cases.
+  - validates-input:
+      check: "Output includes input validation for malformed URLs"
 ```
 
 #### Hooks and Settings
 
 ```yaml
+# scenario.yaml
 prompt: "Commit the changes"
+project:
+  settings:
+    hooks:
+      PreToolUse:
+        - matcher: Bash
+          hooks:
+            - type: command
+              command: "echo 'hook fired'"
+```
+
+```yaml
+# checks.yaml
 checks:
-  - check: "Agent ran the pre-commit hook before committing"
-scuttlerun:
-  project:
-    settings:
-      hooks:
-        PreToolUse:
-          - matcher: Bash
-            hooks:
-              - type: command
-                command: "echo 'hook fired'"
+  - hook-ran:
+      check: "Agent ran the pre-commit hook before committing"
 ```
 
 #### MCP Servers
 
 ```yaml
+# scenario.yaml
 prompt: "Look up the documentation for the 'zod' library"
+sdk:
+  mcp_servers:
+    docs-server:
+      command: "node"
+      args: ["./docs-mcp-server.js"]
+```
+
+```yaml
+# checks.yaml
 checks:
-  - check: "Output contains Zod-specific API details"
-scuttlerun:
-  sdk:
-    mcp_servers:
-      docs-server:
-        command: "node"
-        args: ["./docs-mcp-server.js"]
+  - zod-details:
+      check: "Output contains Zod-specific API details"
 ```
 
 #### Sub-agents (Agent Tool)
 
 ```yaml
+# scenario.yaml
 prompt: "Research the best approach and implement it"
+tools:
+  - Read
+  - Write
+  - Edit
+  - Bash
+  - Glob
+  - Grep
+  - Agent
+```
+
+```yaml
+# checks.yaml
 checks:
-  - check: "Agent spawned a sub-agent for research before implementing"
-scuttlerun:
-  tools:
-    - Read
-    - Write
-    - Edit
-    - Bash
-    - Glob
-    - Grep
-    - Agent
+  - used-sub-agent:
+      check: "Agent spawned a sub-agent for research before implementing"
 ```
 
 #### Full-Stack Combos
 
 ```yaml
+# scenario.yaml
 prompt: "Set up a new TypeScript project"
+project:
+  skills:
+    - ~/.claude/skills/typescript-setup
+  claude_md: |
+    Use strict TypeScript. Always enable noUncheckedIndexedAccess.
+  settings:
+    env:
+      NODE_ENV: development
+  files:
+    .prettierrc: |
+      { "semi": false, "singleQuote": true }
+```
+
+```yaml
+# checks.yaml
 checks:
-  - check: "Project uses the configured linter"
-  - check: "tsconfig matches the team standard"
-scuttlerun:
-  project:
-    skills:
-      - ~/.claude/skills/typescript-setup
-    claude_md: |
-      Use strict TypeScript. Always enable noUncheckedIndexedAccess.
-    settings:
-      env:
-        NODE_ENV: development
-    files:
-      .prettierrc: |
-        { "semi": false, "singleQuote": true }
+  - uses-linter:
+      check: "Project uses the configured linter"
+  - tsconfig-matches:
+      check: "tsconfig matches the team standard"
 ```
 
 ---
 
-### base.yaml
+### craboodle.yaml
 
-Optional file at the evals directory root. Contains shared scuttlerun defaults and optional craboodle settings. craboodle extracts its own keys (`min_pass_rate`, `max_budget_usd`) and passes the rest through to scuttlerun as config defaults:
+Pipeline configuration file at the evals directory root. Contains craboodle-specific settings only — no scuttlerun fields.
 
 ```yaml
-# base.yaml — shared defaults + craboodle settings
+# craboodle.yaml — pipeline config
 version: "1"              # required: eval format version (craboodle rejects unknown versions)
-min_pass_rate: 0.8        # craboodle: minimum acceptable scenario pass rate (0-1)
-max_budget_usd: 5.0       # craboodle: stop scheduling reps after this total spend (optional)
-model: claude-sonnet-4-6  # scuttlerun: everything else passes through
+min_pass_rate: 0.8        # minimum acceptable scenario pass rate (0-1, optional)
+max_budget_usd: 5.0       # stop scheduling reps after this total spend (optional)
+repeats: 5                # default repetitions per scenario (optional, overrides CLI default)
+```
+
+#### `version` (required)
+
+The eval format version. Currently the only supported value is `"1"`. craboodle rejects unknown versions with a clear error, ensuring forward compatibility as the format evolves. When craboodle.yaml is missing entirely, version checking is skipped.
+
+#### `min_pass_rate` (ratchet)
+
+When present, craboodle checks each scenario's pass_rate against this threshold after all scenarios complete. If any scenario falls below the threshold (or has `pass_rate: null` from all-failed reps), craboodle reports the failures to stderr and exits with code 3. This provides a CI-compatible binary signal from non-binary eval scores, analogous to a code coverage ratchet.
+
+#### `max_budget_usd` (budget cap)
+
+When present, craboodle tracks cumulative cost (agent + grading) across all work items. Once total spend exceeds the cap, remaining work items are skipped with a budget-exceeded error. Completed reps are still reported. This is best-effort — up to `concurrency` items may be in flight when the cap is reached.
+
+#### `repeats`
+
+Default number of repetitions per scenario. Overrides the CLI default of 3. The `--repeats` CLI flag overrides this value.
+
+### base.yaml
+
+Optional file at the evals directory root. Contains shared scuttlerun defaults only — model, tools, permissions, user persona. craboodle passes this file directly to scuttlerun; it does not parse or modify it.
+
+```yaml
+# base.yaml — shared scuttlerun defaults
+model: claude-sonnet-4-6
 tools:
   - Read
   - Write
@@ -315,27 +359,15 @@ project:
     Use relative paths. Do not use absolute paths.
 ```
 
-#### `version` (required)
-
-The eval format version. Currently the only supported value is `"1"`. craboodle rejects unknown versions with a clear error, ensuring forward compatibility as the format evolves. When base.yaml is missing entirely (eval dirs without shared config), version checking is skipped.
-
-#### `min_pass_rate` (ratchet)
-
-When present, craboodle checks each scenario's pass_rate against this threshold after all scenarios complete. If any scenario falls below the threshold (or has `pass_rate: null` from all-failed reps), craboodle reports the failures to stderr and exits with code 3. This provides a CI-compatible binary signal from non-binary eval scores, analogous to a code coverage ratchet.
-
-#### `max_budget_usd` (budget cap)
-
-When present, craboodle tracks cumulative cost (agent + grading) across all work items. Once total spend exceeds the cap, remaining work items are skipped with a budget-exceeded error. Completed reps are still reported. This is best-effort — up to `concurrency` items may be in flight when the cap is reached.
-
 ### Config Merging
 
-For each scenario, craboodle produces a scuttlerun config by merging:
+For each scenario, craboodle invokes scuttlerun with both config files:
 
-1. **base.yaml** (if it exists)
-2. **scenario.yaml's scuttlerun: block** (passthrough, not validated by craboodle)
-3. **scenario.yaml's prompt** (mapped to scuttlerun's `prompt:` field)
+```bash
+scuttlerun base.yaml scenario.yaml
+```
 
-This uses scuttlerun's `base.yaml override.yaml` merging behavior. craboodle extracts its own fields (`version`, `min_pass_rate`, `max_budget_usd`) from base.yaml and writes a cleaned copy (without those fields) for scuttlerun, ensuring scuttlerun only receives fields it understands. It then writes a temporary override config (scuttlerun block + prompt) and passes both files to scuttlerun.
+scuttlerun's native config merging handles the layering: later files override earlier ones (deep merge on objects, replace on scalars/arrays). craboodle does not build, extract, or transform configs — it passes files through directly.
 
 ---
 
@@ -351,18 +383,18 @@ Usage:
   craboodle init <dir>                    Scaffold a new evals directory
 
 Run options:
-  --repeats N            Number of repetitions per scenario (default: 3, overridable per-scenario)
+  --repeats N            Number of repetitions per scenario (default: 3, or craboodle.yaml repeats)
   --concurrency N        Max parallel (scenario, rep) work items (default: 10)
-  --scenario PATTERN     Filter scenarios by ID (exact match, glob wildcard, or comma-separated)
+  --scenario, --scenarios PATTERN     Filter scenarios by ID (exact match, glob wildcard, or comma-separated)
   --agent-model MODEL    Override scuttlerun model for all scenarios
   --grader-model MODEL   Override pincenez model for all checks
 
 List options:
-  --scenario PATTERN     Filter scenarios by ID
+  --scenario, --scenarios PATTERN     Filter scenarios by ID
 
 Lint options:
   --concurrency N        Max parallel pincenez lint invocations (default: 10)
-  --scenario PATTERN     Filter scenarios by ID
+  --scenario, --scenarios PATTERN     Filter scenarios by ID
   --grader-model MODEL   Override pincenez model for linting
 
 General:
@@ -378,7 +410,7 @@ General:
 | 0 | Pipeline completed successfully with at least some successful data. Individual rep/scenario failures are reported in output but do not affect the exit code. |
 | 1 | Configuration error (invalid scenario YAML, missing required fields, invalid `min_pass_rate`, zero checks) |
 | 2 | Infrastructure error (scuttlerun or pincenez binary not found, evals directory missing, zero scenarios discovered, or zero successful reps across all scenarios). |
-| 3 | Threshold failure: one or more scenarios fell below `min_pass_rate` (see base.yaml). Failures are reported to stderr. |
+| 3 | Threshold failure: one or more scenarios fell below `min_pass_rate` (see craboodle.yaml). Failures are reported to stderr. |
 
 ---
 
@@ -434,7 +466,7 @@ total_cost_usd: 0.045
 2. **Load base config** — read `<evals-dir>/base.yaml` if it exists
 3. **Create temp directory** — for all intermediate artifacts
 4. **Stream `artifact_dir`** — write the temp directory path to stdout as the first YAML key
-5. **Build work items:** For each scenario, build merged scuttlerun config (base + scenario scuttlerun: overrides + prompt) and pincenez checks file (checks + optional context). Enumerate all (scenario, rep) pairs.
+5. **Build work items:** Enumerate all (scenario, rep) pairs. Each scenario has a scenario.yaml (passed to scuttlerun) and checks.yaml (passed to pincenez).
 6. **Execute work pool (flat pool, up to --concurrency):** All (scenario, rep) pairs compete for pool slots. For each pair:
    a. Run `scuttlerun <config>` → `<tmpdir>/<scenario>/rep-M/output.yaml`
    b. Run `pincenez <checks-file> <output>` → `<tmpdir>/<scenario>/rep-M/grading.yaml`
@@ -452,10 +484,10 @@ total_cost_usd: 0.045
 
 craboodle invokes scuttlerun as a subprocess:
 ```bash
-scuttlerun base.yaml scenario-override.yaml > output.yaml
+scuttlerun base.yaml scenario.yaml > output.yaml
 ```
 
-craboodle builds a temporary override config from scenario.yaml's `scuttlerun:` block and `prompt`, then passes it alongside base.yaml to scuttlerun for merging. The raw scuttlerun YAML transcript (streaming conversation output) is captured as-is — no extraction or transformation step.
+base.yaml provides shared defaults; scenario.yaml provides scenario-specific config (prompt + overrides). Both are pure scuttlerun config files passed directly — craboodle does not build, extract, or transform them. The raw scuttlerun YAML transcript (streaming conversation output) is captured as-is — no extraction or transformation step.
 
 ### pincenez
 
@@ -464,7 +496,7 @@ craboodle invokes pincenez as a subprocess:
 pincenez checks.yaml output.yaml > grading.yaml
 ```
 
-craboodle builds checks files from scenario checks and optional context. Checks pass through directly since scenarios already use pincenez's `check`/`note` format. Pincenez receives the transcript file as its primary input. Tool call arguments in the transcript contain file contents, which the grading judge can inspect directly. Pincenez can also use its Read tool to inspect the scuttlerun project directory when checks require filesystem-level verification — the transcript includes the project dir path.
+Each scenario's checks.yaml is a pure pincenez checks file passed directly — craboodle does not build or transform it. Pincenez receives the transcript file as its primary input. Tool call arguments in the transcript contain file contents, which the grading judge can inspect directly. Pincenez can also use its Read tool to inspect the scuttlerun project directory when checks require filesystem-level verification — the transcript includes the project dir path.
 
 ### skillcraft (post-extraction)
 
@@ -509,11 +541,10 @@ craboodle/
 ├── GOALS.md                 # Design goals and philosophy
 ├── src/
 │   ├── cli.ts               # Commander CLI entry point
-│   ├── config.ts            # Scenario and base config parsing (Zod)
+│   ├── config.ts            # craboodle.yaml config parsing
 │   ├── discovery.ts         # Scenario directory discovery
-│   ├── builder.ts           # Config builder (merge base + scenario → scuttlerun config + checks file)
 │   ├── pool.ts              # Flat (scenario, rep) work pool with concurrency control
-│   ├── runner.ts            # scuttlerun invocation (run) and pincenez invocation (grade) per rep
+│   ├── runner.ts            # scuttlerun/pincenez subprocess invocation per rep
 │   ├── output.ts            # Results averaging and streaming YAML output
 │   └── cleanup.ts           # Old artifact directory cleanup
 ├── tests/
@@ -522,16 +553,28 @@ craboodle/
     ├── hook-and-settings/    # Example: hook/settings constraint eval
     │   ├── base.yaml
     │   ├── works-without-bash/
+    │   │   ├── scenario.yaml
+    │   │   └── checks.yaml
     │   └── hook-gates-commit/
+    │       ├── scenario.yaml
+    │       └── checks.yaml
     ├── haiku-writer/         # Example: skill eval with multi-turn
     │   ├── base.yaml
     │   ├── topic-provided/
+    │   │   ├── scenario.yaml
+    │   │   └── checks.yaml
     │   └── topic-not-provided/
+    │       ├── scenario.yaml
+    │       └── checks.yaml
     └── claude-md-instruction/ # Example: TDD instruction eval
-        ├── base.yaml
         ├── craboodle.yaml
+        ├── base.yaml
         ├── with-tdd/
+        │   ├── scenario.yaml
+        │   └── checks.yaml
         └── tdd-under-pressure/
+            ├── scenario.yaml
+            └── checks.yaml
 ```
 
 ---
