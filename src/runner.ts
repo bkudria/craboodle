@@ -106,6 +106,7 @@ export async function listScuttlerunConfig(
 export interface RunPincenezLintOptions {
   checksPath: string;
   graderModel?: string;
+  context?: string;
 }
 
 export type LintSubprocessResult =
@@ -115,11 +116,14 @@ export type LintSubprocessResult =
 export async function runPincenezLint(
   options: RunPincenezLintOptions,
 ): Promise<LintSubprocessResult> {
-  const { checksPath, graderModel } = options;
+  const { checksPath, graderModel, context } = options;
 
   const args: string[] = ["lint"];
   if (graderModel) {
     args.push("--model", graderModel);
+  }
+  if (context) {
+    args.push("--context", context);
   }
   args.push(checksPath);
 

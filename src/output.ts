@@ -19,7 +19,7 @@ export type GradingCheck = z.infer<typeof GradingCheckSchema>;
 export interface CheckOutput {
   check: string;
   pass_rate: number;
-  failures?: Array<{ rep: number; evidence: string }>;
+  failures?: Array<{ rep: number; evidence: string; transcript?: string }>;
 }
 
 export interface ScenarioOutput {
@@ -64,6 +64,7 @@ export function parseGrading(yaml: string): GradingResult {
 
 export function averageResults(
   repGradings: GradingCheck[][],
+  repTranscripts?: string[],
 ): { checks: CheckOutput[]; pass_rate: number } {
   if (repGradings.length === 0) {
     return { checks: [], pass_rate: 0 };
@@ -75,14 +76,18 @@ export function averageResults(
   for (let i = 0; i < checkCount; i++) {
     const check = repGradings[0][i].check;
     let passSum = 0;
-    const failures: Array<{ rep: number; evidence: string }> = [];
+    const failures: Array<{ rep: number; evidence: string; transcript?: string }> = [];
 
     for (let rep = 0; rep < repGradings.length; rep++) {
       const result = repGradings[rep][i];
       if (result.pass === true) {
         passSum += 1;
       } else {
-        failures.push({ rep: rep + 1, evidence: result.evidence });
+        failures.push({
+          rep: rep + 1,
+          evidence: result.evidence,
+          ...(repTranscripts?.[rep] ? { transcript: repTranscripts[rep] } : {}),
+        });
       }
     }
 

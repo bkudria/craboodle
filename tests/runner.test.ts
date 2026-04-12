@@ -205,6 +205,21 @@ describe("runner", () => {
       expect(args).toContain("claude-sonnet-4-6");
     });
 
+    it("forwards --context when context is provided", async () => {
+      const { runPincenezLint } = await import("../src/runner.js");
+
+      mockExecFileCall((cb) => cb(null, "checks: []\n", ""));
+
+      await runPincenezLint({
+        checksPath: "/path/to/checks.yaml",
+        context: "Write a function that adds two numbers",
+      });
+
+      const [, args] = mockExecFile.mock.calls[0];
+      expect(args).toContain("--context");
+      expect(args).toContain("Write a function that adds two numbers");
+    });
+
     it("returns error with stderr on failure", async () => {
       const { runPincenezLint } = await import("../src/runner.js");
 

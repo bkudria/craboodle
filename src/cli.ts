@@ -38,7 +38,7 @@ interface RunOptions {
 }
 
 type RepOutcome =
-  | { type: "success"; grading: GradingCheck[]; costUsd: number | null; gradingCostUsd: number | null }
+  | { type: "success"; grading: GradingCheck[]; costUsd: number | null; gradingCostUsd: number | null; transcriptPath: string }
   | { type: "error"; rep: number; stage: string; message: string; transcriptPath?: string };
 
 async function runCommand(
@@ -167,7 +167,7 @@ async function runCommand(
           const outputContent = await readFile(outputPath, "utf8");
           const costUsd = parseCostFromTranscript(outputContent);
 
-          return { type: "success", grading: gradingResult.checks, costUsd, gradingCostUsd: gradingResult.costUsd };
+          return { type: "success", grading: gradingResult.checks, costUsd, gradingCostUsd: gradingResult.costUsd, transcriptPath: outputPath };
         },
       });
     }
@@ -188,6 +188,7 @@ async function runCommand(
     },
     onScenarioComplete: (scenarioId, repResults) => {
       const successfulGradings: GradingCheck[][] = [];
+      const repTranscripts: string[] = [];
       const errors: Array<{ rep: number; stage: string; error: string }> = [];
       let agentCost = 0;
       let gradingCost = 0;
@@ -197,6 +198,7 @@ async function runCommand(
           const outcome = result.data;
           if (outcome.type === "success") {
             successfulGradings.push(outcome.grading);
+            repTranscripts.push(outcome.transcriptPath);
             hasAnySuccess = true;
             if (outcome.costUsd !== null) {
               agentCost += outcome.costUsd;
@@ -239,7 +241,7 @@ async function runCommand(
           errors,
         };
       } else {
-        const averaged = averageResults(successfulGradings);
+        const averaged = averageResults(successfulGradings, repTranscripts);
         scenarioOutput = {
           id: scenarioId,
 
@@ -584,9 +586,22 @@ async function lintCommand(
         process.stderr.write(`[craboodle] ${scenario.id}: linting checks\n`);
       }
 
+      // Read scenario prompt to pass as context for tautological detection
+      let context: string | undefined;
+      try {
+        const scenarioContent = await readFile(scenario.configPath, "utf8");
+        const scenarioYaml = parse(scenarioContent) as Record<string, unknown>;
+        if (typeof scenarioYaml?.prompt === "string") {
+          context = scenarioYaml.prompt;
+        }
+      } catch {
+        // scenario.yaml is optional for lint — proceed without context
+      }
+
       const result = await runPincenezLint({
         checksPath,
         graderModel: opts.graderModel,
+        context,
       });
 
       if (!result.success) {
@@ -654,7 +669,7 @@ program
 
 program
   .command("init <dir>")
-  .description("Scaffold a new evals directory with craboodle.yaml, base.yaml, and example scenario")
+  .description("Scaffold a new evals directory with craboodle.yaml and example scenario")
   .action(async (dir: string) => {
     const resolvedDir = resolve(dir);
 
@@ -687,9 +702,6 @@ program
     // Write craboodle.yaml
     const craboodleContent = stringify({ version: "1", min_pass_rate: 0.8 });
     await writeFile(join(resolvedDir, "craboodle.yaml"), craboodleContent);
-
-    // Write base.yaml (empty with comment)
-    await writeFile(join(resolvedDir, "base.yaml"), "# Scuttlerun defaults for all scenarios\n");
 
     // Write example scenario.yaml (pure scuttlerun config)
     const scenarioObj = {
@@ -726,7 +738,6 @@ program
 
     process.stdout.write(`Created ${resolvedDir}/\n`);
     process.stdout.write(`  craboodle.yaml\n`);
-    process.stdout.write(`  base.yaml\n`);
     process.stdout.write(`  hello-world/scenario.yaml\n`);
     process.stdout.write(`  hello-world/checks.yaml\n`);
     process.stdout.write(`\nNext steps:\n`);
