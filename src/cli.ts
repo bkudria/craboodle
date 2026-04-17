@@ -4,7 +4,7 @@ import { Command } from "commander";
 import { dirname, join } from "node:path";
 import { mkdtemp, writeFile, mkdir, readFile, access, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { stringify, parse, Document, Scalar, visit } from "yaml";
+import { stringify, parse } from "yaml";
 import { resolve } from "node:path";
 
 import { loadCraboodleConfig, checkBaseConfig } from "./config.js";
@@ -669,7 +669,7 @@ program
 
 program
   .command("init <dir>")
-  .description("Scaffold a new evals directory with craboodle.yaml and example scenario")
+  .description("Scaffold a new evals directory with craboodle.yaml")
   .action(async (dir: string) => {
     const resolvedDir = resolve(dir);
 
@@ -696,51 +696,15 @@ program
       // directory doesn't exist, we'll create it
     }
 
-    // Create directory structure
-    await mkdir(join(resolvedDir, "hello-world"), { recursive: true });
+    await mkdir(resolvedDir, { recursive: true });
 
-    // Write craboodle.yaml
     const craboodleContent = stringify({ version: "1", min_pass_rate: 0.8 });
     await writeFile(join(resolvedDir, "craboodle.yaml"), craboodleContent);
 
-    // Write example scenario.yaml (pure scuttlerun config)
-    const scenarioObj = {
-      prompt: "Write a function that adds two numbers. Include input validation.\n",
-    };
-    const scenarioDoc = new Document(scenarioObj);
-    visit(scenarioDoc, {
-      Scalar(_key, node) {
-        if (typeof node.value === "string" && node.value.includes("\n")) {
-          node.type = Scalar.BLOCK_LITERAL;
-        }
-      },
-    });
-    await writeFile(join(resolvedDir, "hello-world", "scenario.yaml"), scenarioDoc.toString({ lineWidth: 0 }));
-
-    // Write example checks.yaml (pincenez id-as-key format under checks: array)
-    const checksObj = {
-      checks: [
-        {
-          "adds-numbers": {
-            check: "Output contains a function that adds two numbers",
-            note: "Look for a function definition with addition logic",
-          },
-        },
-        {
-          "validates-inputs": {
-            check: "Function validates inputs are numbers",
-            note: "Look for type checking, parsing, or error handling for non-numeric inputs",
-          },
-        },
-      ],
-    };
-    await writeFile(join(resolvedDir, "hello-world", "checks.yaml"), stringify(checksObj, { lineWidth: 0 }));
-
     process.stdout.write(`Created ${resolvedDir}/\n`);
     process.stdout.write(`  craboodle.yaml\n`);
-    process.stdout.write(`  hello-world/scenario.yaml\n`);
-    process.stdout.write(`  hello-world/checks.yaml\n`);
     process.stdout.write(`\nNext steps:\n`);
+    process.stdout.write(`  Create <scenario-id>/scenario.yaml and <scenario-id>/checks.yaml\n`);
     process.stdout.write(`  craboodle list ${dir}     # validate scenarios\n`);
     process.stdout.write(`  craboodle lint ${dir}     # check quality\n`);
     process.stdout.write(`  craboodle run ${dir}      # run eval pipeline\n`);
