@@ -9,6 +9,7 @@ export interface CraboodleConfig {
 }
 
 const SUPPORTED_VERSIONS = ["1"];
+const KNOWN_KEYS = ["version", "min_pass_rate", "max_budget_usd", "repeats"];
 
 export async function loadCraboodleConfig(
   path: string,
@@ -26,6 +27,13 @@ export async function loadCraboodleConfig(
       return {};
     }
     throw err;
+  }
+
+  const unknownKeys = Object.keys(raw).filter((k) => !KNOWN_KEYS.includes(k));
+  if (unknownKeys.length > 0) {
+    throw new Error(
+      `craboodle.yaml has unknown key(s): ${unknownKeys.join(", ")} (supported: ${KNOWN_KEYS.join(", ")})`,
+    );
   }
 
   // Validate version (required when file exists)

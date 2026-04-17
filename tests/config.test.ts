@@ -143,6 +143,19 @@ describe("config", () => {
       await expect(loadCraboodleConfig(tmpDir)).rejects.toThrow();
     });
 
+    it("throws on unknown top-level keys", async () => {
+      const { loadCraboodleConfig } = await import("../src/config.js");
+      const configPath = join(tmpDir, "craboodle.yaml");
+      await writeFile(
+        configPath,
+        stringify({ version: "1", max_budgett_usd: 5.0 }),
+      );
+
+      await expect(loadCraboodleConfig(configPath)).rejects.toThrow(
+        /unknown.*max_budgett_usd|max_budgett_usd.*unknown/i,
+      );
+    });
+
     it("allows all fields to be optional except version", async () => {
       const { loadCraboodleConfig } = await import("../src/config.js");
       const configPath = join(tmpDir, "craboodle.yaml");
