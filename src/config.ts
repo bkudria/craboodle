@@ -80,3 +80,10 @@ export async function checkBaseConfig(path: string): Promise<string | null> {
     return null;
   }
 }
+
+export function resolveRepeats(
+  cli: number | undefined,
+  yaml: number | undefined,
+): number {
+  return cli ?? yaml ?? 3;
+}

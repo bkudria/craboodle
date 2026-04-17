@@ -173,4 +173,23 @@ describe("config", () => {
       expect(result).toBeNull();
     });
   });
+
+  describe("resolveRepeats", () => {
+    it("falls back to 3 when neither is provided", async () => {
+      const { resolveRepeats } = await import("../src/config.js");
+      expect(resolveRepeats(undefined, undefined)).toBe(3);
+    });
+    it("uses the CLI value when only CLI is provided", async () => {
+      const { resolveRepeats } = await import("../src/config.js");
+      expect(resolveRepeats(5, undefined)).toBe(5);
+    });
+    it("uses the yaml value when only yaml is provided", async () => {
+      const { resolveRepeats } = await import("../src/config.js");
+      expect(resolveRepeats(undefined, 7)).toBe(7);
+    });
+    it("prefers the CLI value when both are provided", async () => {
+      const { resolveRepeats } = await import("../src/config.js");
+      expect(resolveRepeats(5, 7)).toBe(5);
+    });
+  });
 });

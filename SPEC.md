@@ -321,7 +321,7 @@ Pipeline configuration file at the evals directory root. Contains craboodle-spec
 version: "1"              # required: eval format version (craboodle rejects unknown versions)
 min_pass_rate: 0.8        # minimum acceptable scenario pass rate (0-1, optional)
 max_budget_usd: 5.0       # stop scheduling reps after this total spend (optional)
-repeats: 5                # default repetitions per scenario (optional, overrides CLI default)
+repeats: 5                # default repetitions per scenario (optional; overridden by --repeats CLI flag)
 ```
 
 #### `version` (required)
@@ -383,7 +383,7 @@ Usage:
   craboodle init <dir>                    Scaffold a new evals directory
 
 Run options:
-  --repeats N            Number of repetitions per scenario (default: 3, or craboodle.yaml repeats)
+  --repeats N            Number of repetitions per scenario (default: craboodle.yaml repeats, or 3)
   --concurrency N        Max parallel (scenario, rep) work items (default: 10)
   --scenario, --scenarios PATTERN     Filter scenarios by ID (exact match, glob wildcard, or comma-separated)
   --agent-model MODEL    Override scuttlerun model for all scenarios
