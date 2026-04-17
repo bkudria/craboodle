@@ -43,4 +43,36 @@ describe("list", () => {
     expect(stdout).toContain("checks: 3");
     expect(stdout).toContain("3 checks");
   });
+
+  it("filters scenarios with --scenario flag", async () => {
+    await writeFile(join(tmpDir, "craboodle.yaml"), stringify({ version: "1" }));
+    await mkdir(join(tmpDir, "alpha"));
+    await writeFile(join(tmpDir, "alpha", "scenario.yaml"), stringify({ prompt: "a\n" }));
+    await writeFile(
+      join(tmpDir, "alpha", "checks.yaml"),
+      stringify({
+        context: "The agent was asked to do alpha",
+        checks: [{ "check-a": { check: "alpha check", note: "note" } }],
+      }),
+    );
+    await mkdir(join(tmpDir, "beta"));
+    await writeFile(join(tmpDir, "beta", "scenario.yaml"), stringify({ prompt: "b\n" }));
+    await writeFile(
+      join(tmpDir, "beta", "checks.yaml"),
+      stringify({
+        context: "The agent was asked to do beta",
+        checks: [{ "check-b": { check: "beta check", note: "note" } }],
+      }),
+    );
+
+    const { stdout } = await execFileAsync("craboodle", [
+      "list",
+      "--scenario",
+      "alpha",
+      tmpDir,
+    ]);
+
+    expect(stdout).toContain("id: alpha");
+    expect(stdout).not.toContain("id: beta");
+  });
 });

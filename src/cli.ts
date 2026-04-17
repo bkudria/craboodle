@@ -33,7 +33,7 @@ interface RunOptions {
   concurrency: number;
   agentModel?: string;
   graderModel?: string;
-  scenario?: string;
+  scenarios?: string;
   verbose?: boolean;
 }
 
@@ -57,11 +57,11 @@ async function runCommand(
   }
 
   // Apply scenario filter
-  if (opts.scenario) {
-    scenarios = filterScenarios(scenarios, opts.scenario);
+  if (opts.scenarios) {
+    scenarios = filterScenarios(scenarios, opts.scenarios);
     if (scenarios.length === 0) {
       process.stderr.write(
-        `[craboodle] No scenarios match filter: ${opts.scenario}\n`,
+        `[craboodle] No scenarios match filter: ${opts.scenarios}\n`,
       );
       process.exit(2);
     }
@@ -426,7 +426,7 @@ program
         concurrency: parseInt(cmdOpts.concurrency, 10),
         agentModel: cmdOpts.agentModel,
         graderModel: cmdOpts.graderModel,
-        scenario: cmdOpts.scenario,
+        scenarios: cmdOpts.scenarios,
         verbose: !!cmdOpts.verbose,
       });
     } catch (err: unknown) {
@@ -442,7 +442,7 @@ program
   .description("List and validate scenarios (including scuttlerun config validation)")
   .option("--scenario, --scenarios <pattern>", "Filter scenarios by ID (exact, glob, or comma-separated)")
   .option("-v, --verbose", "Verbose logging (to stderr)")
-  .action(async (evalsDir: string, cmdOpts: { scenario?: string; verbose?: boolean }) => {
+  .action(async (evalsDir: string, cmdOpts: { scenarios?: string; verbose?: boolean }) => {
     try {
       const resolvedDir = resolve(evalsDir);
 
@@ -453,10 +453,10 @@ program
         process.exit(2);
       }
 
-      if (cmdOpts.scenario) {
-        scenarios = filterScenarios(scenarios, cmdOpts.scenario);
+      if (cmdOpts.scenarios) {
+        scenarios = filterScenarios(scenarios, cmdOpts.scenarios);
         if (scenarios.length === 0) {
-          process.stderr.write(`[craboodle] No scenarios match filter: ${cmdOpts.scenario}\n`);
+          process.stderr.write(`[craboodle] No scenarios match filter: ${cmdOpts.scenarios}\n`);
           process.exit(2);
         }
       }
@@ -530,7 +530,7 @@ program
 interface LintOptions {
   concurrency: number;
   graderModel?: string;
-  scenario?: string;
+  scenarios?: string;
   verbose?: boolean;
 }
 
@@ -548,10 +548,10 @@ async function lintCommand(
   }
 
   // Apply scenario filter
-  if (opts.scenario) {
-    scenarios = filterScenarios(scenarios, opts.scenario);
+  if (opts.scenarios) {
+    scenarios = filterScenarios(scenarios, opts.scenarios);
     if (scenarios.length === 0) {
-      process.stderr.write(`[craboodle] No scenarios match filter: ${opts.scenario}\n`);
+      process.stderr.write(`[craboodle] No scenarios match filter: ${opts.scenarios}\n`);
       process.exit(2);
     }
   }
@@ -656,7 +656,7 @@ program
       await lintCommand(evalsDir, {
         concurrency: parseInt(cmdOpts.concurrency, 10),
         graderModel: cmdOpts.graderModel,
-        scenario: cmdOpts.scenario,
+        scenarios: cmdOpts.scenarios,
         verbose: !!cmdOpts.verbose,
       });
     } catch (err: unknown) {
