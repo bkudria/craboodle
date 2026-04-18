@@ -456,6 +456,16 @@ scenarios:
 total_cost_usd: 0.045
 ```
 
+### Cost Tracking
+
+Per-scenario output includes:
+
+- `cost_usd` — total (agent + grading) for that scenario across all reps
+- `agent_cost_usd` — sum of scuttlerun costs across reps (includes both agent session and oracle costs, per scuttlerun's definition)
+- `grading_cost_usd` — sum of pincenez costs across reps
+
+`total_cost_usd` at the top level is the sum of all scenarios' `cost_usd`. All cost fields are rounded to 4 decimals.
+
 ---
 
 ## Execution Flow

@@ -226,10 +226,11 @@ async function runCommand(
       let scenarioOutput: ScenarioOutput;
 
       const totalScenarioCost = agentCost + gradingCost;
+      const round4 = (n: number) => Math.round(n * 10000) / 10000;
       const costFields = {
-        ...(totalScenarioCost > 0 ? { cost_usd: totalScenarioCost } : {}),
-        ...(agentCost > 0 ? { agent_cost_usd: agentCost } : {}),
-        ...(gradingCost > 0 ? { grading_cost_usd: gradingCost } : {}),
+        ...(totalScenarioCost > 0 ? { cost_usd: round4(totalScenarioCost) } : {}),
+        ...(agentCost > 0 ? { agent_cost_usd: round4(agentCost) } : {}),
+        ...(gradingCost > 0 ? { grading_cost_usd: round4(gradingCost) } : {}),
       };
 
       if (successfulGradings.length === 0) {
@@ -264,7 +265,8 @@ async function runCommand(
   });
 
   // Stream total cost
-  const totalCost = scenarioOutputs.reduce((sum, s) => sum + (s.cost_usd ?? 0), 0);
+  const totalCostRaw = scenarioOutputs.reduce((sum, s) => sum + (s.cost_usd ?? 0), 0);
+  const totalCost = Math.round(totalCostRaw * 10000) / 10000;
   if (totalCost > 0) {
     streamTotalCost(totalCost);
   }
