@@ -19,7 +19,7 @@ describe("init", () => {
     await rm(tmpDir, { recursive: true });
   });
 
-  it("creates craboodle.yaml with no example scenario", async () => {
+  it("creates craboodle.yaml and base.yaml with no example scenario", async () => {
     const initDir = join(tmpDir, "evals");
     await execFileAsync("craboodle", ["init", initDir]);
 
@@ -28,7 +28,34 @@ describe("init", () => {
     expect(craboodleData).toHaveProperty("version");
 
     const entries = await readdir(initDir);
-    expect(entries).toEqual(["craboodle.yaml"]);
+    expect([...entries].sort()).toEqual(["base.yaml", "craboodle.yaml"]);
+  });
+
+  it("base.yaml header documents the tools-array replace semantic", async () => {
+    const initDir = join(tmpDir, "evals");
+    await execFileAsync("craboodle", ["init", initDir]);
+
+    const baseContent = await readFile(join(initDir, "base.yaml"), "utf8");
+    expect(baseContent).toMatch(/REPLACE/);
+  });
+
+  it("base.yaml documents the 8 scuttlerun default tools as commented lines", async () => {
+    const initDir = join(tmpDir, "evals");
+    await execFileAsync("craboodle", ["init", initDir]);
+
+    const baseContent = await readFile(join(initDir, "base.yaml"), "utf8");
+    for (const tool of ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "AskUserQuestion", "Skill"]) {
+      expect(baseContent).toMatch(new RegExp(`^\\s*#.*${tool}\\s*$`, "m"));
+    }
+  });
+
+  it("base.yaml parses as empty (all fields commented)", async () => {
+    const initDir = join(tmpDir, "evals");
+    await execFileAsync("craboodle", ["init", initDir]);
+
+    const baseContent = await readFile(join(initDir, "base.yaml"), "utf8");
+    const parsed = parse(baseContent);
+    expect(parsed ?? null).toBeNull();
   });
 
   it("omits min_pass_rate from the default template", async () => {

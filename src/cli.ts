@@ -707,8 +707,34 @@ program
       `# repeats:\n`;
     await writeFile(join(resolvedDir, "craboodle.yaml"), craboodleContent);
 
+    const baseContent =
+      `# base.yaml — shared scuttlerun config for all scenarios in this suite.\n` +
+      `# Every scenario.yaml is deep-merged onto this base; arrays like \`tools\` REPLACE\n` +
+      `# the defaults rather than extending them, so list every tool you need.\n` +
+      `# Scuttlerun's defaults at time of scaffold are shown below — uncomment and edit.\n` +
+      `#\n` +
+      `# model: claude-haiku-4-5\n` +
+      `# tools:\n` +
+      `#   - Read\n` +
+      `#   - Write\n` +
+      `#   - Edit\n` +
+      `#   - Bash\n` +
+      `#   - Glob\n` +
+      `#   - Grep\n` +
+      `#   - AskUserQuestion\n` +
+      `#   - Skill\n` +
+      `# project:\n` +
+      `#   claude_md: |\n` +
+      `#     # Project-level instructions here\n` +
+      `#   skills:\n` +
+      `#     - /absolute/path/to/skill\n` +
+      `# user:\n` +
+      `#   max_turns: 30\n`;
+    await writeFile(join(resolvedDir, "base.yaml"), baseContent);
+
     process.stdout.write(`Created ${resolvedDir}/\n`);
     process.stdout.write(`  craboodle.yaml\n`);
+    process.stdout.write(`  base.yaml\n`);
     process.stdout.write(`\nNext steps:\n`);
     process.stdout.write(`  Create <scenario-id>/scenario.yaml and <scenario-id>/checks.yaml\n`);
     process.stdout.write(`  craboodle list ${dir}     # validate scenarios\n`);
