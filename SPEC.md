@@ -397,6 +397,9 @@ Lint options:
   --scenario, --scenarios PATTERN     Filter scenarios by ID
   --grader-model MODEL   Override pincenez model for linting
 
+  Output: per-scenario blocks are emitted only for scenarios with at least
+  one issue. Aggregate totals at the end always reflect all checks discovered.
+
 General:
   --verbose, -v          Verbose logging (to stderr)
   -h, --help             Show help

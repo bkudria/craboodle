@@ -260,7 +260,12 @@ export function parseLintResult(yaml: string): LintCheckOutput[] {
 }
 
 export function streamLintScenarioYaml(scenario: LintScenarioOutput): void {
-  const checks = scenario.checks.map((c) => {
+  const issueChecks = scenario.checks.filter((c) => c.issues.length > 0);
+  if (issueChecks.length === 0) {
+    return;
+  }
+
+  const checks = issueChecks.map((c) => {
     const { id, ...rest } = c;
     return { [id]: rest };
   });

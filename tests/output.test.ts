@@ -456,6 +456,22 @@ checks_with_issues: 0
   });
 
   describe("streamLintScenarioYaml", () => {
+    it("emits nothing when all checks pass (no issues)", async () => {
+      const { streamLintScenarioYaml } = await import("../src/output.js");
+
+      streamLintScenarioYaml({
+        id: "all-clean",
+        checks: [
+          { id: "check-0", check: "first", issues: [] },
+          { id: "check-1", check: "second", issues: [] },
+        ],
+        checks_total: 2,
+        checks_with_issues: 0,
+      });
+
+      expect(written).toBe("");
+    });
+
     it("uses id-as-key format for scenarios and checks", async () => {
       const { streamLintScenarioYaml } = await import("../src/output.js");
 
@@ -476,11 +492,11 @@ checks_with_issues: 0
       // Scenario id is the key, not a field
       expect(written).toContain("- email-validator:");
       expect(written).not.toContain("- id: email-validator");
-      // Check ids are keys, not fields
-      expect(written).toContain("- check-0:");
+      // Only checks with issues are emitted; clean checks are filtered
+      expect(written).not.toContain("- check-0:");
       expect(written).toContain("- check-1:");
       expect(written).not.toMatch(/- id: check-/);
-      // Counts still present
+      // Counts still present (reflect originally-discovered, not emitted)
       expect(written).toContain("checks_total: 2");
       expect(written).toContain("checks_with_issues: 1");
       // Issue content preserved
@@ -493,11 +509,11 @@ checks_with_issues: 0
       streamLintScenarioYaml({
         id: "test-scenario",
         checks: [
-          { id: "check-a", check: "first check", issues: [] },
-          { id: "check-b", check: "second check", issues: [] },
+          { id: "check-a", check: "first check", issues: [{ anti_pattern: "vague", suggestion: "be specific" }] },
+          { id: "check-b", check: "second check", issues: [{ anti_pattern: "vague", suggestion: "be specific" }] },
         ],
         checks_total: 2,
-        checks_with_issues: 0,
+        checks_with_issues: 2,
       });
 
       // There should be a blank line between check items
@@ -545,9 +561,9 @@ checks_with_issues: 0
 
       streamLintScenarioYaml({
         id: "solo",
-        checks: [{ id: "c", check: "test", issues: [] }],
+        checks: [{ id: "c", check: "test", issues: [{ anti_pattern: "vague", suggestion: "be specific" }] }],
         checks_total: 1,
-        checks_with_issues: 0,
+        checks_with_issues: 1,
       });
 
       expect(written).toMatch(/\n\n$/);
