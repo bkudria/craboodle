@@ -7,11 +7,13 @@ import { tmpdir } from "node:os";
 import { stringify, parse } from "yaml";
 import { resolve } from "node:path";
 
+import pLimit from "p-limit";
 import { loadCraboodleConfig, checkBaseConfig, DEFAULT_REPEATS } from "./config.js";
 import { cleanOldArtifacts } from "./cleanup.js";
 import { discoverScenarios, filterScenarios } from "./discovery.js";
 import { runScuttlerun, runPincenez, runPincenezLint, listScuttlerunConfig } from "./runner.js";
 import { executePool, type WorkItem } from "./pool.js";
+import { runStaged } from "./staged.js";
 import {
   parseGrading,
   parseCostFromTranscript,
@@ -95,6 +97,11 @@ async function runCommand(
   // Determine repeats from craboodle config or CLI option
   const repeats = craboodleConfig.repeats ?? opts.repeats;
 
+  const scuttleLimit = pLimit(opts.concurrency);
+  const pincenezLimit = pLimit(opts.concurrency);
+
+  type StageAResult = { ok: true } | { ok: false; outcome: RepOutcome };
+
   // Build work items
   const workItems: WorkItem<RepOutcome>[] = [];
   for (const scenario of scenarios) {
@@ -111,63 +118,78 @@ async function runCommand(
           const outputPath = join(repDir, "output.yaml");
           const gradingPath = join(repDir, "grading.yaml");
 
-          if (opts.verbose) {
-            process.stderr.write(
-              `[craboodle] ${scenario.id} rep ${rep}: running scuttlerun\n`,
-            );
-          }
+          const stageA = async (): Promise<StageAResult> => {
+            if (opts.verbose) {
+              process.stderr.write(
+                `[craboodle] ${scenario.id} rep ${rep}: running scuttlerun\n`,
+              );
+            }
+            const scuttlerunResult = await runScuttlerun({
+              scenarioPath: scenario.configPath,
+              basePath,
+              outputPath,
+              agentModel: opts.agentModel,
+            });
+            if (!scuttlerunResult.success) {
+              return {
+                ok: false,
+                outcome: {
+                  type: "error",
+                  rep,
+                  stage: scuttlerunResult.error.stage,
+                  message: scuttlerunResult.error.message,
+                  transcriptPath: outputPath,
+                },
+              };
+            }
+            return { ok: true };
+          };
 
-          // Run scuttlerun
-          const scuttlerunResult = await runScuttlerun({
-            scenarioPath: scenario.configPath,
-            basePath,
-            outputPath,
-            agentModel: opts.agentModel,
-          });
-
-          if (!scuttlerunResult.success) {
+          const stageB = async (_a: StageAResult): Promise<RepOutcome> => {
+            if (opts.verbose) {
+              process.stderr.write(
+                `[craboodle] ${scenario.id} rep ${rep}: running pincenez\n`,
+              );
+            }
+            const pincenezResult = await runPincenez({
+              checksPath,
+              outputPath,
+              gradingPath,
+              graderModel: opts.graderModel,
+            });
+            if (!pincenezResult.success) {
+              return {
+                type: "error",
+                rep,
+                stage: pincenezResult.error.stage,
+                message: pincenezResult.error.message,
+                transcriptPath: outputPath,
+              };
+            }
+            const gradingContent = await readFile(gradingPath, "utf8");
+            const gradingResult = parseGrading(gradingContent);
+            const outputContent = await readFile(outputPath, "utf8");
+            const costUsd = parseCostFromTranscript(outputContent);
             return {
-              type: "error",
-              rep,
-              stage: scuttlerunResult.error.stage,
-              message: scuttlerunResult.error.message,
+              type: "success",
+              grading: gradingResult.checks,
+              costUsd,
+              gradingCostUsd: gradingResult.costUsd,
               transcriptPath: outputPath,
             };
+          };
+
+          const result = await runStaged(
+            scuttleLimit,
+            pincenezLimit,
+            stageA,
+            (a) => a.ok,
+            stageB,
+          );
+          if (typeof result === "object" && "ok" in result && result.ok === false) {
+            return result.outcome;
           }
-
-          if (opts.verbose) {
-            process.stderr.write(
-              `[craboodle] ${scenario.id} rep ${rep}: running pincenez\n`,
-            );
-          }
-
-          // Run pincenez
-          const pincenezResult = await runPincenez({
-            checksPath,
-            outputPath,
-            gradingPath,
-            graderModel: opts.graderModel,
-          });
-
-          if (!pincenezResult.success) {
-            return {
-              type: "error",
-              rep,
-              stage: pincenezResult.error.stage,
-              message: pincenezResult.error.message,
-              transcriptPath: outputPath,
-            };
-          }
-
-          // Parse grading
-          const gradingContent = await readFile(gradingPath, "utf8");
-          const gradingResult = parseGrading(gradingContent);
-
-          // Parse cost from scuttlerun output
-          const outputContent = await readFile(outputPath, "utf8");
-          const costUsd = parseCostFromTranscript(outputContent);
-
-          return { type: "success", grading: gradingResult.checks, costUsd, gradingCostUsd: gradingResult.costUsd, transcriptPath: outputPath };
+          return result as RepOutcome;
         },
       });
     }
@@ -177,7 +199,7 @@ async function runCommand(
   let hasAnySuccess = false;
   const scenarioOutputs: ScenarioOutput[] = [];
 
-  await executePool(workItems, opts.concurrency, {
+  await executePool(workItems, workItems.length, {
     budgetUsd: craboodleConfig.maxBudgetUsd,
     costOf: (outcome: RepOutcome) => {
       if (outcome.type !== "success") return 0;
@@ -414,7 +436,7 @@ program
   .option("--repeats <n>", "Number of repetitions per scenario", String(DEFAULT_REPEATS))
   .option(
     "--concurrency <n>",
-    "Max parallel (scenario, rep) work items",
+    "Max parallel items per stage (scuttlerun and pincenez run in independent pools)",
     "10",
   )
   .option("--scenario, --scenarios <pattern>", "Filter scenarios by ID (exact, glob, or comma-separated)")
