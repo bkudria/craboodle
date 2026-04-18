@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { stringify, parse } from "yaml";
 import { resolve } from "node:path";
 
-import { loadCraboodleConfig, checkBaseConfig } from "./config.js";
+import { loadCraboodleConfig, checkBaseConfig, DEFAULT_REPEATS } from "./config.js";
 import { cleanOldArtifacts } from "./cleanup.js";
 import { discoverScenarios, filterScenarios } from "./discovery.js";
 import { runScuttlerun, runPincenez, runPincenezLint, listScuttlerunConfig } from "./runner.js";
@@ -312,7 +312,7 @@ craboodle.yaml Schema:
     min_pass_rate: 0.8                 # Ratchet threshold — exit 3 if any scenario
                                        #   falls below (optional, 0-1)
     max_budget_usd: 10.0               # Budget cap (optional)
-    repeats: 3                          # Repetitions per scenario (optional)
+    repeats: 3                          # Repetitions per scenario (optional, default: 3)
 
 base.yaml Schema:
   Pure scuttlerun defaults applied to all scenarios. Passed as base config
@@ -411,7 +411,7 @@ program
 program
   .command("run <evals-dir>")
   .description("Run eval pipeline")
-  .option("--repeats <n>", "Number of repetitions per scenario", "3")
+  .option("--repeats <n>", "Number of repetitions per scenario", String(DEFAULT_REPEATS))
   .option(
     "--concurrency <n>",
     "Max parallel (scenario, rep) work items",

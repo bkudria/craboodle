@@ -226,10 +226,17 @@ describe("config", () => {
     });
   });
 
+  describe("DEFAULT_REPEATS", () => {
+    it("exports 3 as the canonical default", async () => {
+      const { DEFAULT_REPEATS } = await import("../src/config.js");
+      expect(DEFAULT_REPEATS).toBe(3);
+    });
+  });
+
   describe("resolveRepeats", () => {
-    it("falls back to 3 when neither is provided", async () => {
-      const { resolveRepeats } = await import("../src/config.js");
-      expect(resolveRepeats(undefined, undefined)).toBe(3);
+    it("falls back to DEFAULT_REPEATS when neither is provided", async () => {
+      const { resolveRepeats, DEFAULT_REPEATS } = await import("../src/config.js");
+      expect(resolveRepeats(undefined, undefined)).toBe(DEFAULT_REPEATS);
     });
     it("uses the CLI value when only CLI is provided", async () => {
       const { resolveRepeats } = await import("../src/config.js");

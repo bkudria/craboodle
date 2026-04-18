@@ -89,9 +89,11 @@ export async function checkBaseConfig(path: string): Promise<string | null> {
   }
 }
 
+export const DEFAULT_REPEATS = 3;
+
 export function resolveRepeats(
   cli: number | undefined,
   yaml: number | undefined,
 ): number {
-  return cli ?? yaml ?? 3;
+  return cli ?? yaml ?? DEFAULT_REPEATS;
 }
