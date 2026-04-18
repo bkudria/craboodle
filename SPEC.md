@@ -423,6 +423,8 @@ Results stream to stdout as YAML, scenario by scenario for human-readable progre
 
 All `pass_rate` values are raw fractional data (0.0–1.0). A scenario's `pass_rate` is the mean of its per-check pass rates.
 
+Subprocess stderr from scuttlerun and pincenez (warnings, diagnostics) is forwarded unchanged to craboodle's stderr on every invocation, including successful ones. Source-tool prefixes (e.g., `[scuttlerun] WARNING: ...`) are preserved.
+
 Passing checks (pass_rate == 1.0) are compact (check + pass_rate). Checks with pass_rate < 1.0 include per-rep failure evidence from pincenez — like rspec showing stack traces only for failures. If a rep failed due to a scuttlerun or pincenez error, it is excluded from averaging and reported in the scenario's `errors` array. If all reps fail for a scenario, the scenario appears with `pass_rate: null` and its `errors` array.
 
 ### Example Output

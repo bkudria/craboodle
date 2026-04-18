@@ -41,6 +41,24 @@ describe("runner", () => {
   });
 
   describe("runScuttlerun", () => {
+    it("forwards subprocess stderr to process.stderr on success", async () => {
+      const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+      const { runScuttlerun } = await import("../src/runner.js");
+
+      const warningText = "[scuttlerun] WARNING: Unknown tool name \"TaskCrate\" in tools: list.\n";
+      mockExecFileCall((cb) => cb(null, "session: abc\n", warningText));
+
+      const result = await runScuttlerun({
+        scenarioPath: "/path/to/scenario.yaml",
+        basePath: null,
+        outputPath: join(tmpDir, "output.yaml"),
+      });
+
+      expect(result.success).toBe(true);
+      expect(stderrSpy).toHaveBeenCalledWith(warningText);
+      stderrSpy.mockRestore();
+    });
+
     it("invokes scuttlerun with base and scenario config files", async () => {
       const { runScuttlerun } = await import("../src/runner.js");
 

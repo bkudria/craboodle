@@ -35,6 +35,9 @@ function execFilePromise(
         err.stderr = stderr;
         reject(err);
       } else {
+        if (stderr) {
+          process.stderr.write(stderr);
+        }
         resolve({ stdout, stderr });
       }
     });
