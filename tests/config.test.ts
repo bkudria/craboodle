@@ -137,6 +137,45 @@ describe("config", () => {
       );
     });
 
+    it("throws on non-numeric repeats", async () => {
+      const { loadCraboodleConfig } = await import("../src/config.js");
+      const configPath = join(tmpDir, "craboodle.yaml");
+      await writeFile(
+        configPath,
+        stringify({ version: "1", repeats: "three" }),
+      );
+
+      await expect(loadCraboodleConfig(configPath)).rejects.toThrow(
+        "repeats must be a positive integer",
+      );
+    });
+
+    it("throws on non-integer repeats", async () => {
+      const { loadCraboodleConfig } = await import("../src/config.js");
+      const configPath = join(tmpDir, "craboodle.yaml");
+      await writeFile(
+        configPath,
+        stringify({ version: "1", repeats: 1.5 }),
+      );
+
+      await expect(loadCraboodleConfig(configPath)).rejects.toThrow(
+        "repeats must be a positive integer",
+      );
+    });
+
+    it("throws on non-positive repeats", async () => {
+      const { loadCraboodleConfig } = await import("../src/config.js");
+      const configPath = join(tmpDir, "craboodle.yaml");
+      await writeFile(
+        configPath,
+        stringify({ version: "1", repeats: 0 }),
+      );
+
+      await expect(loadCraboodleConfig(configPath)).rejects.toThrow(
+        "repeats must be a positive integer",
+      );
+    });
+
     it("re-throws non-ENOENT errors", async () => {
       const { loadCraboodleConfig } = await import("../src/config.js");
       // Reading a directory as a file gives EISDIR

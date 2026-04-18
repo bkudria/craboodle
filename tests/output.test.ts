@@ -236,6 +236,22 @@ cost_usd: 0.0042
         { rep: 2, evidence: "missing X" },
       ]);
     });
+
+    it("attaches transcript to failure entries when repTranscripts provided", async () => {
+      const { averageResults } = await import("../src/output.js");
+
+      const repGradings = [
+        [{ id: "a1", check: "test", pass: true, evidence: "ok" }],
+        [{ id: "a1", check: "test", pass: false, evidence: "missing X" }],
+      ];
+      const repTranscripts = ["session: one\n", "session: two\n"];
+
+      const result = averageResults(repGradings, repTranscripts);
+
+      expect(result.checks[0].failures).toEqual([
+        { rep: 2, evidence: "missing X", transcript: "session: two\n" },
+      ]);
+    });
   });
 
   describe("streamHeader", () => {
