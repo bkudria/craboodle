@@ -700,7 +700,11 @@ program
 
     await mkdir(resolvedDir, { recursive: true });
 
-    const craboodleContent = stringify({ version: "1", min_pass_rate: 0.8 });
+    const craboodleContent =
+      `version: "1"\n` +
+      `# min_pass_rate:      # uncomment and set; reachable values are k/(checks*reps)\n` +
+      `# max_budget_usd:\n` +
+      `# repeats:\n`;
     await writeFile(join(resolvedDir, "craboodle.yaml"), craboodleContent);
 
     process.stdout.write(`Created ${resolvedDir}/\n`);

@@ -30,4 +30,21 @@ describe("init", () => {
     const entries = await readdir(initDir);
     expect(entries).toEqual(["craboodle.yaml"]);
   });
+
+  it("omits min_pass_rate from the default template", async () => {
+    const initDir = join(tmpDir, "evals");
+    await execFileAsync("craboodle", ["init", initDir]);
+
+    const craboodleContent = await readFile(join(initDir, "craboodle.yaml"), "utf8");
+    const craboodleData = parse(craboodleContent);
+    expect(craboodleData).not.toHaveProperty("min_pass_rate");
+  });
+
+  it("mentions min_pass_rate as a commented guidance line", async () => {
+    const initDir = join(tmpDir, "evals");
+    await execFileAsync("craboodle", ["init", initDir]);
+
+    const craboodleContent = await readFile(join(initDir, "craboodle.yaml"), "utf8");
+    expect(craboodleContent).toMatch(/^\s*#.*min_pass_rate/m);
+  });
 });
