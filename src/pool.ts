@@ -14,6 +14,7 @@ export interface PoolOptions<T> {
   budgetUsd?: number;
   costOf?: (result: T) => number;
   onScenarioComplete?: (scenarioId: string, results: WorkResult<T>[]) => void;
+  shouldAbort?: () => boolean;
 }
 
 export async function executePool<T>(
@@ -49,11 +50,14 @@ export async function executePool<T>(
 
   const promises = workItems.map((item) =>
     limit(async () => {
-      if (budgetExceeded) {
+      if (budgetExceeded || options?.shouldAbort?.()) {
+        const error = budgetExceeded
+          ? `Budget exceeded ($${totalCost.toFixed(4)} > $${budgetUsd})`
+          : "Aborted (fail-fast)";
         results.get(item.scenarioId)!.push({
           type: "error",
           rep: item.rep,
-          error: `Budget exceeded ($${totalCost.toFixed(4)} > $${budgetUsd})`,
+          error,
         });
         onItemDone?.(item.scenarioId);
         return;

@@ -197,6 +197,7 @@ async function runCommand(
 
   // Execute pool with arrival-order streaming
   let hasAnySuccess = false;
+  let failFastTriggered = false;
   const scenarioOutputs: ScenarioOutput[] = [];
 
   await executePool(workItems, workItems.length, {
@@ -208,6 +209,7 @@ async function runCommand(
       if (outcome.gradingCostUsd !== null) cost += outcome.gradingCostUsd;
       return cost;
     },
+    shouldAbort: () => failFastTriggered,
     onScenarioComplete: (scenarioId, repResults) => {
       const successfulGradings: GradingCheck[][] = [];
       const repTranscripts: string[] = [];
@@ -282,6 +284,19 @@ async function runCommand(
         process.stderr.write(
           `[craboodle] ${scenarioId}: pass_rate=${scenarioOutput.pass_rate}\n`,
         );
+      }
+
+      if (
+        craboodleConfig.minPassRate !== undefined &&
+        (scenarioOutput.pass_rate === null ||
+          scenarioOutput.pass_rate < craboodleConfig.minPassRate)
+      ) {
+        if (!failFastTriggered && opts.verbose) {
+          process.stderr.write(
+            `[craboodle] Fail-fast triggered: ${scenarioId} pass_rate=${scenarioOutput.pass_rate} < ${craboodleConfig.minPassRate}\n`,
+          );
+        }
+        failFastTriggered = true;
       }
     },
   });
@@ -420,7 +435,12 @@ Exit Codes:
   0   Pipeline completed successfully
   1   Configuration error (invalid YAML, missing fields, unknown keys)
   2   Infrastructure error (no scenarios found, tools not installed)
-  3   Threshold failure (min_pass_rate ratchet violated)`;
+  3   Threshold failure (min_pass_rate ratchet violated)
+
+Fail-fast:
+  When min_pass_rate is set, the run aborts remaining queued reps as soon as
+  any completed scenario falls below the threshold. Queued items report
+  "Aborted (fail-fast)" in their errors. In-flight reps still finish.`;
 
 const program = new Command();
 

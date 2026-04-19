@@ -217,6 +217,47 @@ describe("pool", () => {
       }
     });
 
+    it("shortCircuits queued items when shouldAbort predicate returns true", async () => {
+      const { executePool } = await import("../src/pool.js");
+
+      let completedCount = 0;
+      let abortFlag = false;
+
+      const workItems = [
+        { scenarioId: "s1", rep: 1, fn: async () => { completedCount++; abortFlag = true; return "s1r1"; } },
+        { scenarioId: "s2", rep: 1, fn: async () => { completedCount++; return "s2r1"; } },
+        { scenarioId: "s3", rep: 1, fn: async () => { completedCount++; return "s3r1"; } },
+      ];
+
+      const results = await executePool(workItems, 1, {
+        shouldAbort: () => abortFlag,
+      });
+
+      expect(completedCount).toBe(1);
+      expect(results.get("s2")![0].type).toBe("error");
+      expect(results.get("s3")![0].type).toBe("error");
+    });
+
+    it("fires onScenarioComplete for abort-skipped items", async () => {
+      const { executePool } = await import("../src/pool.js");
+
+      const completed: string[] = [];
+      let abortFlag = false;
+
+      const workItems = [
+        { scenarioId: "s1", rep: 1, fn: async () => { abortFlag = true; return "s1r1"; } },
+        { scenarioId: "s2", rep: 1, fn: async () => "s2r1" },
+      ];
+
+      await executePool(workItems, 1, {
+        shouldAbort: () => abortFlag,
+        onScenarioComplete: (id) => { completed.push(id); },
+      });
+
+      expect(completed).toContain("s1");
+      expect(completed).toContain("s2");
+    });
+
     it("handles failed work items without stopping others", async () => {
       const { executePool } = await import("../src/pool.js");
 
