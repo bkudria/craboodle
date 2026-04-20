@@ -1,5 +1,7 @@
 # craboodle
 
+> **Unreleased.** Craboodle is under active development and its API, checks file format, and behavior may change without notice.
+
 Eval pipeline orchestrator for Claude Code.
 
 craboodle discovers scenarios, runs them through [scuttlerun](https://github.com/bkudria/scuttlerun) (headless session driver), grades outputs with [pincenez](https://github.com/bkudria/pincenez) (LLM judge), manages repetitions with averaging, and streams results to stdout as YAML.

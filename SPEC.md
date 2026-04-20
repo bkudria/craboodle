@@ -41,7 +41,7 @@ For design philosophy and principles behind these choices, see GOALS.md.
 | Configuration | Separated tool configs | craboodle.yaml (pipeline), base.yaml (scuttlerun defaults), scenario.yaml (scuttlerun), checks.yaml (pincenez) |
 | Output | Streaming YAML to stdout | Per-scenario streaming; valid YAML after each scenario block completes. Arrival order. Consumers process final output |
 | Output style | Compact pass, verbose fail | Passing checks: check + pass_rate. Failures include per-rep evidence |
-| Artifacts | Temp dir (preserved) | Intermediate files kept for debugging; temp dir path included in output YAML |
+| Artifacts | Temp dir (preserved; 7-day GC) | Intermediate files kept for debugging; temp dir path included in output YAML. Dirs older than 7 days are cleaned at the start of each run |
 | Validation | Strict (Zod strict mode) | Fail fast on zero checks, empty prompt, or unknown keys. No permissive/forward-compatible mode |
 | Error handling | Skip failed reps | Failed reps excluded from averaging, reported in per-scenario `errors` array. Other reps/scenarios unaffected |
 | Parallelism | Flat (scenario, rep) pool | All work items in one pool; `--concurrency` limits. Run-then-grade per rep (slot held for both) |
@@ -138,7 +138,9 @@ The evals directory contains scenario definitions, pipeline configuration, and s
     └── checks.yaml
 ```
 
-Intermediate artifacts (scuttlerun outputs, pincenez gradings) are written to a temp directory that is preserved after the run for debugging. The temp directory path is included in the YAML output.
+Intermediate artifacts (scuttlerun outputs, pincenez gradings) are written to `$TMPDIR/craboodle-run-<hash>/` and preserved after the run for debugging. The directory path is included in the YAML output as `artifact_dir`.
+
+**7-day background cleanup:** at the start of each `craboodle run`, craboodle removes its own `$TMPDIR/craboodle-run-*` directories whose mtime is older than 7 days. This is a craboodle-internal garbage collector — it only touches directories matching the `craboodle-run-` prefix, never touches the current run, and silently ignores permission or in-use failures. The 7-day threshold is not currently configurable. Callers who need to force-clean sooner can `rm -rf "$TMPDIR/craboodle-run-*"` directly. This policy mirrors scuttlerun's equivalent policy for `scuttlerun-project-*` directories (see scuttlerun SPEC.md).
 
 ### scenario.yaml
 
