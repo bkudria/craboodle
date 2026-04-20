@@ -747,9 +747,9 @@ program
 
     const craboodleContent =
       `version: "1"\n` +
-      `# min_pass_rate:      # uncomment and set; reachable values are k/(checks*reps)\n` +
-      `# max_budget_usd:\n` +
-      `# repeats:\n`;
+      `# min_pass_rate:      # default: unset (no gating); reachable values are k/(checks*reps)\n` +
+      `# max_budget_usd:     # default: unset (no cap)\n` +
+      `# repeats: 3          # default: 3\n`;
     await writeFile(join(resolvedDir, "craboodle.yaml"), craboodleContent);
 
     const baseContent =
