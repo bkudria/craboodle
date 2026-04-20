@@ -97,3 +97,15 @@ export function resolveRepeats(
 ): number {
   return cli ?? yaml ?? DEFAULT_REPEATS;
 }
+
+export function resolveRepeatsFromRawFlag(
+  rawFlag: string | undefined,
+  yaml: number | undefined,
+): number {
+  if (rawFlag === undefined) return resolveRepeats(undefined, yaml);
+  const parsed = parseInt(rawFlag, 10);
+  if (!Number.isInteger(parsed) || parsed < 1 || String(parsed) !== rawFlag) {
+    throw new Error(`--repeats must be a positive integer, got: ${rawFlag}`);
+  }
+  return resolveRepeats(parsed, yaml);
+}

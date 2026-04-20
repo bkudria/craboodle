@@ -74,4 +74,10 @@ describe("init", () => {
     const craboodleContent = await readFile(join(initDir, "craboodle.yaml"), "utf8");
     expect(craboodleContent).toMatch(/^\s*#.*min_pass_rate/m);
   });
+
+  it("run --help documents CLI > config precedence for --repeats", async () => {
+    const { stdout } = await execFileAsync("craboodle", ["run", "--help"]);
+    expect(stdout).toContain("--repeats");
+    expect(stdout).toMatch(/overrides\s+craboodle\.yaml|takes precedence/i);
+  });
 });

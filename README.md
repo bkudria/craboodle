@@ -31,6 +31,19 @@ craboodle lint ./evals
 craboodle run ./evals
 ```
 
+## Exit Codes
+
+Shared taxonomy across scuttlerun/pincenez/craboodle. Codes 5–7 are scuttlerun-only (budget/timeout/max_turns); craboodle emits:
+
+| Code | Meaning |
+|------|---------|
+| 0 | Pipeline completed |
+| 1 | Config/input error (also: lint found issues) |
+| 2 | Runtime error (caught exception in run/lint action) |
+| 3 | Threshold failure (`min_pass_rate` ratchet) |
+| 4 | Infrastructure/dependency error (no scenarios, empty filter, zero successful reps) |
+| 130 | Interrupted (SIGINT) |
+
 ## Documentation
 
 - [GOALS.md](GOALS.md) — design philosophy, principles, and project goals

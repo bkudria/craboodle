@@ -8,7 +8,7 @@ import { stringify, parse } from "yaml";
 import { resolve } from "node:path";
 
 import pLimit from "p-limit";
-import { loadCraboodleConfig, checkBaseConfig, DEFAULT_REPEATS } from "./config.js";
+import { loadCraboodleConfig, checkBaseConfig, resolveRepeatsFromRawFlag } from "./config.js";
 import { cleanOldArtifacts } from "./cleanup.js";
 import { discoverScenarios, filterScenarios } from "./discovery.js";
 import { runScuttlerun, runPincenez, runPincenezLint, listScuttlerunConfig } from "./runner.js";
@@ -31,7 +31,7 @@ import {
 } from "./output.js";
 
 interface RunOptions {
-  repeats: number;
+  repeats: string | undefined;
   concurrency: number;
   agentModel?: string;
   graderModel?: string;
@@ -55,7 +55,7 @@ async function runCommand(
     process.stderr.write(
       `[craboodle] No scenarios found in ${resolvedDir}\n`,
     );
-    process.exit(2);
+    process.exit(4);
   }
 
   // Apply scenario filter
@@ -65,7 +65,7 @@ async function runCommand(
       process.stderr.write(
         `[craboodle] No scenarios match filter: ${opts.scenarios}\n`,
       );
-      process.exit(2);
+      process.exit(4);
     }
   }
 
@@ -94,8 +94,8 @@ async function runCommand(
   // Stream header
   streamHeader(artifactDir);
 
-  // Determine repeats from craboodle config or CLI option
-  const repeats = craboodleConfig.repeats ?? opts.repeats;
+  // Determine repeats: CLI flag > craboodle.yaml > DEFAULT_REPEATS
+  const repeats = resolveRepeatsFromRawFlag(opts.repeats, craboodleConfig.repeats);
 
   const scuttleLimit = pLimit(opts.concurrency);
   const pincenezLimit = pLimit(opts.concurrency);
@@ -309,7 +309,7 @@ async function runCommand(
   }
 
   if (!hasAnySuccess) {
-    process.exit(2);
+    process.exit(4);
   }
 
   // Check ratchet threshold
@@ -350,6 +350,7 @@ craboodle.yaml Schema:
                                        #   falls below (optional, 0-1)
     max_budget_usd: 10.0               # Budget cap (optional)
     repeats: 3                          # Repetitions per scenario (optional, default: 3)
+                                        #   Overridden by --repeats flag if passed
 
 base.yaml Schema:
   Pure scuttlerun defaults applied to all scenarios. Passed as base config
@@ -431,11 +432,13 @@ Examples:
   # CI quality gate with yq
   craboodle run ./evals | yq '.scenarios[].pass_rate'
 
-Exit Codes:
+Exit Codes (shared scuttlerun/pincenez/craboodle taxonomy; codes 5-7 scuttlerun-only):
   0   Pipeline completed successfully
-  1   Configuration error (invalid YAML, missing fields, unknown keys)
-  2   Infrastructure error (no scenarios found, tools not installed)
+  1   Configuration/input error (invalid YAML, missing fields, unknown keys, lint found issues)
+  2   Runtime error (caught exception in run/lint action)
   3   Threshold failure (min_pass_rate ratchet violated)
+  4   Infrastructure/dependency error (no scenarios, empty filter, zero successful reps)
+  130 Interrupted (SIGINT)
 
 Fail-fast:
   When min_pass_rate is set, the run aborts remaining queued reps as soon as
@@ -453,7 +456,7 @@ program
 program
   .command("run <evals-dir>")
   .description("Run eval pipeline")
-  .option("--repeats <n>", "Number of repetitions per scenario", String(DEFAULT_REPEATS))
+  .option("--repeats <n>", "Number of repetitions per scenario (overrides craboodle.yaml repeats; default: 3)")
   .option(
     "--concurrency <n>",
     "Max parallel items per stage (scuttlerun and pincenez run in independent pools)",
@@ -466,7 +469,7 @@ program
   .action(async (evalsDir: string, cmdOpts: Record<string, string>) => {
     try {
       await runCommand(evalsDir, {
-        repeats: parseInt(cmdOpts.repeats, 10),
+        repeats: cmdOpts.repeats,
         concurrency: parseInt(cmdOpts.concurrency, 10),
         agentModel: cmdOpts.agentModel,
         graderModel: cmdOpts.graderModel,
@@ -494,14 +497,14 @@ program
       let scenarios = await discoverScenarios(resolvedDir);
       if (scenarios.length === 0) {
         process.stderr.write(`[craboodle] No scenarios found in ${resolvedDir}\n`);
-        process.exit(2);
+        process.exit(4);
       }
 
       if (cmdOpts.scenarios) {
         scenarios = filterScenarios(scenarios, cmdOpts.scenarios);
         if (scenarios.length === 0) {
           process.stderr.write(`[craboodle] No scenarios match filter: ${cmdOpts.scenarios}\n`);
-          process.exit(2);
+          process.exit(4);
         }
       }
 
@@ -588,7 +591,7 @@ async function lintCommand(
   let scenarios = await discoverScenarios(resolvedDir);
   if (scenarios.length === 0) {
     process.stderr.write(`[craboodle] No scenarios found in ${resolvedDir}\n`);
-    process.exit(2);
+    process.exit(4);
   }
 
   // Apply scenario filter
@@ -596,7 +599,7 @@ async function lintCommand(
     scenarios = filterScenarios(scenarios, opts.scenarios);
     if (scenarios.length === 0) {
       process.stderr.write(`[craboodle] No scenarios match filter: ${opts.scenarios}\n`);
-      process.exit(2);
+      process.exit(4);
     }
   }
 
@@ -680,7 +683,7 @@ async function lintCommand(
   streamLintTotals(totals);
 
   if (!hasAnySuccess) {
-    process.exit(2);
+    process.exit(4);
   }
 
   if (totals.checks_with_issues > 0) {

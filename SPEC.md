@@ -408,12 +408,16 @@ General:
 
 ### Exit Codes
 
+Shared taxonomy across scuttlerun/pincenez/craboodle. Codes 5–7 are reserved for scuttlerun-level concerns (budget, timeout, max_turns) and not emitted by craboodle.
+
 | Code | Meaning |
 |------|---------|
 | 0 | Pipeline completed successfully with at least some successful data. Individual rep/scenario failures are reported in output but do not affect the exit code. |
-| 1 | Configuration error (invalid scenario YAML, missing required fields, invalid `min_pass_rate`, zero checks) |
-| 2 | Infrastructure error (scuttlerun or pincenez binary not found, evals directory missing, zero scenarios discovered, or zero successful reps across all scenarios). |
+| 1 | Configuration/input error (invalid scenario YAML, missing required fields, invalid `min_pass_rate`, zero checks, lint-issues-found gate) |
+| 2 | Runtime error (caught exception in run/lint action) |
 | 3 | Threshold failure: one or more scenarios fell below `min_pass_rate` (see craboodle.yaml). Failures are reported to stderr. |
+| 4 | Infrastructure/dependency error (evals directory empty, --scenario filter matches nothing, zero successful reps across all scenarios, zero successful lint invocations). |
+| 130 | Interrupted (SIGINT) |
 
 ---
 

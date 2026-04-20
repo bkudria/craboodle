@@ -251,4 +251,31 @@ describe("config", () => {
       expect(resolveRepeats(5, 7)).toBe(5);
     });
   });
+
+  describe("resolveRepeatsFromRawFlag", () => {
+    it("prefers the CLI flag over the yaml value", async () => {
+      const { resolveRepeatsFromRawFlag } = await import("../src/config.js");
+      expect(resolveRepeatsFromRawFlag("1", 3)).toBe(1);
+    });
+    it("falls back to yaml when flag is undefined", async () => {
+      const { resolveRepeatsFromRawFlag } = await import("../src/config.js");
+      expect(resolveRepeatsFromRawFlag(undefined, 5)).toBe(5);
+    });
+    it("falls back to DEFAULT_REPEATS when neither is provided", async () => {
+      const { resolveRepeatsFromRawFlag, DEFAULT_REPEATS } = await import("../src/config.js");
+      expect(resolveRepeatsFromRawFlag(undefined, undefined)).toBe(DEFAULT_REPEATS);
+    });
+    it("throws on non-numeric flag", async () => {
+      const { resolveRepeatsFromRawFlag } = await import("../src/config.js");
+      expect(() => resolveRepeatsFromRawFlag("abc", undefined)).toThrow(
+        "--repeats must be a positive integer",
+      );
+    });
+    it("throws on non-positive flag", async () => {
+      const { resolveRepeatsFromRawFlag } = await import("../src/config.js");
+      expect(() => resolveRepeatsFromRawFlag("0", undefined)).toThrow(
+        "--repeats must be a positive integer",
+      );
+    });
+  });
 });
