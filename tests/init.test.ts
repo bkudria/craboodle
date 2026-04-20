@@ -39,14 +39,12 @@ describe("init", () => {
     expect(baseContent).toMatch(/REPLACE/);
   });
 
-  it("base.yaml documents the 8 scuttlerun default tools as commented lines", async () => {
+  it("base.yaml documents additional_tools: as the additive pattern", async () => {
     const initDir = join(tmpDir, "evals");
     await execFileAsync("craboodle", ["init", initDir]);
 
     const baseContent = await readFile(join(initDir, "base.yaml"), "utf8");
-    for (const tool of ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "AskUserQuestion", "Skill"]) {
-      expect(baseContent).toMatch(new RegExp(`^\\s*#.*${tool}\\s*$`, "m"));
-    }
+    expect(baseContent).toMatch(/^\s*#\s*additional_tools:/m);
   });
 
   it("base.yaml parses as empty (all fields commented)", async () => {

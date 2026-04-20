@@ -754,20 +754,15 @@ program
 
     const baseContent =
       `# base.yaml — shared scuttlerun config for all scenarios in this suite.\n` +
-      `# Every scenario.yaml is deep-merged onto this base; arrays like \`tools\` REPLACE\n` +
-      `# the defaults rather than extending them, so list every tool you need.\n` +
-      `# Scuttlerun's defaults at time of scaffold are shown below — uncomment and edit.\n` +
+      `# Every scenario.yaml is deep-merged onto this base.\n` +
+      `#\n` +
+      `# To ADD tools to scuttlerun's defaults, use \`additional_tools:\` — it is appended\n` +
+      `# to the default tool list and deduped. To REPLACE the defaults entirely, use\n` +
+      `# \`tools:\` (arrays replace wholesale on merge).\n` +
       `#\n` +
       `# model: claude-haiku-4-5\n` +
-      `# tools:\n` +
-      `#   - Read\n` +
-      `#   - Write\n` +
-      `#   - Edit\n` +
-      `#   - Bash\n` +
-      `#   - Glob\n` +
-      `#   - Grep\n` +
-      `#   - AskUserQuestion\n` +
-      `#   - Skill\n` +
+      `# additional_tools:\n` +
+      `#   - TodoWrite\n` +
       `# project:\n` +
       `#   claude_md: |\n` +
       `#     # Project-level instructions here\n` +
