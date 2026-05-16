@@ -1,19 +1,19 @@
 #!/usr/bin/env node
 
-import { Command } from "commander";
-import { dirname, join } from "node:path";
-import { mkdtemp, writeFile, mkdir, readFile, access, stat } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { stringify, parse } from "yaml";
-import { resolve } from "node:path";
+import { Command } from 'commander';
+import { dirname, join } from 'node:path';
+import { mkdtemp, writeFile, mkdir, readFile, access, stat } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { stringify, parse } from 'yaml';
+import { resolve } from 'node:path';
 
-import pLimit from "p-limit";
-import { loadCraboodleConfig, checkBaseConfig, resolveRepeatsFromRawFlag } from "./config.js";
-import { cleanOldArtifacts } from "./cleanup.js";
-import { discoverScenarios, filterScenarios } from "./discovery.js";
-import { runScuttlerun, runPincenez, runPincenezLint, listScuttlerunConfig } from "./runner.js";
-import { executePool, type WorkItem } from "./pool.js";
-import { runStaged } from "./staged.js";
+import pLimit from 'p-limit';
+import { loadCraboodleConfig, checkBaseConfig, resolveRepeatsFromRawFlag } from './config.js';
+import { cleanOldArtifacts } from './cleanup.js';
+import { discoverScenarios, filterScenarios } from './discovery.js';
+import { runScuttlerun, runPincenez, runPincenezLint, listScuttlerunConfig } from './runner.js';
+import { executePool, type WorkItem } from './pool.js';
+import { runStaged } from './staged.js';
 import {
   parseGrading,
   parseCostFromTranscript,
@@ -28,7 +28,7 @@ import {
   type GradingCheck,
   type ScenarioOutput,
   type LintTotals,
-} from "./output.js";
+} from './output.js';
 
 interface RunOptions {
   repeats: string | undefined;
@@ -40,21 +40,22 @@ interface RunOptions {
 }
 
 type RepOutcome =
-  | { type: "success"; grading: GradingCheck[]; costUsd: number | null; gradingCostUsd: number | null; transcriptPath: string }
-  | { type: "error"; rep: number; stage: string; message: string; transcriptPath?: string };
+  | {
+      type: 'success';
+      grading: GradingCheck[];
+      costUsd: number | null;
+      gradingCostUsd: number | null;
+      transcriptPath: string;
+    }
+  | { type: 'error'; rep: number; stage: string; message: string; transcriptPath?: string };
 
-async function runCommand(
-  evalsDir: string,
-  opts: RunOptions,
-): Promise<void> {
+async function runCommand(evalsDir: string, opts: RunOptions): Promise<void> {
   const resolvedDir = resolve(evalsDir);
 
   // Discover scenarios
   let scenarios = await discoverScenarios(resolvedDir);
   if (scenarios.length === 0) {
-    process.stderr.write(
-      `[craboodle] No scenarios found in ${resolvedDir}\n`,
-    );
+    process.stderr.write(`[craboodle] No scenarios found in ${resolvedDir}\n`);
     process.exit(4);
   }
 
@@ -62,34 +63,30 @@ async function runCommand(
   if (opts.scenarios) {
     scenarios = filterScenarios(scenarios, opts.scenarios);
     if (scenarios.length === 0) {
-      process.stderr.write(
-        `[craboodle] No scenarios match filter: ${opts.scenarios}\n`,
-      );
+      process.stderr.write(`[craboodle] No scenarios match filter: ${opts.scenarios}\n`);
       process.exit(4);
     }
   }
 
   if (opts.verbose) {
-    process.stderr.write(
-      `[craboodle] Found ${scenarios.length} scenario(s)\n`,
-    );
+    process.stderr.write(`[craboodle] Found ${scenarios.length} scenario(s)\n`);
   }
 
   // Load craboodle config
-  const craboodleConfig = await loadCraboodleConfig(join(resolvedDir, "craboodle.yaml"));
+  const craboodleConfig = await loadCraboodleConfig(join(resolvedDir, 'craboodle.yaml'));
 
   if (opts.verbose && craboodleConfig.version) {
     process.stderr.write(`[craboodle] Eval format version: ${craboodleConfig.version}\n`);
   }
 
   // Check base config existence
-  const basePath = await checkBaseConfig(join(resolvedDir, "base.yaml"));
+  const basePath = await checkBaseConfig(join(resolvedDir, 'base.yaml'));
 
   // Clean old artifacts before creating new ones
   await cleanOldArtifacts(7, { verbose: opts.verbose });
 
   // Create artifact directory
-  const artifactDir = await mkdtemp(join(tmpdir(), "craboodle-run-"));
+  const artifactDir = await mkdtemp(join(tmpdir(), 'craboodle-run-'));
 
   // Stream header
   streamHeader(artifactDir);
@@ -105,7 +102,7 @@ async function runCommand(
   // Build work items
   const workItems: WorkItem<RepOutcome>[] = [];
   for (const scenario of scenarios) {
-    const checksPath = join(dirname(scenario.configPath), "checks.yaml");
+    const checksPath = join(dirname(scenario.configPath), 'checks.yaml');
 
     for (let rep = 1; rep <= repeats; rep++) {
       workItems.push({
@@ -115,14 +112,12 @@ async function runCommand(
           const repDir = join(artifactDir, scenario.id, `rep-${rep}`);
           await mkdir(repDir, { recursive: true });
 
-          const outputPath = join(repDir, "output.yaml");
-          const gradingPath = join(repDir, "grading.yaml");
+          const outputPath = join(repDir, 'output.yaml');
+          const gradingPath = join(repDir, 'grading.yaml');
 
           const stageA = async (): Promise<StageAResult> => {
             if (opts.verbose) {
-              process.stderr.write(
-                `[craboodle] ${scenario.id} rep ${rep}: running scuttlerun\n`,
-              );
+              process.stderr.write(`[craboodle] ${scenario.id} rep ${rep}: running scuttlerun\n`);
             }
             const scuttlerunResult = await runScuttlerun({
               scenarioPath: scenario.configPath,
@@ -134,7 +129,7 @@ async function runCommand(
               return {
                 ok: false,
                 outcome: {
-                  type: "error",
+                  type: 'error',
                   rep,
                   stage: scuttlerunResult.error.stage,
                   message: scuttlerunResult.error.message,
@@ -147,9 +142,7 @@ async function runCommand(
 
           const stageB = async (_a: StageAResult): Promise<RepOutcome> => {
             if (opts.verbose) {
-              process.stderr.write(
-                `[craboodle] ${scenario.id} rep ${rep}: running pincenez\n`,
-              );
+              process.stderr.write(`[craboodle] ${scenario.id} rep ${rep}: running pincenez\n`);
             }
             const pincenezResult = await runPincenez({
               checksPath,
@@ -159,19 +152,19 @@ async function runCommand(
             });
             if (!pincenezResult.success) {
               return {
-                type: "error",
+                type: 'error',
                 rep,
                 stage: pincenezResult.error.stage,
                 message: pincenezResult.error.message,
                 transcriptPath: outputPath,
               };
             }
-            const gradingContent = await readFile(gradingPath, "utf8");
+            const gradingContent = await readFile(gradingPath, 'utf8');
             const gradingResult = parseGrading(gradingContent);
-            const outputContent = await readFile(outputPath, "utf8");
+            const outputContent = await readFile(outputPath, 'utf8');
             const costUsd = parseCostFromTranscript(outputContent);
             return {
-              type: "success",
+              type: 'success',
               grading: gradingResult.checks,
               costUsd,
               gradingCostUsd: gradingResult.costUsd,
@@ -179,14 +172,8 @@ async function runCommand(
             };
           };
 
-          const result = await runStaged(
-            scuttleLimit,
-            pincenezLimit,
-            stageA,
-            (a) => a.ok,
-            stageB,
-          );
-          if (typeof result === "object" && "ok" in result && result.ok === false) {
+          const result = await runStaged(scuttleLimit, pincenezLimit, stageA, (a) => a.ok, stageB);
+          if (typeof result === 'object' && 'ok' in result && result.ok === false) {
             return result.outcome;
           }
           return result as RepOutcome;
@@ -203,7 +190,7 @@ async function runCommand(
   await executePool(workItems, workItems.length, {
     budgetUsd: craboodleConfig.maxBudgetUsd,
     costOf: (outcome: RepOutcome) => {
-      if (outcome.type !== "success") return 0;
+      if (outcome.type !== 'success') return 0;
       let cost = 0;
       if (outcome.costUsd !== null) cost += outcome.costUsd;
       if (outcome.gradingCostUsd !== null) cost += outcome.gradingCostUsd;
@@ -218,9 +205,9 @@ async function runCommand(
       let gradingCost = 0;
 
       for (const result of repResults) {
-        if (result.type === "success") {
+        if (result.type === 'success') {
           const outcome = result.data;
-          if (outcome.type === "success") {
+          if (outcome.type === 'success') {
             successfulGradings.push(outcome.grading);
             repTranscripts.push(outcome.transcriptPath);
             hasAnySuccess = true;
@@ -241,7 +228,7 @@ async function runCommand(
         } else {
           errors.push({
             rep: result.rep,
-            stage: "unknown",
+            stage: 'unknown',
             error: result.error,
           });
         }
@@ -281,9 +268,7 @@ async function runCommand(
       streamScenarioYaml(scenarioOutput);
 
       if (opts.verbose) {
-        process.stderr.write(
-          `[craboodle] ${scenarioId}: pass_rate=${scenarioOutput.pass_rate}\n`,
-        );
+        process.stderr.write(`[craboodle] ${scenarioId}: pass_rate=${scenarioOutput.pass_rate}\n`);
       }
 
       if (
@@ -318,9 +303,13 @@ async function runCommand(
       (s) => s.pass_rate === null || s.pass_rate < craboodleConfig.minPassRate!,
     );
     if (failures.length > 0) {
-      process.stderr.write(`[craboodle] Threshold check failed (min_pass_rate: ${craboodleConfig.minPassRate}):\n`);
+      process.stderr.write(
+        `[craboodle] Threshold check failed (min_pass_rate: ${craboodleConfig.minPassRate}):\n`,
+      );
       for (const f of failures) {
-        process.stderr.write(`  ${f.id}: ${f.pass_rate ?? "null"} < ${craboodleConfig.minPassRate}\n`);
+        process.stderr.write(
+          `  ${f.id}: ${f.pass_rate ?? 'null'} < ${craboodleConfig.minPassRate}\n`,
+        );
       }
       process.exit(3);
     }
@@ -448,24 +437,30 @@ Fail-fast:
 const program = new Command();
 
 program
-  .name("craboodle")
-  .description("Eval pipeline orchestrator for Claude Code")
-  .version("0.1.0")
-  .addHelpText("after", HELP_TEXT);
+  .name('craboodle')
+  .description('Eval pipeline orchestrator for Claude Code')
+  .version('0.1.0')
+  .addHelpText('after', HELP_TEXT);
 
 program
-  .command("run <evals-dir>")
-  .description("Run eval pipeline")
-  .option("--repeats <n>", "Number of repetitions per scenario (overrides craboodle.yaml repeats; default: 3)")
+  .command('run <evals-dir>')
+  .description('Run eval pipeline')
   .option(
-    "--concurrency <n>",
-    "Max parallel items per stage (scuttlerun and pincenez run in independent pools)",
-    "10",
+    '--repeats <n>',
+    'Number of repetitions per scenario (overrides craboodle.yaml repeats; default: 3)',
   )
-  .option("--scenario, --scenarios <pattern>", "Filter scenarios by ID (exact, glob, or comma-separated)")
-  .option("--agent-model <model>", "Override scuttlerun model for all scenarios")
-  .option("--grader-model <model>", "Override pincenez model for all checks")
-  .option("-v, --verbose", "Verbose logging (to stderr)")
+  .option(
+    '--concurrency <n>',
+    'Max parallel items per stage (scuttlerun and pincenez run in independent pools)',
+    '10',
+  )
+  .option(
+    '--scenario, --scenarios <pattern>',
+    'Filter scenarios by ID (exact, glob, or comma-separated)',
+  )
+  .option('--agent-model <model>', 'Override scuttlerun model for all scenarios')
+  .option('--grader-model <model>', 'Override pincenez model for all checks')
+  .option('-v, --verbose', 'Verbose logging (to stderr)')
   .action(async (evalsDir: string, cmdOpts: Record<string, string>) => {
     try {
       await runCommand(evalsDir, {
@@ -485,10 +480,13 @@ program
   });
 
 program
-  .command("list <evals-dir>")
-  .description("List and validate scenarios (including scuttlerun config validation)")
-  .option("--scenario, --scenarios <pattern>", "Filter scenarios by ID (exact, glob, or comma-separated)")
-  .option("-v, --verbose", "Verbose logging (to stderr)")
+  .command('list <evals-dir>')
+  .description('List and validate scenarios (including scuttlerun config validation)')
+  .option(
+    '--scenario, --scenarios <pattern>',
+    'Filter scenarios by ID (exact, glob, or comma-separated)',
+  )
+  .option('-v, --verbose', 'Verbose logging (to stderr)')
   .action(async (evalsDir: string, cmdOpts: { scenarios?: string; verbose?: boolean }) => {
     try {
       const resolvedDir = resolve(evalsDir);
@@ -509,15 +507,16 @@ program
       }
 
       // Load craboodle config
-      const craboodleConfig = await loadCraboodleConfig(join(resolvedDir, "craboodle.yaml"));
+      const craboodleConfig = await loadCraboodleConfig(join(resolvedDir, 'craboodle.yaml'));
 
       // Check base config existence
-      const basePath = await checkBaseConfig(join(resolvedDir, "base.yaml"));
+      const basePath = await checkBaseConfig(join(resolvedDir, 'base.yaml'));
 
       // Output base config summary
       const baseSummary: Record<string, unknown> = {};
       if (craboodleConfig.version) baseSummary.version = craboodleConfig.version;
-      if (craboodleConfig.minPassRate !== undefined) baseSummary.min_pass_rate = craboodleConfig.minPassRate;
+      if (craboodleConfig.minPassRate !== undefined)
+        baseSummary.min_pass_rate = craboodleConfig.minPassRate;
       process.stdout.write(stringify({ base: baseSummary }, { lineWidth: 0 }));
 
       // Validate each scenario
@@ -528,11 +527,13 @@ program
       for (const scenario of scenarios) {
         try {
           // Parse checks.yaml to count checks
-          const checksPath = join(dirname(scenario.configPath), "checks.yaml");
-          const checksContent = await readFile(checksPath, "utf8");
+          const checksPath = join(dirname(scenario.configPath), 'checks.yaml');
+          const checksContent = await readFile(checksPath, 'utf8');
           const checksData = parse(checksContent) as Record<string, unknown>;
           const checksArray = checksData.checks;
-          const checkCount = Array.isArray(checksArray) ? checksArray.length : Object.keys(checksData).length;
+          const checkCount = Array.isArray(checksArray)
+            ? checksArray.length
+            : Object.keys(checksData).length;
           totalChecks += checkCount;
 
           const item: Record<string, unknown> = {
@@ -552,7 +553,7 @@ program
             invalidCount++;
           }
 
-          process.stdout.write(writeYamlArrayItem(item) + "\n");
+          process.stdout.write(writeYamlArrayItem(item) + '\n');
         } catch (err: unknown) {
           process.stderr.write(
             `[craboodle] Config error in ${scenario.id}: ${err instanceof Error ? err.message : String(err)}\n`,
@@ -561,7 +562,12 @@ program
         }
       }
 
-      process.stdout.write(stringify({ total: `${scenarios.length} scenarios, ${totalChecks} checks` }, { lineWidth: 0 }));
+      process.stdout.write(
+        stringify(
+          { total: `${scenarios.length} scenarios, ${totalChecks} checks` },
+          { lineWidth: 0 },
+        ),
+      );
       if (invalidCount > 0) {
         process.stdout.write(stringify({ invalid: invalidCount }, { lineWidth: 0 }));
         process.exit(1);
@@ -581,10 +587,7 @@ interface LintOptions {
   verbose?: boolean;
 }
 
-async function lintCommand(
-  evalsDir: string,
-  opts: LintOptions,
-): Promise<void> {
+async function lintCommand(evalsDir: string, opts: LintOptions): Promise<void> {
   const resolvedDir = resolve(evalsDir);
 
   // Discover scenarios
@@ -608,13 +611,13 @@ async function lintCommand(
   }
 
   // Load craboodle config (validates structure)
-  await loadCraboodleConfig(join(resolvedDir, "craboodle.yaml"));
+  await loadCraboodleConfig(join(resolvedDir, 'craboodle.yaml'));
 
   // Stream header
-  process.stdout.write("scenarios:\n");
+  process.stdout.write('scenarios:\n');
 
   // Run pincenez lint per scenario with concurrency control
-  const { default: pLimit } = await import("p-limit");
+  const { default: pLimit } = await import('p-limit');
   const limit = pLimit(opts.concurrency);
 
   const totals: LintTotals = {
@@ -627,7 +630,7 @@ async function lintCommand(
 
   const promises = scenarios.map((scenario) =>
     limit(async () => {
-      const checksPath = join(dirname(scenario.configPath), "checks.yaml");
+      const checksPath = join(dirname(scenario.configPath), 'checks.yaml');
 
       if (opts.verbose) {
         process.stderr.write(`[craboodle] ${scenario.id}: linting checks\n`);
@@ -636,9 +639,9 @@ async function lintCommand(
       // Read scenario prompt to pass as context for tautological detection
       let context: string | undefined;
       try {
-        const scenarioContent = await readFile(scenario.configPath, "utf8");
+        const scenarioContent = await readFile(scenario.configPath, 'utf8');
         const scenarioYaml = parse(scenarioContent) as Record<string, unknown>;
-        if (typeof scenarioYaml?.prompt === "string") {
+        if (typeof scenarioYaml?.prompt === 'string') {
           context = scenarioYaml.prompt;
         }
       } catch {
@@ -692,12 +695,15 @@ async function lintCommand(
 }
 
 program
-  .command("lint <evals-dir>")
-  .description("Lint checks for quality issues without running evals")
-  .option("--concurrency <n>", "Max parallel pincenez lint invocations", "10")
-  .option("--scenario, --scenarios <pattern>", "Filter scenarios by ID (exact, glob, or comma-separated)")
-  .option("--grader-model <model>", "Override pincenez model for linting")
-  .option("-v, --verbose", "Verbose logging (to stderr)")
+  .command('lint <evals-dir>')
+  .description('Lint checks for quality issues without running evals')
+  .option('--concurrency <n>', 'Max parallel pincenez lint invocations', '10')
+  .option(
+    '--scenario, --scenarios <pattern>',
+    'Filter scenarios by ID (exact, glob, or comma-separated)',
+  )
+  .option('--grader-model <model>', 'Override pincenez model for linting')
+  .option('-v, --verbose', 'Verbose logging (to stderr)')
   .action(async (evalsDir: string, cmdOpts: Record<string, string>) => {
     try {
       await lintCommand(evalsDir, {
@@ -715,14 +721,14 @@ program
   });
 
 program
-  .command("init <dir>")
-  .description("Scaffold a new evals directory with craboodle.yaml")
+  .command('init <dir>')
+  .description('Scaffold a new evals directory with craboodle.yaml')
   .action(async (dir: string) => {
     const resolvedDir = resolve(dir);
 
     // Check if directory already has eval files
     try {
-      await access(join(resolvedDir, "craboodle.yaml"));
+      await access(join(resolvedDir, 'craboodle.yaml'));
       process.stderr.write(`[craboodle] ${resolvedDir} already contains craboodle.yaml\n`);
       process.exit(1);
     } catch {
@@ -732,8 +738,8 @@ program
     try {
       const dirStat = await stat(resolvedDir);
       if (dirStat.isDirectory()) {
-        const { glob: globFn } = await import("glob");
-        const existing = await globFn("*/scenario.{yaml,yml}", { cwd: resolvedDir });
+        const { glob: globFn } = await import('glob');
+        const existing = await globFn('*/scenario.{yaml,yml}', { cwd: resolvedDir });
         if (existing.length > 0) {
           process.stderr.write(`[craboodle] ${resolvedDir} already contains scenario files\n`);
           process.exit(1);
@@ -750,7 +756,7 @@ program
       `# min_pass_rate:      # default: unset (no gating); reachable values are k/(checks*reps)\n` +
       `# max_budget_usd:     # default: unset (no cap)\n` +
       `# repeats: 3          # default: 3\n`;
-    await writeFile(join(resolvedDir, "craboodle.yaml"), craboodleContent);
+    await writeFile(join(resolvedDir, 'craboodle.yaml'), craboodleContent);
 
     const baseContent =
       `# base.yaml — shared scuttlerun config for all scenarios in this suite.\n` +
@@ -770,7 +776,7 @@ program
       `#     - /absolute/path/to/skill\n` +
       `# user:\n` +
       `#   max_turns: 30\n`;
-    await writeFile(join(resolvedDir, "base.yaml"), baseContent);
+    await writeFile(join(resolvedDir, 'base.yaml'), baseContent);
 
     process.stdout.write(`Created ${resolvedDir}/\n`);
     process.stdout.write(`  craboodle.yaml\n`);

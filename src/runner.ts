@@ -1,14 +1,12 @@
-import { execFile } from "node:child_process";
-import { writeFile } from "node:fs/promises";
+import { execFile } from 'node:child_process';
+import { writeFile } from 'node:fs/promises';
 
 export interface RepError {
-  stage: "scuttlerun" | "pincenez";
+  stage: 'scuttlerun' | 'pincenez';
   message: string;
 }
 
-export type SubprocessResult =
-  | { success: true }
-  | { success: false; error: RepError };
+export type SubprocessResult = { success: true } | { success: false; error: RepError };
 
 export interface RunScuttlerunOptions {
   scenarioPath: string;
@@ -24,29 +22,29 @@ export interface RunPincenezOptions {
   graderModel?: string;
 }
 
-function execFilePromise(
-  cmd: string,
-  args: string[],
-): Promise<{ stdout: string; stderr: string }> {
+function execFilePromise(cmd: string, args: string[]): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
-    execFile(cmd, args, { encoding: "utf8", maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
-      if (error) {
-        const err = error as Error & { stderr?: string };
-        err.stderr = stderr;
-        reject(err);
-      } else {
-        if (stderr) {
-          process.stderr.write(stderr);
+    execFile(
+      cmd,
+      args,
+      { encoding: 'utf8', maxBuffer: 10 * 1024 * 1024 },
+      (error, stdout, stderr) => {
+        if (error) {
+          const err = error as Error & { stderr?: string };
+          err.stderr = stderr;
+          reject(err);
+        } else {
+          if (stderr) {
+            process.stderr.write(stderr);
+          }
+          resolve({ stdout, stderr });
         }
-        resolve({ stdout, stderr });
-      }
-    });
+      },
+    );
   });
 }
 
-export async function runScuttlerun(
-  options: RunScuttlerunOptions,
-): Promise<SubprocessResult> {
+export async function runScuttlerun(options: RunScuttlerunOptions): Promise<SubprocessResult> {
   const { scenarioPath, basePath, outputPath, agentModel } = options;
 
   const args: string[] = [];
@@ -56,11 +54,11 @@ export async function runScuttlerun(
   args.push(scenarioPath);
 
   if (agentModel) {
-    args.push("--model", agentModel);
+    args.push('--model', agentModel);
   }
 
   try {
-    const { stdout } = await execFilePromise("scuttlerun", args);
+    const { stdout } = await execFilePromise('scuttlerun', args);
     await writeFile(outputPath, stdout);
     return { success: true };
   } catch (err: unknown) {
@@ -68,7 +66,7 @@ export async function runScuttlerun(
     return {
       success: false,
       error: {
-        stage: "scuttlerun",
+        stage: 'scuttlerun',
         message: error.stderr || error.message,
       },
     };
@@ -85,21 +83,21 @@ export async function listScuttlerunConfig(
 ): Promise<SubprocessResult & { stdout?: string }> {
   const { scenarioPath, basePath } = options;
 
-  const args = ["--dry-run"];
+  const args = ['--dry-run'];
   if (basePath) {
     args.push(basePath);
   }
   args.push(scenarioPath);
 
   try {
-    const { stdout } = await execFilePromise("scuttlerun", args);
+    const { stdout } = await execFilePromise('scuttlerun', args);
     return { success: true, stdout };
   } catch (err: unknown) {
     const error = err as Error & { stderr?: string };
     return {
       success: false,
       error: {
-        stage: "scuttlerun",
+        stage: 'scuttlerun',
         message: error.stderr || error.message,
       },
     };
@@ -121,43 +119,41 @@ export async function runPincenezLint(
 ): Promise<LintSubprocessResult> {
   const { checksPath, graderModel, context } = options;
 
-  const args: string[] = ["lint"];
+  const args: string[] = ['lint'];
   if (graderModel) {
-    args.push("--model", graderModel);
+    args.push('--model', graderModel);
   }
   if (context) {
-    args.push("--context", context);
+    args.push('--context', context);
   }
   args.push(checksPath);
 
   try {
-    const { stdout } = await execFilePromise("pincenez", args);
+    const { stdout } = await execFilePromise('pincenez', args);
     return { success: true, stdout };
   } catch (err: unknown) {
     const error = err as Error & { stderr?: string };
     return {
       success: false,
       error: {
-        stage: "pincenez",
+        stage: 'pincenez',
         message: error.stderr || error.message,
       },
     };
   }
 }
 
-export async function runPincenez(
-  options: RunPincenezOptions,
-): Promise<SubprocessResult> {
+export async function runPincenez(options: RunPincenezOptions): Promise<SubprocessResult> {
   const { checksPath, outputPath, gradingPath, graderModel } = options;
 
   const args: string[] = [];
   if (graderModel) {
-    args.push("--model", graderModel);
+    args.push('--model', graderModel);
   }
   args.push(checksPath, outputPath);
 
   try {
-    const { stdout } = await execFilePromise("pincenez", args);
+    const { stdout } = await execFilePromise('pincenez', args);
     await writeFile(gradingPath, stdout);
     return { success: true };
   } catch (err: unknown) {
@@ -165,7 +161,7 @@ export async function runPincenez(
     return {
       success: false,
       error: {
-        stage: "pincenez",
+        stage: 'pincenez',
         message: error.stderr || error.message,
       },
     };

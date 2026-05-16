@@ -1,5 +1,5 @@
-import { parse, stringify, Document, Scalar, visit, isSeq, isMap, isNode } from "yaml";
-import { z } from "zod/v4";
+import { parse, stringify, Document, Scalar, visit, isSeq, isMap, isNode } from 'yaml';
+import { z } from 'zod/v4';
 
 const GradingCheckSchema = z.object({
   id: z.string(),
@@ -39,7 +39,7 @@ export interface ScenarioOutput {
 export function parseCostFromTranscript(yaml: string): number | null {
   try {
     const parsed = parse(yaml) as Record<string, unknown>;
-    if (typeof parsed.cost_usd === "number") {
+    if (typeof parsed.cost_usd === 'number') {
       return parsed.cost_usd;
     }
     return null;
@@ -91,8 +91,7 @@ export function averageResults(
       }
     }
 
-    const passRate =
-      Math.round((passSum / repGradings.length) * 100) / 100;
+    const passRate = Math.round((passSum / repGradings.length) * 100) / 100;
 
     if (passRate === 1.0) {
       checks.push({ check, pass_rate: passRate });
@@ -103,42 +102,38 @@ export function averageResults(
 
   const scenarioPassRate =
     checks.length > 0
-      ? Math.round(
-          (checks.reduce((sum, a) => sum + a.pass_rate, 0) /
-            checks.length) *
-            100,
-        ) / 100
+      ? Math.round((checks.reduce((sum, a) => sum + a.pass_rate, 0) / checks.length) * 100) / 100
       : 0;
 
   return { checks, pass_rate: scenarioPassRate };
 }
 
 function wordWrap(text: string, width: number): string {
-  const words = text.split(" ");
+  const words = text.split(' ');
   const lines: string[] = [];
-  let cur = "";
+  let cur = '';
   for (const word of words) {
     if (cur.length === 0) {
       cur = word;
     } else if (cur.length + 1 + word.length <= width) {
-      cur += " " + word;
+      cur += ' ' + word;
     } else {
       lines.push(cur);
       cur = word;
     }
   }
   if (cur) lines.push(cur);
-  return lines.join("\n");
+  return lines.join('\n');
 }
 
 function wrapAndBlockify(_key: unknown, node: Scalar): void {
-  if (typeof node.value !== "string") return;
+  if (typeof node.value !== 'string') return;
   let value: string = node.value;
-  if (!value.includes("\n") && value.length > 80) {
+  if (!value.includes('\n') && value.length > 80) {
     value = wordWrap(value, 80);
     node.value = value;
   }
-  if (value.includes("\n")) {
+  if (value.includes('\n')) {
     node.type = Scalar.BLOCK_LITERAL;
   }
 }
@@ -147,15 +142,13 @@ export function writeYamlArrayItem(item: Record<string, unknown>): string {
   const doc = new Document(item);
   visit(doc, { Scalar: wrapAndBlockify });
   const serialized = doc.toString({ lineWidth: 0 }).trimEnd();
-  const lines = serialized.split("\n");
-  return lines
-    .map((line, i) => (i === 0 ? `  - ${line}` : `    ${line}`))
-    .join("\n");
+  const lines = serialized.split('\n');
+  return lines.map((line, i) => (i === 0 ? `  - ${line}` : `    ${line}`)).join('\n');
 }
 
 export function streamHeader(artifactDir: string): void {
   process.stdout.write(stringify({ artifact_dir: artifactDir }, { lineWidth: 0 }));
-  process.stdout.write("scenarios:\n");
+  process.stdout.write('scenarios:\n');
 }
 
 export function streamScenarioYaml(scenario: ScenarioOutput): void {
@@ -202,7 +195,7 @@ export function streamScenarioYaml(scenario: ScenarioOutput): void {
   if (isMap(contentNode)) {
     for (const pair of contentNode.items) {
       const key = pair.key;
-      if (isNode(key) && (key as Scalar).value === "pass_rate") {
+      if (isNode(key) && (key as Scalar).value === 'pass_rate') {
         key.spaceBefore = true;
         break;
       }
@@ -210,20 +203,22 @@ export function streamScenarioYaml(scenario: ScenarioOutput): void {
   }
 
   const serialized = doc.toString({ lineWidth: 0 }).trimEnd();
-  const lines = serialized.split("\n");
+  const lines = serialized.split('\n');
   const yamlItem = lines
     .map((line, i) => {
       if (i === 0) return `  - ${line}`;
-      if (line === "") return "";
+      if (line === '') return '';
       return `    ${line}`;
     })
-    .join("\n");
+    .join('\n');
 
-  process.stdout.write(yamlItem + "\n\n");
+  process.stdout.write(yamlItem + '\n\n');
 }
 
 export function streamTotalCost(totalCostUsd: number): void {
-  process.stdout.write(stringify({ total_cost_usd: Math.round(totalCostUsd * 10000) / 10000 }, { lineWidth: 0 }));
+  process.stdout.write(
+    stringify({ total_cost_usd: Math.round(totalCostUsd * 10000) / 10000 }, { lineWidth: 0 }),
+  );
 }
 
 // --- Lint output ---
@@ -282,7 +277,7 @@ export function streamLintScenarioYaml(scenario: LintScenarioOutput): void {
   visit(doc, { Scalar: wrapAndBlockify });
 
   // Add blank lines between check items
-  const checksNode = doc.getIn([scenario.id, "checks"], true);
+  const checksNode = doc.getIn([scenario.id, 'checks'], true);
   if (isSeq(checksNode)) {
     for (let i = 1; i < checksNode.items.length; i++) {
       const checkItem = checksNode.items[i];
@@ -293,26 +288,36 @@ export function streamLintScenarioYaml(scenario: LintScenarioOutput): void {
   }
 
   const serialized = doc.toString({ lineWidth: 0 }).trimEnd();
-  const lines = serialized.split("\n");
+  const lines = serialized.split('\n');
   const yamlItem = lines
     .map((line, i) => {
       if (i === 0) return `  - ${line}`;
-      if (line === "") return "";
+      if (line === '') return '';
       return `    ${line}`;
     })
-    .join("\n");
+    .join('\n');
 
-  process.stdout.write(yamlItem + "\n\n");
+  process.stdout.write(yamlItem + '\n\n');
 }
 
 export function streamLintTotals(totals: LintTotals): void {
-  process.stdout.write(stringify({
-    scenarios_total: totals.scenarios_total,
-    scenarios_with_issues: totals.scenarios_with_issues,
-  }, { lineWidth: 0 }));
-  process.stdout.write("\n");
-  process.stdout.write(stringify({
-    checks_total: totals.checks_total,
-    checks_with_issues: totals.checks_with_issues,
-  }, { lineWidth: 0 }));
+  process.stdout.write(
+    stringify(
+      {
+        scenarios_total: totals.scenarios_total,
+        scenarios_with_issues: totals.scenarios_with_issues,
+      },
+      { lineWidth: 0 },
+    ),
+  );
+  process.stdout.write('\n');
+  process.stdout.write(
+    stringify(
+      {
+        checks_total: totals.checks_total,
+        checks_with_issues: totals.checks_with_issues,
+      },
+      { lineWidth: 0 },
+    ),
+  );
 }

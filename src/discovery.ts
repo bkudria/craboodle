@@ -1,5 +1,5 @@
-import { glob } from "glob";
-import { basename, dirname, join } from "node:path";
+import { glob } from 'glob';
+import { basename, dirname, join } from 'node:path';
 
 export interface ScenarioRef {
   id: string;
@@ -7,10 +7,8 @@ export interface ScenarioRef {
   configPath: string;
 }
 
-export async function discoverScenarios(
-  evalsDir: string,
-): Promise<ScenarioRef[]> {
-  const matches = await glob("*/scenario.{yaml,yml}", { cwd: evalsDir });
+export async function discoverScenarios(evalsDir: string): Promise<ScenarioRef[]> {
+  const matches = await glob('*/scenario.{yaml,yml}', { cwd: evalsDir });
 
   const scenarios: ScenarioRef[] = matches.map((match) => {
     const configPath = join(evalsDir, match);
@@ -25,17 +23,12 @@ export async function discoverScenarios(
 }
 
 function matchPattern(id: string, pattern: string): boolean {
-  if (!pattern.includes("*")) return id === pattern;
-  const regex = new RegExp("^" + pattern.replace(/\*/g, ".*") + "$");
+  if (!pattern.includes('*')) return id === pattern;
+  const regex = new RegExp('^' + pattern.replace(/\*/g, '.*') + '$');
   return regex.test(id);
 }
 
-export function filterScenarios(
-  scenarios: ScenarioRef[],
-  pattern: string,
-): ScenarioRef[] {
-  const patterns = pattern.split(",").map((p) => p.trim());
-  return scenarios.filter((s) =>
-    patterns.some((p) => matchPattern(s.id, p)),
-  );
+export function filterScenarios(scenarios: ScenarioRef[], pattern: string): ScenarioRef[] {
+  const patterns = pattern.split(',').map((p) => p.trim());
+  return scenarios.filter((s) => patterns.some((p) => matchPattern(s.id, p)));
 }

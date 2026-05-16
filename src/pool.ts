@@ -1,4 +1,4 @@
-import pLimit from "p-limit";
+import pLimit from 'p-limit';
 
 export interface WorkItem<T> {
   scenarioId: string;
@@ -7,8 +7,8 @@ export interface WorkItem<T> {
 }
 
 export type WorkResult<T> =
-  | { type: "success"; rep: number; data: T }
-  | { type: "error"; rep: number; error: string };
+  | { type: 'success'; rep: number; data: T }
+  | { type: 'error'; rep: number; error: string };
 
 export interface PoolOptions<T> {
   budgetUsd?: number;
@@ -53,9 +53,9 @@ export async function executePool<T>(
       if (budgetExceeded || options?.shouldAbort?.()) {
         const error = budgetExceeded
           ? `Budget exceeded ($${totalCost.toFixed(4)} > $${budgetUsd})`
-          : "Aborted (fail-fast)";
+          : 'Aborted (fail-fast)';
         results.get(item.scenarioId)!.push({
-          type: "error",
+          type: 'error',
           rep: item.rep,
           error,
         });
@@ -66,7 +66,7 @@ export async function executePool<T>(
       try {
         const data = await item.fn();
         results.get(item.scenarioId)!.push({
-          type: "success",
+          type: 'success',
           rep: item.rep,
           data,
         });
@@ -83,7 +83,7 @@ export async function executePool<T>(
         }
       } catch (err: unknown) {
         results.get(item.scenarioId)!.push({
-          type: "error",
+          type: 'error',
           rep: item.rep,
           error: err instanceof Error ? err.message : String(err),
         });

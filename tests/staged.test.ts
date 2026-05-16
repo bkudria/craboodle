@@ -1,39 +1,39 @@
-import { describe, it, expect, vi } from "vitest";
-import pLimit from "p-limit";
-import { runStaged } from "../src/staged.js";
+import { describe, it, expect, vi } from 'vitest';
+import pLimit from 'p-limit';
+import { runStaged } from '../src/staged.js';
 
-describe("runStaged", () => {
+describe('runStaged', () => {
   it("runs stageA then stageB and returns stageB's result", async () => {
     const limA = pLimit(10);
     const limB = pLimit(10);
-    const stageA = vi.fn().mockResolvedValue({ type: "success", payload: "a" });
-    const stageB = vi.fn().mockResolvedValue("b-result");
+    const stageA = vi.fn().mockResolvedValue({ type: 'success', payload: 'a' });
+    const stageB = vi.fn().mockResolvedValue('b-result');
 
     const result = await runStaged(limA, limB, stageA, () => true, stageB);
 
     expect(stageA).toHaveBeenCalledOnce();
     expect(stageB).toHaveBeenCalledOnce();
-    expect(stageB).toHaveBeenCalledWith({ type: "success", payload: "a" });
-    expect(result).toBe("b-result");
+    expect(stageB).toHaveBeenCalledWith({ type: 'success', payload: 'a' });
+    expect(result).toBe('b-result');
   });
 
   it("returns stageA's result and skips stageB when shouldRunStageB is false", async () => {
     const limA = pLimit(10);
     const limB = pLimit(10);
-    const stageA = vi.fn().mockResolvedValue({ type: "error", reason: "boom" });
+    const stageA = vi.fn().mockResolvedValue({ type: 'error', reason: 'boom' });
     const stageB = vi.fn();
 
     const result = await runStaged(
       limA,
       limB,
       stageA,
-      (a: { type: string }) => a.type !== "error",
+      (a: { type: string }) => a.type !== 'error',
       stageB,
     );
 
     expect(stageA).toHaveBeenCalledOnce();
     expect(stageB).not.toHaveBeenCalled();
-    expect(result).toEqual({ type: "error", reason: "boom" });
+    expect(result).toEqual({ type: 'error', reason: 'boom' });
   });
 
   it("releases stageA's slot before stageB starts so a different item's stageA can proceed", async () => {
@@ -43,18 +43,18 @@ describe("runStaged", () => {
     let item1StageBStarted = false;
     let item2StageAStarted = false;
 
-    const item1StageA = () => Promise.resolve("a1");
+    const item1StageA = () => Promise.resolve('a1');
     const item1StageB = () =>
       new Promise<string>((resolve) => {
         item1StageBStarted = true;
-        setTimeout(() => resolve("b1"), 50);
+        setTimeout(() => resolve('b1'), 50);
       });
 
     const item2StageA = () => {
       item2StageAStarted = true;
-      return Promise.resolve("a2");
+      return Promise.resolve('a2');
     };
-    const item2StageB = () => Promise.resolve("b2");
+    const item2StageB = () => Promise.resolve('b2');
 
     const p1 = runStaged(limA, limB, item1StageA, () => true, item1StageB);
     await new Promise((r) => setImmediate(r));
@@ -69,7 +69,7 @@ describe("runStaged", () => {
     await Promise.all([p1, p2]);
   });
 
-  it("allows stageB and stageA of different items to be in flight simultaneously", async () => {
+  it('allows stageB and stageA of different items to be in flight simultaneously', async () => {
     const limA = pLimit(1);
     const limB = pLimit(1);
 
@@ -93,9 +93,9 @@ describe("runStaged", () => {
     };
 
     await Promise.all([
-      runStaged(limA, limB, makeStageA("1"), () => true, makeStageB()),
-      runStaged(limA, limB, makeStageA("2"), () => true, makeStageB()),
-      runStaged(limA, limB, makeStageA("3"), () => true, makeStageB()),
+      runStaged(limA, limB, makeStageA('1'), () => true, makeStageB()),
+      runStaged(limA, limB, makeStageA('2'), () => true, makeStageB()),
+      runStaged(limA, limB, makeStageA('3'), () => true, makeStageB()),
     ]);
 
     expect(aAndBOverlap).toBeGreaterThan(0);
