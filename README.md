@@ -1,6 +1,6 @@
 # craboodle
 
-> **Unreleased.** Craboodle is under active development and its API, checks file format, and behavior may change without notice.
+> **0.x.** Craboodle is in active development; minor versions may include breaking changes until 1.0.
 
 Eval pipeline orchestrator for Claude Code.
 
