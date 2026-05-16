@@ -1,10 +1,43 @@
 {
   "name": "craboodle",
-  "version": "0.1.0",
+  "version": "0.0.0",
   "description": "Eval pipeline orchestrator for Claude Code",
+  "keywords": [
+    "claude",
+    "anthropic",
+    "claude-code",
+    "agent-sdk",
+    "cli",
+    "llm",
+    "ai",
+    "eval",
+    "evaluation",
+    "orchestrator",
+    "pipeline"
+  ],
+  "author": "Benjamin Kudria <ben@kudria.net>",
+  "license": "MIT",
+  "homepage": "https://github.com/bkudria/craboodle#readme",
+  "bugs": {
+    "url": "https://github.com/bkudria/craboodle/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bkudria/craboodle.git"
+  },
   "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
   "bin": {
     "craboodle": "./dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   },
   "scripts": {
     "clean": "rm -rf dist",
@@ -12,7 +45,12 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
-    "dev": "tsx src/cli.ts"
+    "lint": "eslint src/ tests/",
+    "format": "prettier --write src/ tests/",
+    "format:check": "prettier --check src/ tests/",
+    "dev": "tsx src/cli.ts",
+    "prepare": "husky",
+    "prepublishOnly": "npm run build && npm test"
   },
   "dependencies": {
     "commander": "^14.0.3",
@@ -22,10 +60,14 @@
     "zod": "^4.0.0"
   },
   "devDependencies": {
+    "@commitlint/cli": "^20.5.3",
+    "@commitlint/config-conventional": "^20.5.3",
     "@eslint/js": "^10.0.1",
     "@types/node": "^25.6.0",
     "@vitest/coverage-v8": "^4.1.4",
     "eslint": "^10.2.1",
+    "husky": "^9.1.7",
+    "prettier": "3.8.3",
     "tsx": "^4.19.0",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.58.2",
