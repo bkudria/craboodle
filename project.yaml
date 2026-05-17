@@ -1,16 +1,1 @@
-name: craboodle
-description: Eval pipeline orchestrator for Claude Code
-language: typescript
-profiles: [base]
-
-standards:
-  tests:
-    framework: vitest
-    config: vitest.config.ts
-    directory: tests
-  linter:
-    tool: eslint
-    config: eslint.config.mjs
-  coverage:
-    config: vitest.config.ts
-    ratchet_pattern: thresholds
+profiles: [ base ]
