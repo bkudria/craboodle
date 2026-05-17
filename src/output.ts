@@ -1,4 +1,5 @@
-import { parse, stringify, Document, Scalar, visit, isSeq, isMap, isNode } from 'yaml';
+import { parse, stringify, Document, Scalar, visit, isSeq, YAMLMap, YAMLSeq } from 'yaml';
+import type { Node } from 'yaml';
 import { z } from 'zod/v4';
 
 const GradingCheckSchema = z.object({
@@ -182,23 +183,18 @@ export function streamScenarioYaml(scenario: ScenarioOutput): void {
   visit(doc, (_key, node) => {
     if (isSeq(node)) {
       for (let i = 1; i < node.items.length; i++) {
-        const seqItem = node.items[i];
-        if (isNode(seqItem)) {
-          seqItem.spaceBefore = true;
-        }
+        (node.items[i] as Node).spaceBefore = true;
       }
     }
   });
 
   // Add blank line before summary fields (pass_rate, cost, etc.)
-  const contentNode = doc.getIn([scenario.id], true);
-  if (isMap(contentNode)) {
-    for (const pair of contentNode.items) {
-      const key = pair.key;
-      if (isNode(key) && (key as Scalar).value === 'pass_rate') {
-        key.spaceBefore = true;
-        break;
-      }
+  const contentNode = doc.getIn([scenario.id], true) as YAMLMap;
+  for (const pair of contentNode.items) {
+    const key = pair.key as Scalar;
+    if (key.value === 'pass_rate') {
+      key.spaceBefore = true;
+      break;
     }
   }
 
@@ -277,14 +273,9 @@ export function streamLintScenarioYaml(scenario: LintScenarioOutput): void {
   visit(doc, { Scalar: wrapAndBlockify });
 
   // Add blank lines between check items
-  const checksNode = doc.getIn([scenario.id, 'checks'], true);
-  if (isSeq(checksNode)) {
-    for (let i = 1; i < checksNode.items.length; i++) {
-      const checkItem = checksNode.items[i];
-      if (isNode(checkItem)) {
-        checkItem.spaceBefore = true;
-      }
-    }
+  const checksNode = doc.getIn([scenario.id, 'checks'], true) as YAMLSeq;
+  for (let i = 1; i < checksNode.items.length; i++) {
+    (checksNode.items[i] as Node).spaceBefore = true;
   }
 
   const serialized = doc.toString({ lineWidth: 0 }).trimEnd();

@@ -653,6 +653,21 @@ checks_with_issues: 0
       expect(result).not.toMatch(/note: [|>]/);
       expect(result).toContain('note: short value');
     });
+
+    it('wraps long string ending in trailing whitespace without emitting blank lines', async () => {
+      const { writeYamlArrayItem } = await import('../src/output.js');
+
+      // 80 non-space chars + two trailing spaces. wordWrap splits on ' ',
+      // pushes the 80-char chunk, then loops over two empty trailing words
+      // leaving its accumulator empty at end-of-loop. The trailing-empty
+      // chunk must be skipped (no stray blank line in output).
+      const value = 'a'.repeat(80) + '  ';
+      const result = writeYamlArrayItem({ msg: value });
+
+      expect(result).toContain('a'.repeat(80));
+      // No internal blank line in the serialized item
+      expect(result).not.toMatch(/\n[ \t]*\n/);
+    });
   });
 
   describe('streamScenarioYaml multiline', () => {
