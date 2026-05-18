@@ -40,12 +40,12 @@ config {
 
 external entity ScuttlerunConfig {
     path: String
+    prompt_context: String?
 }
 
 external entity ChecksConfig {
     path: String
     check_count: Integer
-    prompt_context: String?
 }
 
 external entity Transcript {
@@ -731,7 +731,7 @@ rule LintInvokePincenez {
             scenario: scenario,
             checks: pincenez_lint_checks(
                 checks_config: scenario.checks_config,
-                context: scenario.checks_config.prompt_context,
+                context: scenario.scenario_config.prompt_context,
                 grader_model_override: inv.grader_model_override),
             checks_total: pincenez_lint_total(scenario.checks_config),
             checks_with_issues: pincenez_lint_issue_count(scenario.checks_config)
