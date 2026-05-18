@@ -83,7 +83,9 @@ export async function loadCraboodleConfig(path: string): Promise<CraboodleConfig
       !Number.isInteger(raw.artifact_retention_days) ||
       raw.artifact_retention_days < 0
     ) {
-      throw new Error('artifact_retention_days must be a non-negative integer (0 disables cleanup)');
+      throw new Error(
+        'artifact_retention_days must be a non-negative integer (0 disables cleanup)',
+      );
     }
     artifactRetentionDays = raw.artifact_retention_days;
   }

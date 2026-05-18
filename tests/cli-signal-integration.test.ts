@@ -48,9 +48,7 @@ async function pollFileLines(path: string, atLeast: number, timeoutMs: number): 
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     try {
-      const lines = (await readFile(path, 'utf8'))
-        .split('\n')
-        .filter((s) => s.trim().length > 0);
+      const lines = (await readFile(path, 'utf8')).split('\n').filter((s) => s.trim().length > 0);
       if (lines.length >= atLeast) return Date.now() - start;
     } catch {
       /* file may not exist yet */
