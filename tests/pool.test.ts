@@ -169,6 +169,7 @@ describe('pool', () => {
       expect(s2Results[0].type).toBe('error');
       if (s2Results[0].type === 'error') {
         expect(s2Results[0].error).toContain('Budget exceeded');
+        expect(s2Results[0].reason).toBe('budget');
       }
     });
 
@@ -275,6 +276,10 @@ describe('pool', () => {
       expect(completedCount).toBe(1);
       expect(results.get('s2')![0].type).toBe('error');
       expect(results.get('s3')![0].type).toBe('error');
+      const s2Error = results.get('s2')![0];
+      if (s2Error.type === 'error') {
+        expect(s2Error.reason).toBe('fail_fast');
+      }
     });
 
     it('fires onScenarioComplete for abort-skipped items', async () => {

@@ -228,7 +228,7 @@ async function runCommand(evalsDir: string, opts: RunOptions): Promise<void> {
         } else {
           errors.push({
             rep: result.rep,
-            stage: 'unknown',
+            stage: result.reason ?? 'unknown',
             error: result.error,
           });
         }

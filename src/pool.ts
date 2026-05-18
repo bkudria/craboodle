@@ -8,7 +8,7 @@ export interface WorkItem<T> {
 
 export type WorkResult<T> =
   | { type: 'success'; rep: number; data: T }
-  | { type: 'error'; rep: number; error: string };
+  | { type: 'error'; rep: number; error: string; reason?: 'fail_fast' | 'budget' };
 
 export interface PoolOptions<T> {
   budgetUsd?: number;
@@ -51,6 +51,7 @@ export async function executePool<T>(
   const promises = workItems.map((item) =>
     limit(async () => {
       if (budgetExceeded || options?.shouldAbort?.()) {
+        const reason: 'fail_fast' | 'budget' = budgetExceeded ? 'budget' : 'fail_fast';
         const error = budgetExceeded
           ? `Budget exceeded ($${totalCost.toFixed(4)} > $${budgetUsd})`
           : 'Aborted (fail-fast)';
@@ -58,6 +59,7 @@ export async function executePool<T>(
           type: 'error',
           rep: item.rep,
           error,
+          reason,
         });
         onItemDone?.(item.scenarioId);
         return;

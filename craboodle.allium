@@ -201,6 +201,7 @@ entity ListInvocation {
     exit_code: Integer when status = completed | failed
 
     list_entries: Set<ListEntry> with invocation = this
+    invalid_entries: list_entries where not valid
 
     selected_scenarios:
         if scenario_filter != null:
@@ -210,6 +211,10 @@ entity ListInvocation {
 
     all_entries_done: list_entries.count = selected_scenarios.count
     any_invalid: list_entries.any(e => not e.valid)
+
+    total_scenarios: list_entries.count
+    total_checks: sum_integers(list_entries.check_count)
+    invalid_count: invalid_entries.count
 
     transitions status {
         starting -> discovering
@@ -231,6 +236,7 @@ entity LintInvocation {
     exit_code: Integer when status = completed | failed
 
     lint_results: Set<LintScenarioResult> with invocation = this
+    results_with_issues: lint_results where checks_with_issues > 0
 
     selected_scenarios:
         if scenario_filter != null:
@@ -240,6 +246,11 @@ entity LintInvocation {
 
     all_lint_invocations_done: lint_results.count = selected_scenarios.count
     total_issues: sum_integers(lint_results.checks_with_issues)
+
+    scenarios_total: lint_results.count
+    scenarios_with_issues: results_with_issues.count
+    checks_total: sum_integers(lint_results.checks_total)
+    checks_with_issues: total_issues
 
     transitions status {
         starting -> discovering
@@ -904,7 +915,12 @@ surface ListCommand {
         ListInvoked(operator, evals_dir, scenario_filter?)
 
     exposes:
+        invocation.eval_directory.craboodle_config?.version
+        invocation.eval_directory.craboodle_config?.min_pass_rate
         invocation.list_entries
+        invocation.total_scenarios
+        invocation.total_checks
+        invocation.invalid_count
         invocation.exit_code
 
     contracts:
@@ -915,6 +931,18 @@ surface ListCommand {
         -- delegating to scuttlerun's dry-run mode. Invalid scenarios are
         -- reported with the validator's error message and the command
         -- exits with code 1.
+
+    @guarantee ListBaseHeader
+        -- Before the scenarios block, a `base:` header summarises the
+        -- craboodle-level config: version and min_pass_rate are included
+        -- only when present in craboodle.yaml. The header is emitted even
+        -- when both fields are absent (as an empty mapping).
+
+    @guarantee ListTotalsFooter
+        -- After the scenarios block, a `total:` line summarises the
+        -- number of scenarios and the sum of checks across them. When
+        -- any scenario is invalid, an `invalid:` count follows and the
+        -- command exits with code 1.
 
     @guarantee ListExitCodes
         -- 0 all scenarios valid; 1 at least one invalid scenario;
@@ -931,6 +959,10 @@ surface LintCommand {
 
     exposes:
         invocation.lint_results
+        invocation.scenarios_total
+        invocation.scenarios_with_issues
+        invocation.checks_total
+        invocation.checks_with_issues
         invocation.exit_code
 
     contracts:
@@ -946,6 +978,13 @@ surface LintCommand {
         -- exit 1 otherwise. Per-scenario blocks are emitted only for
         -- scenarios with at least one issue; aggregate totals always
         -- reflect every check.
+
+    @guarantee LintTotalsFooter
+        -- After the per-scenario blocks, two summary mappings are emitted:
+        -- first {scenarios_total, scenarios_with_issues}, then
+        -- {checks_total, checks_with_issues}. Both reflect every linted
+        -- scenario and check, including those without issues that were
+        -- omitted from the per-scenario blocks.
 
     @guarantee LintExitCodes
         -- 0 clean; 1 issues found; 4 no scenarios, empty filter, or zero
