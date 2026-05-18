@@ -3,9 +3,15 @@
 import { Command } from 'commander';
 import { dirname, join } from 'node:path';
 import { mkdtemp, writeFile, mkdir, readFile, access, stat } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { stringify, parse } from 'yaml';
 import { resolve } from 'node:path';
+
+const pkg = JSON.parse(
+  readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'package.json'), 'utf8'),
+) as { version: string };
 
 import pLimit from 'p-limit';
 import { loadCraboodleConfig, checkBaseConfig, resolveRepeatsFromRawFlag } from './config.js';
@@ -448,7 +454,7 @@ const program = new Command();
 program
   .name('craboodle')
   .description('Eval pipeline orchestrator for Claude Code')
-  .version('0.1.0')
+  .version(pkg.version)
   .addHelpText('after', HELP_TEXT);
 
 program
