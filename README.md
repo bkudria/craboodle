@@ -49,7 +49,7 @@ Shared taxonomy across scuttlerun/pincenez/craboodle. Codes 5–7 are scuttlerun
 ## Documentation
 
 - [GOALS.md](GOALS.md) — design philosophy, principles, and project goals
-- [SPEC.md](SPEC.md) — technical specification, architecture, and configuration reference
+- [craboodle.allium](craboodle.allium) — behavioural specification (the authoritative contract)
 
 ## License
 
