@@ -51,6 +51,31 @@ craboodle lint ./evals
 craboodle run ./evals
 ```
 
+## Development
+
+Clone the repo and install dependencies:
+
+```bash
+git clone https://github.com/bkudria/craboodle.git
+cd craboodle
+npm install
+```
+
+Common commands:
+
+```bash
+npm run dev          # Run the CLI via tsx (no build step)
+npm run build        # TypeScript compilation to dist/
+npm test             # Run the vitest suite
+npm run test:watch   # Run vitest in watch mode
+npm run test:coverage # Run vitest with v8 coverage
+npm run lint         # ESLint over src/ and tests/
+npm run format       # Prettier write
+npm run format:check # Prettier check (CI uses this)
+```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for commit conventions and PR guidelines.
+
 ## Exit Codes
 
 Shared taxonomy across scuttlerun/pincenez/craboodle. Codes 5–7 are scuttlerun-only (budget/timeout/max_turns); craboodle emits:
