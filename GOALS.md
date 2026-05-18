@@ -2,7 +2,7 @@
 
 ## Origin
 
-Extracted from the [skillcraft](~/.claude/skills/skillcraft/) eval framework. The skillcraft eval pipeline previously inlined all orchestration — running scuttlerun sessions, grading with pincenez, aggregating results, managing iterations — inside `run-eval.sh` (~1000 lines of bash). `craboodle` extracts this into a standalone tool, completing the extraction arc: `scuttlerun` (session driver) → `pincenez` (grader) → `craboodle` (orchestrator).
+craboodle is the orchestrator in a three-tool extraction: `scuttlerun` (session driver) → `pincenez` (grader) → `craboodle` (orchestrator). Each tool owns one step of the pipeline. Previously this orchestration lived inline in a ~1000-line bash script; extracting it to a standalone TypeScript CLI gives better error handling, types, and testability.
 
 ## Design Philosophy
 
@@ -31,11 +31,11 @@ Each tool does one job. craboodle is the conductor; scuttlerun and pincenez are 
 
 ## Goals
 
-1. **Replace run-eval.sh.** The ~1000-line bash orchestrator becomes a TypeScript CLI with better error handling, types, and testability. Skillcraft's `run-eval.sh` and `aggregate-results.sh` are fully replaced.
+1. **Replace inline bash orchestration.** The ~1000-line bash orchestrator becomes a TypeScript CLI with better error handling, types, and testability.
 
-2. **General-purpose eval orchestrator.** Designed for generality; skill eval is the first proven use case. Works with any directory of scenarios — CLAUDE.md/system prompt tuning, sub-agent definitions, combo config evaluation, regression testing, skill evals. The skill concept is unknown to craboodle — the abstraction is clean enough for any use case without being designed around a specific one.
+2. **General-purpose eval orchestrator.** Designed for generality. Works with any directory of scenarios — CLAUDE.md/system prompt tuning, sub-agent definitions, combo config evaluation, regression testing. The abstraction is clean enough for any use case without being designed around a specific one.
 
-3. **Scenario directory convention.** `craboodle run <evals-dir>` discovers scenarios by globbing `*/scenario.yaml`. Each scenario directory contains its definition. This convention is inherited from the skillcraft refactoring and proven in practice.
+3. **Scenario directory convention.** `craboodle run <evals-dir>` discovers scenarios by globbing `*/scenario.yaml`. Each scenario directory contains its definition. Proven in practice.
 
 4. **Flat concurrency pool.** All (scenario, rep) pairs go into a single work pool bounded by `--concurrency`. No distinction between scenario-level and rep-level parallelism. Within each pair, the flow is sequential: scuttlerun runs first, then pincenez grades — the pool slot is held for both steps. Grading parallelism within pincenez (one LLM call per check) is inherited from pincenez.
 
@@ -50,7 +50,3 @@ Each tool does one job. craboodle is the conductor; scuttlerun and pincenez are 
 - Web UI or dashboard. yq and the terminal are the UI.
 - Trend analysis across runs. A downstream concern.
 - Notification or alerting on regressions.
-
-## Resolved Questions
-
-- **Skillcraft relationship**: Skillcraft is craboodle's motivating first caller. Skillcraft keeps a thin wrapper (`run-eval.sh`) for skill-specific conventions; craboodle's design is not shaped by assumptions about what skillcraft needs.
