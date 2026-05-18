@@ -17,7 +17,25 @@ craboodle orchestrates two companion tools:
 
 For each scenario, craboodle runs scuttlerun N times, grades each run with pincenez, and averages the pass rates across repetitions.
 
-## Quick Start
+## Installation
+
+### Prerequisites
+
+- **Node.js ≥ 24** (see [`.nvmrc`](.nvmrc) and `engines.node` in [package.json](package.json)).
+- **[scuttlerun](https://github.com/bkudria/scuttlerun)** and **[pincenez](https://github.com/bkudria/pincenez)** installed and on `PATH`. craboodle invokes them as subprocesses.
+- **`ANTHROPIC_API_KEY`** exported in your environment. craboodle never reads or logs it; scuttlerun and pincenez do (see [SECURITY.md](SECURITY.md)).
+
+### Install
+
+```bash
+# Global install (provides the `craboodle` command)
+npm install -g craboodle
+
+# Or run without installing
+npx craboodle <command> [args]
+```
+
+## Usage
 
 ```bash
 # Scaffold a new eval suite
