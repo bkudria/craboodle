@@ -1,0 +1,1053 @@
+-- allium: 3
+-- craboodle.allium
+--
+-- Scope: Craboodle eval pipeline orchestrator for Claude Code configurations.
+-- Includes:
+--   - The run, list, lint and init CLI commands
+--   - Scenario discovery, repetition averaging, streaming YAML output
+--   - Ratchet and budget gates (mid-run fail-fast)
+--   - Artifact directory lifecycle and garbage collection
+--   - craboodle.yaml load-time validation
+-- Excludes:
+--   - Scuttlerun session behaviour (external; modelled as a contract)
+--   - Pincenez grading and lint logic (external; modelled as contracts)
+--   - YAML serialisation mechanics and CLI argument parsing
+--   - TypeScript / Node runtime details (subprocess plumbing, async scheduling)
+--
+-- Exit code taxonomy (shared with scuttlerun and pincenez):
+--   0    pipeline completed (some rep succeeded; ratchet not violated)
+--   1    configuration / input error, or lint found issues
+--   2    uncaught runtime exception (incl. craboodle.yaml load failure)
+--   3    ratchet failure (any scenario below min_pass_rate)
+--   4    infrastructure / dependency error
+--          (no scenarios, empty filter, zero successful reps across all
+--          scenarios, zero lint invocations succeeded)
+--   5-7  reserved for scuttlerun-only concerns
+--   130  interrupted (SIGINT)
+
+config {
+    default_repeats: Integer = 3
+    default_concurrency: Integer = 10
+    artifact_retention: Duration = 7.days
+    artifact_prefix: String = "craboodle-run-"
+    supported_config_versions: Set<String> = {"1"}
+}
+
+-- ============================================================================
+-- External entities (artifacts that flow across the scuttlerun / pincenez
+-- boundary; craboodle treats their contents as opaque)
+-- ============================================================================
+
+external entity ScuttlerunConfig {
+    path: String
+}
+
+external entity ChecksConfig {
+    path: String
+    check_count: Integer
+    prompt_context: String?
+}
+
+external entity Transcript {
+    path: String
+    cost_usd: Decimal?
+}
+
+external entity Grading {
+    path: String
+    checks: List<GradedCheck>
+    cost_usd: Decimal?
+}
+
+-- ============================================================================
+-- Value types
+-- ============================================================================
+
+value GradedCheck {
+    id: String
+    description: String
+    pass: Boolean?
+    evidence: String
+}
+
+value LintedCheck {
+    id: String
+    description: String
+    issues: List<LintIssue>
+}
+
+value LintIssue {
+    anti_pattern: String
+    suggestion: String
+}
+
+value RepFailureEvidence {
+    rep: Integer
+    evidence: String
+    transcript_path: String?
+}
+
+value RepError {
+    rep: Integer
+    stage: scuttlerun | pincenez | fail_fast | budget
+    message: String
+    transcript_path: String?
+}
+
+-- ============================================================================
+-- Actor
+-- ============================================================================
+
+actor Operator {
+    -- The human or CI process invoking the craboodle CLI.
+    identified_by: invocation_id
+}
+
+-- ============================================================================
+-- Inputs
+-- ============================================================================
+
+entity EvalDirectory {
+    path: String
+    base_config: ScuttlerunConfig?
+    scenarios: Set<Scenario> with eval_directory = this
+    craboodle_config: CraboodleConfig? with eval_directory = this
+
+    has_craboodle_config: craboodle_config != null
+    has_base_config: base_config != null
+}
+
+entity Scenario {
+    eval_directory: EvalDirectory
+    id: String
+    scenario_config: ScuttlerunConfig
+    checks_config: ChecksConfig
+}
+
+entity CraboodleConfig {
+    eval_directory: EvalDirectory
+    version: String
+    min_pass_rate: Decimal?
+    max_budget_usd: Decimal?
+    repeats_override: Integer?
+}
+
+-- ============================================================================
+-- Invocations (one entity per CLI command, each with its own lifecycle)
+-- ============================================================================
+
+entity RunInvocation {
+    operator: Operator
+    eval_directory: EvalDirectory
+    repeats: Integer
+    concurrency: Integer
+    scenario_filter: String?
+    agent_model_override: String?
+    grader_model_override: String?
+
+    status: starting | discovering | streaming | completed | failed
+    exit_code: Integer when status = completed | failed
+    artifact_dir: String when status = streaming | completed
+
+    work_items: Set<WorkItem> with invocation = this
+    scenario_results: Set<ScenarioResult> with invocation = this
+
+    -- Projections
+    selected_scenarios:
+        if scenario_filter != null:
+            eval_directory.scenarios where matches_pattern(id, scenario_filter)
+        else:
+            eval_directory.scenarios
+
+    queued_items: work_items where status = queued
+    successful_items: work_items where status = succeeded
+    items_with_transcript: work_items where transcript_path != null
+
+    -- Derived
+    has_any_success: successful_items.count > 0
+    all_scenarios_done: scenario_results.count = selected_scenarios.count
+
+    cumulative_cost_usd:
+        sum_decimals(items_with_transcript.agent_cost_usd)
+        + sum_decimals(successful_items.grading_cost_usd)
+
+    total_cost_usd: sum_decimals(scenario_results.cost_usd)
+
+    budget_exceeded:
+        eval_directory.craboodle_config?.max_budget_usd != null
+        and cumulative_cost_usd > eval_directory.craboodle_config.max_budget_usd
+
+    fail_fast_triggered:
+        eval_directory.craboodle_config?.min_pass_rate != null
+        and scenario_results.any(s =>
+            s.pass_rate = null
+            or s.pass_rate < eval_directory.craboodle_config.min_pass_rate)
+
+    transitions status {
+        starting -> discovering
+        discovering -> streaming
+        discovering -> failed
+        streaming -> completed
+        terminal: completed, failed
+    }
+}
+
+entity ListInvocation {
+    operator: Operator
+    eval_directory: EvalDirectory
+    scenario_filter: String?
+
+    status: starting | discovering | streaming | completed | failed
+    exit_code: Integer when status = completed | failed
+
+    list_entries: Set<ListEntry> with invocation = this
+
+    selected_scenarios:
+        if scenario_filter != null:
+            eval_directory.scenarios where matches_pattern(id, scenario_filter)
+        else:
+            eval_directory.scenarios
+
+    all_entries_done: list_entries.count = selected_scenarios.count
+    any_invalid: list_entries.any(e => not e.valid)
+
+    transitions status {
+        starting -> discovering
+        discovering -> streaming
+        discovering -> failed
+        streaming -> completed
+        terminal: completed, failed
+    }
+}
+
+entity LintInvocation {
+    operator: Operator
+    eval_directory: EvalDirectory
+    scenario_filter: String?
+    concurrency: Integer
+    grader_model_override: String?
+
+    status: starting | discovering | streaming | completed | failed
+    exit_code: Integer when status = completed | failed
+
+    lint_results: Set<LintScenarioResult> with invocation = this
+
+    selected_scenarios:
+        if scenario_filter != null:
+            eval_directory.scenarios where matches_pattern(id, scenario_filter)
+        else:
+            eval_directory.scenarios
+
+    all_lint_invocations_done: lint_results.count = selected_scenarios.count
+    total_issues: sum_integers(lint_results.checks_with_issues)
+
+    transitions status {
+        starting -> discovering
+        discovering -> streaming
+        discovering -> failed
+        streaming -> completed
+        terminal: completed, failed
+    }
+}
+
+entity InitInvocation {
+    operator: Operator
+    target_dir: String
+
+    status: starting | refused | created
+    refusal_reason: existing_craboodle_yaml | existing_scenario_files
+        when status = refused
+    exit_code: Integer when status = refused | created
+
+    transitions status {
+        starting -> refused
+        starting -> created
+        terminal: refused, created
+    }
+}
+
+-- ============================================================================
+-- Run-pipeline entities
+-- ============================================================================
+
+-- A single (scenario, rep) pair. The pool slot is held across the scuttlerun
+-- and pincenez stages; a rep can fail at either stage.
+entity WorkItem {
+    invocation: RunInvocation
+    scenario: Scenario
+    rep_number: Integer
+
+    status: queued | running | succeeded | failed | aborted | budget_skipped
+
+    transcript_path: String? when status = succeeded | failed
+    agent_cost_usd: Decimal? when status = succeeded | failed
+    grading_cost_usd: Decimal? when status = succeeded
+    grading: List<GradedCheck> when status = succeeded
+    failure_stage: scuttlerun | pincenez when status = failed
+    failure_message: String when status = failed | aborted | budget_skipped
+
+    is_terminal: status in {succeeded, failed, aborted, budget_skipped}
+
+    transitions status {
+        queued -> running
+        queued -> aborted
+        queued -> budget_skipped
+        running -> succeeded
+        running -> failed
+        terminal: succeeded, failed, aborted, budget_skipped
+    }
+}
+
+-- Aggregated per-scenario result, produced once every WorkItem for the
+-- scenario has reached a terminal state.
+entity ScenarioResult {
+    invocation: RunInvocation
+    scenario: Scenario
+
+    successful_reps_count: Integer
+    failed_reps_count: Integer
+
+    checks: List<CheckAggregate> with scenario_result = this
+    pass_rate: Decimal?              -- null iff successful_reps_count = 0
+    agent_cost_usd: Decimal
+    grading_cost_usd: Decimal
+    cost_usd: Decimal                -- agent + grading
+    errors: List<RepError>
+}
+
+entity CheckAggregate {
+    scenario_result: ScenarioResult
+    id: String
+    description: String
+    pass_rate: Decimal
+    failures: List<RepFailureEvidence> when pass_rate < 1.0
+}
+
+-- ============================================================================
+-- List-pipeline entity
+-- ============================================================================
+
+entity ListEntry {
+    invocation: ListInvocation
+    scenario: Scenario
+    check_count: Integer
+    valid: Boolean
+    error_message: String? when valid = false
+}
+
+-- ============================================================================
+-- Lint-pipeline entities
+-- ============================================================================
+
+entity LintScenarioResult {
+    invocation: LintInvocation
+    scenario: Scenario
+    checks: List<LintedCheck>
+    checks_total: Integer
+    checks_with_issues: Integer
+}
+
+-- ============================================================================
+-- Run command: lifecycle
+-- ============================================================================
+
+rule StartRun {
+    when: RunInvoked(operator, evals_dir, raw_repeats?, raw_concurrency?,
+                     scenario_filter?, agent_model?, grader_model?)
+    let dir = eval_directory_at(evals_dir)
+    let effective_repeats =
+        raw_repeats
+        ?? dir.craboodle_config?.repeats_override
+        ?? config.default_repeats
+    ensures: RunInvocation.created(
+        operator: operator,
+        eval_directory: dir,
+        repeats: effective_repeats,
+        concurrency: raw_concurrency ?? config.default_concurrency,
+        scenario_filter: scenario_filter,
+        agent_model_override: agent_model,
+        grader_model_override: grader_model,
+        status: starting
+    )
+}
+
+rule BeginRunDiscovery {
+    when: inv: RunInvocation.created
+    requires: inv.status = starting
+    ensures: inv.status = discovering
+}
+
+-- Garbage-collect prior artifact directories older than the retention window.
+-- Best-effort: the current run's directory does not exist yet at this point;
+-- per-directory failures are silently ignored.
+rule CleanOldRunArtifacts {
+    when: inv: RunInvocation.status transitions_to discovering
+    ensures: clean_old_artifacts(
+        prefix: config.artifact_prefix,
+        older_than: now - config.artifact_retention)
+}
+
+rule FailRunNoScenarios {
+    when: inv: RunInvocation.status transitions_to discovering
+    requires: inv.eval_directory.scenarios.count = 0
+    ensures: inv.status = failed
+    ensures: inv.exit_code = 4
+    ensures: emit_stderr("No scenarios found")
+}
+
+rule FailRunFilterEmpty {
+    when: inv: RunInvocation.status transitions_to discovering
+    requires: inv.scenario_filter != null
+    requires: inv.eval_directory.scenarios.count > 0
+    requires: inv.selected_scenarios.count = 0
+    ensures: inv.status = failed
+    ensures: inv.exit_code = 4
+    ensures: emit_stderr("No scenarios match filter")
+}
+
+-- Validation passed: create the artifact directory and transition into
+-- streaming. The header is emitted on the transition into streaming so it
+-- is never written for a run that fails discovery.
+rule BeginRunStreaming {
+    when: inv: RunInvocation.status transitions_to discovering
+    requires: inv.eval_directory.scenarios.count > 0
+    requires: inv.selected_scenarios.count > 0
+    ensures: inv.artifact_dir =
+        create_temp_dir(prefix: config.artifact_prefix)
+    ensures: inv.status = streaming
+}
+
+rule StreamRunHeader {
+    when: inv: RunInvocation.status transitions_to streaming
+    ensures: emit_yaml_doc({ artifact_dir: inv.artifact_dir })
+    ensures: emit_yaml_key("scenarios")
+}
+
+-- ============================================================================
+-- Run command: building, executing and finalising work items
+-- ============================================================================
+
+rule BuildWorkItems {
+    when: inv: RunInvocation.status transitions_to streaming
+    for scenario in inv.selected_scenarios:
+        for n in rep_numbers(1, inv.repeats):
+            ensures: WorkItem.created(
+                invocation: inv,
+                scenario: scenario,
+                rep_number: n,
+                status: queued
+            )
+}
+
+-- Dispatch decision for a newly queued WorkItem. The three outcomes are
+-- mutually exclusive by construction (the conditional branches partition the
+-- state space) so this rule replaces the natural-but-conflict-flagged trio
+-- of ExecuteRep / AbortQueuedOnFailFast / SkipQueuedOnBudget.
+rule DispatchWorkItem {
+    when: item: WorkItem.created
+    requires: item.status = queued
+    ensures:
+        if item.invocation.fail_fast_triggered:
+            item.status = aborted
+        else if item.invocation.budget_exceeded:
+            item.status = budget_skipped
+        else:
+            item.status = running
+    ensures:
+        if item.invocation.fail_fast_triggered:
+            item.failure_message = "Aborted (fail-fast)"
+        else if item.invocation.budget_exceeded:
+            item.failure_message = "Budget exceeded"
+    @guidance
+        -- The "running" branch is what the impl calls "admitted to the pool":
+        -- Stage A (scuttlerun) and Stage B (pincenez) each have their own
+        -- semaphore sized at invocation.concurrency, so up to 2 * concurrency
+        -- items can be in flight at once. The transcript is written to
+        -- <artifact_dir>/<scenario.id>/rep-N/output.yaml and the grading to
+        -- <artifact_dir>/<scenario.id>/rep-N/grading.yaml. In-flight reps
+        -- whose invocation later trips fail-fast or budget still finish;
+        -- only items still queued at dispatch time are aborted/skipped.
+}
+
+rule RepSucceeds {
+    when: item: WorkItem.status transitions_to running
+    requires: rep_succeeded(item)
+    ensures: item.status = succeeded
+    ensures: item.transcript_path = rep_transcript_path(item)
+    ensures: item.agent_cost_usd = rep_agent_cost(item)
+    ensures: item.grading_cost_usd = rep_grading_cost(item)
+    ensures: item.grading = rep_grading(item)
+}
+
+rule RepFails {
+    when: item: WorkItem.status transitions_to running
+    requires: rep_failed(item)
+    ensures: item.status = failed
+    ensures: item.failure_stage = rep_failure_stage(item)
+    ensures: item.failure_message = rep_failure_message(item)
+    ensures: item.transcript_path = rep_transcript_path_if_any(item)
+    ensures: item.agent_cost_usd = rep_agent_cost_if_any(item)
+}
+
+-- ============================================================================
+-- Run command: per-scenario aggregation and streaming
+-- ============================================================================
+
+-- Chained trigger: once every WorkItem for a scenario reaches terminal,
+-- emit ScenarioReady so AggregateScenario can fire exactly once per scenario.
+rule EmitScenarioReady {
+    when: item: WorkItem.is_terminal becomes true
+    let scenario_items =
+        item.invocation.work_items where scenario = item.scenario
+    requires: scenario_items.all(w => w.is_terminal)
+    ensures: ScenarioReady(scenario: item.scenario, invocation: item.invocation)
+}
+
+rule AggregateScenario {
+    when: ScenarioReady(scenario, invocation)
+    let scenario_items = invocation.work_items where scenario = scenario
+    let successes = scenario_items where status = succeeded
+    let with_transcript = scenario_items where transcript_path != null
+    let non_successes = scenario_items where status in
+        {failed, aborted, budget_skipped}
+
+    ensures: ScenarioResult.created(
+        invocation: invocation,
+        scenario: scenario,
+        successful_reps_count: successes.count,
+        failed_reps_count: non_successes.count,
+        checks: averaged_check_results(successes),
+        pass_rate:
+            if successes.count = 0: null
+            else: mean_pass_rate(successes),
+        agent_cost_usd: sum_decimals(with_transcript.agent_cost_usd),
+        grading_cost_usd: sum_decimals(successes.grading_cost_usd),
+        cost_usd:
+            sum_decimals(with_transcript.agent_cost_usd)
+            + sum_decimals(successes.grading_cost_usd),
+        errors: collect_rep_errors(non_successes)
+    )
+    @guidance
+        -- pass_rate is the mean of per-check pass_rates across successful
+        -- reps. A per-check pass_rate is (count of successes where pass = true)
+        -- / successes.count. Failed, aborted and budget-skipped reps appear
+        -- under errors and never contribute to the averaging. Partial reps
+        -- (scuttlerun succeeded, pincenez failed) contribute their agent
+        -- cost to cost reporting but not their (absent) grading cost.
+}
+
+rule StreamScenarioBlock {
+    when: result: ScenarioResult.created
+    ensures: emit_yaml_array_item(
+        key: result.scenario.id,
+        body: scenario_block(result))
+    @guidance
+        -- Passing checks (pass_rate = 1.0) emit only check + pass_rate;
+        -- failing checks include per-rep evidence and optional transcript
+        -- paths. Failed reps appear under an errors array on the scenario.
+        -- Blocks arrive in completion order; ordering between scenarios
+        -- is not specified.
+}
+
+-- ============================================================================
+-- Run command: completion and exit codes
+-- ============================================================================
+
+rule CompleteRun {
+    when: inv: RunInvocation.all_scenarios_done becomes true
+    requires: inv.status = streaming
+    ensures: inv.status = completed
+}
+
+rule StreamTotalCost {
+    when: inv: RunInvocation.status transitions_to completed
+    requires: inv.total_cost_usd > 0
+    ensures: emit_yaml_doc({ total_cost_usd: round4(inv.total_cost_usd) })
+}
+
+rule ExitRunNoSuccess {
+    when: inv: RunInvocation.status transitions_to completed
+    requires: not inv.has_any_success
+    ensures: inv.exit_code = 4
+}
+
+rule ExitRunRatchet {
+    when: inv: RunInvocation.status transitions_to completed
+    requires: inv.has_any_success
+    requires: inv.fail_fast_triggered
+    ensures: inv.exit_code = 3
+    ensures: emit_stderr("Threshold check failed")
+}
+
+rule ExitRunSuccess {
+    when: inv: RunInvocation.status transitions_to completed
+    requires: inv.has_any_success
+    requires: not inv.fail_fast_triggered
+    ensures: inv.exit_code = 0
+}
+
+-- ============================================================================
+-- List command
+-- ============================================================================
+
+rule StartList {
+    when: ListInvoked(operator, evals_dir, scenario_filter?)
+    let dir = eval_directory_at(evals_dir)
+    ensures: ListInvocation.created(
+        operator: operator,
+        eval_directory: dir,
+        scenario_filter: scenario_filter,
+        status: starting
+    )
+}
+
+rule BeginListDiscovery {
+    when: inv: ListInvocation.created
+    requires: inv.status = starting
+    ensures: inv.status = discovering
+}
+
+rule FailListNoScenarios {
+    when: inv: ListInvocation.status transitions_to discovering
+    requires: inv.eval_directory.scenarios.count = 0
+    ensures: inv.status = failed
+    ensures: inv.exit_code = 4
+    ensures: emit_stderr("No scenarios found")
+}
+
+rule FailListFilterEmpty {
+    when: inv: ListInvocation.status transitions_to discovering
+    requires: inv.scenario_filter != null
+    requires: inv.eval_directory.scenarios.count > 0
+    requires: inv.selected_scenarios.count = 0
+    ensures: inv.status = failed
+    ensures: inv.exit_code = 4
+    ensures: emit_stderr("No scenarios match filter")
+}
+
+rule BeginListStreaming {
+    when: inv: ListInvocation.status transitions_to discovering
+    requires: inv.eval_directory.scenarios.count > 0
+    requires: inv.selected_scenarios.count > 0
+    ensures: inv.status = streaming
+}
+
+-- For each selected scenario: count its checks and validate the merged
+-- scuttlerun config via dry_run. The entry records validity + any error.
+rule ListValidateAndEmit {
+    when: inv: ListInvocation.status transitions_to streaming
+    for scenario in inv.selected_scenarios:
+        ensures: ListEntry.created(
+            invocation: inv,
+            scenario: scenario,
+            check_count: scenario.checks_config.check_count,
+            valid: scuttlerun_dry_run_valid(
+                scenario_config: scenario.scenario_config,
+                base_config: inv.eval_directory.base_config),
+            error_message: scuttlerun_dry_run_error(
+                scenario_config: scenario.scenario_config,
+                base_config: inv.eval_directory.base_config)
+        )
+        ensures: emit_list_entry(scenario.id)
+}
+
+rule CompleteList {
+    when: inv: ListInvocation.all_entries_done becomes true
+    requires: inv.status = streaming
+    ensures: inv.status = completed
+}
+
+rule ExitListInvalid {
+    when: inv: ListInvocation.status transitions_to completed
+    requires: inv.any_invalid
+    ensures: inv.exit_code = 1
+}
+
+rule ExitListSuccess {
+    when: inv: ListInvocation.status transitions_to completed
+    requires: not inv.any_invalid
+    ensures: inv.exit_code = 0
+}
+
+-- ============================================================================
+-- Lint command
+-- ============================================================================
+
+rule StartLint {
+    when: LintInvoked(operator, evals_dir, raw_concurrency?, scenario_filter?,
+                      grader_model?)
+    let dir = eval_directory_at(evals_dir)
+    ensures: LintInvocation.created(
+        operator: operator,
+        eval_directory: dir,
+        scenario_filter: scenario_filter,
+        concurrency: raw_concurrency ?? config.default_concurrency,
+        grader_model_override: grader_model,
+        status: starting
+    )
+}
+
+rule BeginLintDiscovery {
+    when: inv: LintInvocation.created
+    requires: inv.status = starting
+    ensures: inv.status = discovering
+}
+
+rule FailLintNoScenarios {
+    when: inv: LintInvocation.status transitions_to discovering
+    requires: inv.eval_directory.scenarios.count = 0
+    ensures: inv.status = failed
+    ensures: inv.exit_code = 4
+    ensures: emit_stderr("No scenarios found")
+}
+
+rule FailLintFilterEmpty {
+    when: inv: LintInvocation.status transitions_to discovering
+    requires: inv.scenario_filter != null
+    requires: inv.eval_directory.scenarios.count > 0
+    requires: inv.selected_scenarios.count = 0
+    ensures: inv.status = failed
+    ensures: inv.exit_code = 4
+    ensures: emit_stderr("No scenarios match filter")
+}
+
+rule BeginLintStreaming {
+    when: inv: LintInvocation.status transitions_to discovering
+    requires: inv.eval_directory.scenarios.count > 0
+    requires: inv.selected_scenarios.count > 0
+    ensures: inv.status = streaming
+}
+
+-- Per-scenario lint invocations run concurrently up to invocation.concurrency.
+-- The scenario's prompt (from scenario.yaml) is passed as orientation context
+-- so pincenez can flag checks that are tautological given the prompt.
+-- Invocations that fail are logged to stderr but do not create a result;
+-- if no invocation succeeds, the run exits 4 (see ExitLintNoInvocations).
+rule LintInvokePincenez {
+    when: inv: LintInvocation.status transitions_to streaming
+    for scenario in inv.selected_scenarios:
+        ensures: LintScenarioResult.created(
+            invocation: inv,
+            scenario: scenario,
+            checks: pincenez_lint_checks(
+                checks_config: scenario.checks_config,
+                context: scenario.checks_config.prompt_context,
+                grader_model_override: inv.grader_model_override),
+            checks_total: pincenez_lint_total(scenario.checks_config),
+            checks_with_issues: pincenez_lint_issue_count(scenario.checks_config)
+        )
+}
+
+rule StreamLintScenario {
+    when: result: LintScenarioResult.created
+    requires: result.checks_with_issues > 0
+    ensures: emit_yaml_array_item(
+        key: result.scenario.id,
+        body: lint_block(result))
+    @guidance
+        -- Per-scenario blocks are emitted only for scenarios with at least
+        -- one issue; aggregate totals at the end always reflect every check
+        -- that was linted.
+}
+
+rule CompleteLint {
+    when: inv: LintInvocation.all_lint_invocations_done becomes true
+    requires: inv.status = streaming
+    ensures: inv.status = completed
+}
+
+rule ExitLintNoInvocations {
+    when: inv: LintInvocation.status transitions_to completed
+    requires: inv.lint_results.count = 0
+    ensures: inv.exit_code = 4
+}
+
+rule ExitLintIssuesFound {
+    when: inv: LintInvocation.status transitions_to completed
+    requires: inv.lint_results.count > 0
+    requires: inv.total_issues > 0
+    ensures: inv.exit_code = 1
+}
+
+rule ExitLintClean {
+    when: inv: LintInvocation.status transitions_to completed
+    requires: inv.lint_results.count > 0
+    requires: inv.total_issues = 0
+    ensures: inv.exit_code = 0
+}
+
+-- ============================================================================
+-- Init command (separate flow; no scenarios, no streaming output)
+-- ============================================================================
+
+rule StartInit {
+    when: InitInvoked(operator, target_dir)
+    ensures: InitInvocation.created(
+        operator: operator,
+        target_dir: target_dir,
+        status: starting
+    )
+}
+
+rule InitRefuseExistingCraboodle {
+    when: init: InitInvocation.created
+    requires: init.status = starting
+    requires: file_exists(init.target_dir, "craboodle.yaml")
+    ensures: init.status = refused
+    ensures: init.refusal_reason = existing_craboodle_yaml
+    ensures: init.exit_code = 1
+    ensures: emit_stderr("already contains craboodle.yaml")
+}
+
+rule InitRefuseExistingScenarios {
+    when: init: InitInvocation.created
+    requires: init.status = starting
+    requires: not file_exists(init.target_dir, "craboodle.yaml")
+    requires: scenario_files_present(init.target_dir)
+    ensures: init.status = refused
+    ensures: init.refusal_reason = existing_scenario_files
+    ensures: init.exit_code = 1
+    ensures: emit_stderr("already contains scenario files")
+}
+
+rule InitCreateScaffold {
+    when: init: InitInvocation.created
+    requires: init.status = starting
+    requires: not file_exists(init.target_dir, "craboodle.yaml")
+    requires: not scenario_files_present(init.target_dir)
+    ensures: write_scaffold(init.target_dir, "craboodle.yaml",
+                            craboodle_template)
+    ensures: write_scaffold(init.target_dir, "base.yaml", base_template)
+    ensures: init.status = created
+    ensures: init.exit_code = 0
+}
+
+-- ============================================================================
+-- craboodle.yaml validation (eager, at load time)
+-- ============================================================================
+
+rule RejectUnknownConfigKeys {
+    when: cfg: CraboodleConfig.created
+    requires: craboodle_yaml_has_unknown_keys(cfg.eval_directory.path)
+    @guidance
+        -- Load fails with exit 2; the rejecting invocation never reaches
+        -- the state machine above. Recognised keys are: version,
+        -- min_pass_rate, max_budget_usd, repeats.
+}
+
+rule RejectUnsupportedVersion {
+    when: cfg: CraboodleConfig.created
+    requires: cfg.version not in config.supported_config_versions
+    @guidance
+        -- Load fails with exit 2. Bumping the supported version set means
+        -- widening config.supported_config_versions and updating the init
+        -- template.
+}
+
+rule RejectInvalidMinPassRate {
+    when: cfg: CraboodleConfig.created
+    requires: cfg.min_pass_rate != null
+    requires: cfg.min_pass_rate < 0 or cfg.min_pass_rate > 1
+    @guidance
+        -- Load fails with exit 2. min_pass_rate must be in [0, 1].
+}
+
+-- ============================================================================
+-- Surfaces (one per command; the CLI is a shell-facing boundary)
+-- ============================================================================
+
+surface RunCommand {
+    facing operator: Operator
+    context invocation: RunInvocation where operator = operator
+
+    provides:
+        RunInvoked(operator, evals_dir, raw_repeats?, raw_concurrency?,
+                   scenario_filter?, agent_model?, grader_model?)
+
+    exposes:
+        invocation.artifact_dir
+        invocation.scenario_results
+        invocation.total_cost_usd
+        invocation.exit_code
+
+    contracts:
+        demands Scuttlerun
+        demands Pincenez
+
+    @guarantee StreamingOutput
+        -- stdout is valid YAML after each per-scenario block is written.
+        -- The header (artifact_dir + scenarios:) is emitted before any
+        -- scenario block; blocks arrive in completion order; ordering
+        -- between scenarios is not specified.
+
+    @guarantee RawPassRates
+        -- pass_rate fields are fractional (0.0 .. 1.0) and are never
+        -- collapsed to verdicts. min_pass_rate only affects the process
+        -- exit code, never the reported numbers.
+
+    @guarantee ArtifactsPreserved
+        -- The artifact directory survives the run (success or failure)
+        -- and its path appears in the output as artifact_dir. Cleanup of
+        -- older directories happens at the start of the next run, not at
+        -- the end of this one.
+
+    @guarantee RunExitCodes
+        -- 0 success; 3 ratchet failure; 4 no successful reps. See the
+        -- shared exit code taxonomy at the top of this spec.
+}
+
+surface ListCommand {
+    facing operator: Operator
+    context invocation: ListInvocation where operator = operator
+
+    provides:
+        ListInvoked(operator, evals_dir, scenario_filter?)
+
+    exposes:
+        invocation.list_entries
+        invocation.exit_code
+
+    contracts:
+        demands Scuttlerun
+
+    @guarantee ConfigValidation
+        -- For each scenario, the merged scuttlerun config is validated by
+        -- delegating to scuttlerun's dry-run mode. Invalid scenarios are
+        -- reported with the validator's error message and the command
+        -- exits with code 1.
+
+    @guarantee ListExitCodes
+        -- 0 all scenarios valid; 1 at least one invalid scenario;
+        -- 4 no scenarios or empty filter.
+}
+
+surface LintCommand {
+    facing operator: Operator
+    context invocation: LintInvocation where operator = operator
+
+    provides:
+        LintInvoked(operator, evals_dir, raw_concurrency?, scenario_filter?,
+                    grader_model?)
+
+    exposes:
+        invocation.lint_results
+        invocation.exit_code
+
+    contracts:
+        demands PincenezLint
+
+    @guarantee ScenarioPromptAsContext
+        -- The scenario's prompt is read from scenario.yaml and passed to
+        -- pincenez lint as context so the linter can flag checks that are
+        -- tautological given the prompt.
+
+    @guarantee IssuesGateExitCode
+        -- Exit 0 only if zero issues were found across all linted checks;
+        -- exit 1 otherwise. Per-scenario blocks are emitted only for
+        -- scenarios with at least one issue; aggregate totals always
+        -- reflect every check.
+
+    @guarantee LintExitCodes
+        -- 0 clean; 1 issues found; 4 no scenarios, empty filter, or zero
+        -- lint invocations succeeded.
+}
+
+surface InitCommand {
+    facing operator: Operator
+    context invocation: InitInvocation where operator = operator
+
+    provides:
+        InitInvoked(operator, target_dir)
+
+    exposes:
+        invocation.exit_code
+
+    @guarantee RefusesOverwrite
+        -- If the target already contains craboodle.yaml or any scenario
+        -- directory with scenario.yaml, init refuses with exit code 1 and
+        -- writes nothing.
+}
+
+-- ============================================================================
+-- Contracts (external-tool boundaries)
+-- ============================================================================
+
+contract Scuttlerun {
+    run: (scenario_config: ScuttlerunConfig,
+          base_config: ScuttlerunConfig,
+          agent_model_override: String) -> Transcript
+
+    dry_run: (scenario_config: ScuttlerunConfig,
+              base_config: ScuttlerunConfig) -> Boolean
+
+    @invariant TranscriptIsRaw
+        -- craboodle treats the transcript as opaque and never extracts
+        -- or transforms it. It is handed straight to pincenez as the
+        -- grading subject.
+
+    @invariant ConfigMergeIsScuttlerunsConcern
+        -- craboodle passes both files (base.yaml, scenario.yaml) to
+        -- scuttlerun and relies on scuttlerun's native merging. craboodle
+        -- never reads, merges or transforms either file.
+}
+
+contract Pincenez {
+    grade: (checks_config: ChecksConfig,
+            transcript: Transcript,
+            grader_model_override: String) -> Grading
+}
+
+contract PincenezLint {
+    lint: (checks_config: ChecksConfig,
+           context: String,
+           grader_model_override: String) -> List<LintedCheck>
+}
+
+-- ============================================================================
+-- Invariants
+-- ============================================================================
+
+invariant PassRateNullIffNoSuccesses {
+    for result in ScenarioResults:
+        (result.pass_rate = null) = (result.successful_reps_count = 0)
+}
+
+invariant WorkItemCountMatchesRepeats {
+    -- For every settled scenario, the rep counts cover every dispatched
+    -- WorkItem exactly once. Failed, aborted and budget-skipped reps all
+    -- appear in failed_reps_count; only succeeded reps appear in
+    -- successful_reps_count.
+    for result in ScenarioResults:
+        result.successful_reps_count + result.failed_reps_count
+            = result.invocation.repeats
+}
+
+invariant CostFieldsAreNonNegative {
+    for result in ScenarioResults:
+        result.cost_usd >= 0
+        and result.agent_cost_usd >= 0
+        and result.grading_cost_usd >= 0
+}
+
+invariant ArtifactDirCarriesPrefix {
+    for inv in RunInvocations:
+        inv.status in {starting, discovering, failed}
+        or inv.artifact_dir.starts_with(config.artifact_prefix)
+}
+
+invariant RatchetOnlyWhenConfigured {
+    for inv in RunInvocations:
+        inv.status = completed and inv.exit_code = 3
+        implies
+        inv.eval_directory.craboodle_config?.min_pass_rate != null
+}
+
+-- ============================================================================
+-- Open questions
+-- ============================================================================
+
+open question "When max_budget_usd is reached, what should the process exit code be? Current behaviour falls through to the regular exit path (0 / 3 / 4 based on successful_reps and ratchet). A dedicated code would let CI distinguish budget exhaustion from generic failure, but codes 5-7 are reserved for scuttlerun-only concerns."
+
+open question "Should init scaffold an example scenario directory (with scenario.yaml and checks.yaml) in addition to craboodle.yaml and base.yaml? An example would make first-run friendlier but has to stay current."
+
+open question "Is the lint command's scenario.yaml prompt extraction a fixed contract (always uses 'prompt' as the context field), or should the spec allow scenarios without a 'prompt' to opt out explicitly? Today a missing prompt yields null context and pincenez's tautology detection silently degrades."
