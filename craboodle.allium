@@ -1005,6 +1005,13 @@ surface InitCommand {
         -- If the target already contains craboodle.yaml or any scenario
         -- directory with scenario.yaml, init refuses with exit code 1 and
         -- writes nothing.
+
+    @guarantee InitSuccessMessage
+        -- On successful scaffold, init writes a confirmation block to
+        -- stdout naming the created directory and the files written, then
+        -- a "Next steps:" block listing the suggested follow-up commands
+        -- (scenario authoring, list, lint, run). The exact wording is
+        -- incidental UX, but the two blocks are part of the contract.
 }
 
 -- ============================================================================
