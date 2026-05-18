@@ -200,6 +200,107 @@ cost_usd: 0.0042
 
       expect(result.pass_rate).toBe(0.5);
     });
+
+    it('joins reps by check id, not by index (handles reordered reps)', async () => {
+      const { averageResults } = await import('../src/output.js');
+
+      const repGradings = [
+        [
+          { id: 'a1', check: 'always pass', pass: true, evidence: 'ok' },
+          { id: 'a2', check: 'always fail', pass: false, evidence: 'no' },
+        ],
+        [
+          { id: 'a2', check: 'always fail', pass: false, evidence: 'no' },
+          { id: 'a1', check: 'always pass', pass: true, evidence: 'ok' },
+        ],
+      ];
+
+      const result = averageResults(repGradings);
+
+      const a1 = result.checks.find((c) => c.check === 'always pass');
+      const a2 = result.checks.find((c) => c.check === 'always fail');
+      expect(a1?.pass_rate).toBe(1.0);
+      expect(a2?.pass_rate).toBe(0.0);
+    });
+
+    it('treats a check missing from a rep as non-pass for that rep and warns to stderr', async () => {
+      const { averageResults } = await import('../src/output.js');
+      const writes: string[] = [];
+      const warn = vi
+        .spyOn(process.stderr, 'write')
+        .mockImplementation((chunk: string | Uint8Array) => {
+          writes.push(typeof chunk === 'string' ? chunk : chunk.toString());
+          return true;
+        });
+
+      const repGradings = [
+        [
+          { id: 'a1', check: 'test1', pass: true, evidence: 'ok' },
+          { id: 'a2', check: 'test2', pass: true, evidence: 'ok' },
+        ],
+        [{ id: 'a1', check: 'test1', pass: true, evidence: 'ok' }],
+      ];
+
+      const result = averageResults(repGradings);
+
+      const a1 = result.checks.find((c) => c.check === 'test1');
+      const a2 = result.checks.find((c) => c.check === 'test2');
+      expect(a1?.pass_rate).toBe(1.0);
+      expect(a2?.pass_rate).toBe(0.5);
+
+      const joined = writes.join('');
+      expect(joined).toContain('missing');
+      expect(joined).toContain('a2');
+
+      warn.mockRestore();
+    });
+
+    it('includes extra checks from later reps in output and warns to stderr', async () => {
+      const { averageResults } = await import('../src/output.js');
+      const writes: string[] = [];
+      const warn = vi
+        .spyOn(process.stderr, 'write')
+        .mockImplementation((chunk: string | Uint8Array) => {
+          writes.push(typeof chunk === 'string' ? chunk : chunk.toString());
+          return true;
+        });
+
+      const repGradings = [
+        [{ id: 'a1', check: 'test1', pass: true, evidence: 'ok' }],
+        [
+          { id: 'a1', check: 'test1', pass: true, evidence: 'ok' },
+          { id: 'a2', check: 'test2', pass: true, evidence: 'ok' },
+        ],
+      ];
+
+      const result = averageResults(repGradings);
+
+      const a1 = result.checks.find((c) => c.check === 'test1');
+      const a2 = result.checks.find((c) => c.check === 'test2');
+      expect(a1?.pass_rate).toBe(1.0);
+      expect(a2?.pass_rate).toBe(0.5);
+
+      const joined = writes.join('');
+      expect(joined).toContain('extra');
+      expect(joined).toContain('a2');
+
+      warn.mockRestore();
+    });
+
+    it('does not warn when all reps have the same check id set', async () => {
+      const { averageResults } = await import('../src/output.js');
+      const warn = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+
+      const repGradings = [
+        [{ id: 'a1', check: 'test1', pass: true, evidence: 'ok' }],
+        [{ id: 'a1', check: 'test1', pass: false, evidence: 'no' }],
+      ];
+
+      averageResults(repGradings);
+
+      expect(warn).not.toHaveBeenCalled();
+      warn.mockRestore();
+    });
   });
 
   describe('compact/verbose output', () => {

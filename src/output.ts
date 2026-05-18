@@ -71,22 +71,47 @@ export function averageResults(
     return { checks: [], pass_rate: 0 };
   }
 
-  const checkCount = repGradings[0].length;
+  const idOrder: string[] = [];
+  const idToCheck = new Map<string, string>();
+  for (const repChecks of repGradings) {
+    for (const c of repChecks) {
+      if (!idToCheck.has(c.id)) {
+        idOrder.push(c.id);
+        idToCheck.set(c.id, c.check);
+      }
+    }
+  }
+
+  const rep0Ids = new Set(repGradings[0].map((c) => c.id));
+  for (let rep = 1; rep < repGradings.length; rep++) {
+    const repIds = new Set(repGradings[rep].map((c) => c.id));
+    const missing = [...rep0Ids].filter((id) => !repIds.has(id));
+    const extra = [...repIds].filter((id) => !rep0Ids.has(id));
+    if (missing.length > 0 || extra.length > 0) {
+      const parts: string[] = [];
+      if (missing.length > 0) parts.push(`missing: ${missing.join(', ')}`);
+      if (extra.length > 0) parts.push(`extra: ${extra.join(', ')}`);
+      process.stderr.write(
+        `[craboodle] rep ${rep + 1} check ids differ from rep 1 — ${parts.join('; ')}\n`,
+      );
+    }
+  }
+
   const checks: CheckOutput[] = [];
 
-  for (let i = 0; i < checkCount; i++) {
-    const check = repGradings[0][i].check;
+  for (const id of idOrder) {
+    const check = idToCheck.get(id)!;
     let passSum = 0;
     const failures: Array<{ rep: number; evidence: string; transcript?: string }> = [];
 
     for (let rep = 0; rep < repGradings.length; rep++) {
-      const result = repGradings[rep][i];
-      if (result.pass === true) {
+      const result = repGradings[rep].find((c) => c.id === id);
+      if (result?.pass === true) {
         passSum += 1;
       } else {
         failures.push({
           rep: rep + 1,
-          evidence: result.evidence,
+          evidence: result?.evidence ?? '(check missing from this rep)',
           ...(repTranscripts?.[rep] ? { transcript: repTranscripts[rep] } : {}),
         });
       }
