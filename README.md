@@ -8,6 +8,10 @@ craboodle discovers scenarios, runs them through [scuttlerun](https://github.com
 
 Think of craboodle as **rspec for eval scenarios**: given a directory of scenarios, run them, grade them, report results.
 
+![Demo: craboodle running the haiku-writer eval pipeline, streaming YAML results to stdout](assets/demo.gif)
+
+> Source: [`assets/demo.tape`](assets/demo.tape) (re-record with `vhs assets/demo.tape`).
+
 ## How It Works
 
 craboodle orchestrates two companion tools:
@@ -89,7 +93,16 @@ Shared taxonomy across scuttlerun/pincenez/craboodle. Codes 5–7 are scuttlerun
 | 4 | Infrastructure/dependency error (no scenarios, empty filter, zero successful reps) |
 | 130 | Interrupted (SIGINT) |
 
-## Documentation
+## Contributing
+
+- [CONTRIBUTING.md](CONTRIBUTING.md) — Development setup, tests, commit conventions, PR workflow
+- [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) — Community guidelines
+- [SECURITY.md](SECURITY.md) — Reporting a vulnerability
+- [SUPPORT.md](SUPPORT.md) — Where to ask questions and report bugs
+- [CHANGELOG.md](CHANGELOG.md) — Release history
+- [RELEASING.md](RELEASING.md) — How releases are cut (Conventional Commits → release-please → npm publish)
+
+## See Also
 
 - [GOALS.md](GOALS.md) — design philosophy, principles, and project goals
 - [craboodle.allium](craboodle.allium) — behavioural specification (the authoritative contract)
