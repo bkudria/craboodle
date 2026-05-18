@@ -65,14 +65,14 @@ external entity Grading {
 
 value GradedCheck {
     id: String
-    description: String
+    check: String
     pass: Boolean?
     evidence: String
 }
 
 value LintedCheck {
     id: String
-    description: String
+    check: String
     issues: List<LintIssue>
 }
 
@@ -329,7 +329,7 @@ entity ScenarioResult {
 entity CheckAggregate {
     scenario_result: ScenarioResult
     id: String
-    description: String
+    check: String
     pass_rate: Decimal
     failures: List<RepFailureEvidence> when pass_rate < 1.0
 }
