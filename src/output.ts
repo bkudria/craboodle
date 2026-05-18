@@ -219,10 +219,15 @@ export function streamTotalCost(totalCostUsd: number): void {
 
 // --- Lint output ---
 
+export interface LintIssue {
+  anti_pattern: string;
+  suggestion: string;
+}
+
 export interface LintCheckOutput {
   id: string;
   check: string;
-  issues: unknown[];
+  issues: LintIssue[];
 }
 
 export interface LintScenarioOutput {
@@ -241,7 +246,7 @@ export interface LintTotals {
 
 export function parseLintResult(yaml: string): LintCheckOutput[] {
   const parsed = parse(yaml) as {
-    checks: Array<{ id: string; check: string; issues: string[] }>;
+    checks: Array<{ id: string; check: string; issues: LintIssue[] }>;
   };
   return parsed.checks.map((a) => ({
     id: a.id,

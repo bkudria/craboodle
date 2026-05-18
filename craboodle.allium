@@ -90,8 +90,8 @@ value RepFailureEvidence {
 value RepError {
     rep: Integer
     stage: scuttlerun | pincenez | fail_fast | budget
-    message: String
-    transcript_path: String?
+    error: String
+    transcript: String?
 }
 
 -- ============================================================================

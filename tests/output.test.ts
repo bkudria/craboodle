@@ -395,8 +395,10 @@ cost_usd: 0.0042
   - id: check-1
     check: "Handles edge cases"
     issues:
-      - compound
-      - vague
+      - anti_pattern: compound
+        suggestion: split into one assertion per check
+      - anti_pattern: vague
+        suggestion: name the specific edge case
 checks_total: 2
 checks_with_issues: 1
 `;
@@ -412,7 +414,10 @@ checks_with_issues: 1
       expect(result[1]).toEqual({
         id: 'check-1',
         check: 'Handles edge cases',
-        issues: ['compound', 'vague'],
+        issues: [
+          { anti_pattern: 'compound', suggestion: 'split into one assertion per check' },
+          { anti_pattern: 'vague', suggestion: 'name the specific edge case' },
+        ],
       });
     });
 
