@@ -15,6 +15,7 @@ const pkg = JSON.parse(
 
 import pLimit from 'p-limit';
 import { formatErrorWithHint } from './messages.js';
+import { installSignalHandler } from './signals.js';
 import { loadCraboodleConfig, checkBaseConfig, resolveRepeatsFromRawFlag } from './config.js';
 import { cleanOldArtifacts } from './cleanup.js';
 import { discoverScenarios, filterScenarios } from './discovery.js';
@@ -57,6 +58,31 @@ type RepOutcome =
   | { type: 'error'; rep: number; stage: string; message: string; transcriptPath?: string };
 
 async function runCommand(evalsDir: string, opts: RunOptions): Promise<void> {
+  const controller = new AbortController();
+  let interrupted = false;
+  const uninstallSignal = installSignalHandler({
+    controller,
+    onFirstSignal: () => {
+      interrupted = true;
+    },
+  });
+
+  try {
+    return await runCommandInner(evalsDir, opts, controller, () => interrupted);
+  } finally {
+    uninstallSignal();
+    if (interrupted) {
+      process.exit(130);
+    }
+  }
+}
+
+async function runCommandInner(
+  evalsDir: string,
+  opts: RunOptions,
+  controller: AbortController,
+  isInterrupted: () => boolean,
+): Promise<void> {
   const resolvedDir = resolve(evalsDir);
 
   // Discover scenarios
@@ -143,6 +169,7 @@ async function runCommand(evalsDir: string, opts: RunOptions): Promise<void> {
               basePath,
               outputPath,
               agentModel: opts.agentModel,
+              signal: controller.signal,
             });
             if (!scuttlerunResult.success) {
               return {
@@ -168,6 +195,7 @@ async function runCommand(evalsDir: string, opts: RunOptions): Promise<void> {
               outputPath,
               gradingPath,
               graderModel: opts.graderModel,
+              signal: controller.signal,
             });
             if (!pincenezResult.success) {
               return {
@@ -216,7 +244,7 @@ async function runCommand(evalsDir: string, opts: RunOptions): Promise<void> {
       if (outcome.gradingCostUsd !== null) cost += outcome.gradingCostUsd;
       return cost;
     },
-    shouldAbort: () => failFastTriggered,
+    shouldAbort: () => failFastTriggered || isInterrupted(),
     onBudgetExceeded: () => {
       budgetExceeded = true;
     },
@@ -314,6 +342,10 @@ async function runCommand(evalsDir: string, opts: RunOptions): Promise<void> {
   const totalCost = Math.round(totalCostRaw * 10000) / 10000;
   if (totalCost > 0) {
     streamTotalCost(totalCost);
+  }
+
+  if (isInterrupted()) {
+    return;
   }
 
   if (budgetExceeded) {
@@ -644,6 +676,31 @@ interface LintOptions {
 }
 
 async function lintCommand(evalsDir: string, opts: LintOptions): Promise<void> {
+  const controller = new AbortController();
+  let interrupted = false;
+  const uninstallSignal = installSignalHandler({
+    controller,
+    onFirstSignal: () => {
+      interrupted = true;
+    },
+  });
+
+  try {
+    return await lintCommandInner(evalsDir, opts, controller, () => interrupted);
+  } finally {
+    uninstallSignal();
+    if (interrupted) {
+      process.exit(130);
+    }
+  }
+}
+
+async function lintCommandInner(
+  evalsDir: string,
+  opts: LintOptions,
+  controller: AbortController,
+  isInterrupted: () => boolean,
+): Promise<void> {
   const resolvedDir = resolve(evalsDir);
 
   // Discover scenarios
@@ -726,6 +783,7 @@ async function lintCommand(evalsDir: string, opts: LintOptions): Promise<void> {
         checksPath,
         graderModel: opts.graderModel,
         context,
+        signal: controller.signal,
       });
 
       if (!result.success) {
@@ -758,6 +816,10 @@ async function lintCommand(evalsDir: string, opts: LintOptions): Promise<void> {
 
   // Stream totals
   streamLintTotals(totals);
+
+  if (isInterrupted()) {
+    return;
+  }
 
   if (!hasAnySuccess) {
     process.exit(4);

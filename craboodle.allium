@@ -186,6 +186,8 @@ entity RunInvocation {
             s.pass_rate = null
             or s.pass_rate < eval_directory.craboodle_config.min_pass_rate)
 
+    interrupt_requested: Boolean = false
+
     transitions status {
         starting -> discovering
         discovering -> streaming
@@ -291,24 +293,26 @@ entity WorkItem {
     scenario: Scenario
     rep_number: Integer
 
-    status: queued | running | succeeded | failed | aborted | budget_skipped
+    status: queued | running | succeeded | failed | aborted | budget_skipped | interrupted
 
     transcript_path: String? when status = succeeded | failed
     agent_cost_usd: Decimal? when status = succeeded | failed
     grading_cost_usd: Decimal? when status = succeeded
     grading: List<GradedCheck> when status = succeeded
     failure_stage: scuttlerun | pincenez when status = failed
-    failure_message: String when status = failed | aborted | budget_skipped
+    failure_message: String when status = failed | aborted | budget_skipped | interrupted
 
-    is_terminal: status in {succeeded, failed, aborted, budget_skipped}
+    is_terminal: status in {succeeded, failed, aborted, budget_skipped, interrupted}
 
     transitions status {
         queued -> running
         queued -> aborted
         queued -> budget_skipped
+        queued -> interrupted
         running -> succeeded
         running -> failed
-        terminal: succeeded, failed, aborted, budget_skipped
+        running -> interrupted
+        terminal: succeeded, failed, aborted, budget_skipped, interrupted
     }
 }
 
@@ -461,14 +465,18 @@ rule DispatchWorkItem {
     when: item: WorkItem.created
     requires: item.status = queued
     ensures:
-        if item.invocation.fail_fast_triggered:
+        if item.invocation.interrupt_requested:
+            item.status = interrupted
+        else if item.invocation.fail_fast_triggered:
             item.status = aborted
         else if item.invocation.budget_exceeded:
             item.status = budget_skipped
         else:
             item.status = running
     ensures:
-        if item.invocation.fail_fast_triggered:
+        if item.invocation.interrupt_requested:
+            item.failure_message = "Interrupted (SIGINT)"
+        else if item.invocation.fail_fast_triggered:
             item.failure_message = "Aborted (fail-fast)"
         else if item.invocation.budget_exceeded:
             item.failure_message = "Budget exceeded"
@@ -503,6 +511,18 @@ rule RepFails {
     ensures: item.agent_cost_usd = rep_agent_cost_if_any(item)
 }
 
+-- A running rep observes invocation.interrupt_requested (set when the
+-- operator sends SIGINT). The subprocess is aborted via AbortSignal and
+-- the item transitions to a terminal `interrupted` state. The bounded
+-- cleanup window (impl: ~500ms) before the parent forces exit 130 lives
+-- below the spec's level of abstraction.
+rule InterruptRunningItem {
+    when: item: WorkItem.invocation.interrupt_requested becomes true
+    requires: item.status = running
+    ensures: item.status = interrupted
+    ensures: item.failure_message = "Interrupted (SIGINT)"
+}
+
 -- ============================================================================
 -- Run command: per-scenario aggregation and streaming
 -- ============================================================================
@@ -523,7 +543,7 @@ rule AggregateScenario {
     let successes = scenario_items where status = succeeded
     let with_transcript = scenario_items where transcript_path != null
     let non_successes = scenario_items where status in
-        {failed, aborted, budget_skipped}
+        {failed, aborted, budget_skipped, interrupted}
 
     ensures: ScenarioResult.created(
         invocation: invocation,

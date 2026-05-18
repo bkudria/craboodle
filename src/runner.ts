@@ -13,6 +13,7 @@ export interface RunScuttlerunOptions {
   basePath: string | null;
   outputPath: string;
   agentModel?: string;
+  signal?: AbortSignal;
 }
 
 export interface RunPincenezOptions {
@@ -20,14 +21,19 @@ export interface RunPincenezOptions {
   outputPath: string;
   gradingPath: string;
   graderModel?: string;
+  signal?: AbortSignal;
 }
 
-function execFilePromise(cmd: string, args: string[]): Promise<{ stdout: string; stderr: string }> {
+function execFilePromise(
+  cmd: string,
+  args: string[],
+  signal?: AbortSignal,
+): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
     execFile(
       cmd,
       args,
-      { encoding: 'utf8', maxBuffer: 10 * 1024 * 1024 },
+      { encoding: 'utf8', maxBuffer: 10 * 1024 * 1024, signal },
       (error, stdout, stderr) => {
         if (error) {
           const err = error as Error & { stderr?: string };
@@ -44,8 +50,12 @@ function execFilePromise(cmd: string, args: string[]): Promise<{ stdout: string;
   });
 }
 
+function isAbortError(err: Error & { code?: string }): boolean {
+  return err.code === 'ABORT_ERR';
+}
+
 export async function runScuttlerun(options: RunScuttlerunOptions): Promise<SubprocessResult> {
-  const { scenarioPath, basePath, outputPath, agentModel } = options;
+  const { scenarioPath, basePath, outputPath, agentModel, signal } = options;
 
   const args: string[] = [];
   if (basePath) {
@@ -58,16 +68,16 @@ export async function runScuttlerun(options: RunScuttlerunOptions): Promise<Subp
   }
 
   try {
-    const { stdout } = await execFilePromise('scuttlerun', args);
+    const { stdout } = await execFilePromise('scuttlerun', args, signal);
     await writeFile(outputPath, stdout);
     return { success: true };
   } catch (err: unknown) {
-    const error = err as Error & { stderr?: string };
+    const error = err as Error & { stderr?: string; code?: string };
     return {
       success: false,
       error: {
         stage: 'scuttlerun',
-        message: error.stderr || error.message,
+        message: isAbortError(error) ? 'Interrupted (SIGINT)' : error.stderr || error.message,
       },
     };
   }
@@ -76,12 +86,13 @@ export async function runScuttlerun(options: RunScuttlerunOptions): Promise<Subp
 export interface ListScuttlerunOptions {
   scenarioPath: string;
   basePath: string | null;
+  signal?: AbortSignal;
 }
 
 export async function listScuttlerunConfig(
   options: ListScuttlerunOptions,
 ): Promise<SubprocessResult & { stdout?: string }> {
-  const { scenarioPath, basePath } = options;
+  const { scenarioPath, basePath, signal } = options;
 
   const args = ['--dry-run'];
   if (basePath) {
@@ -90,15 +101,15 @@ export async function listScuttlerunConfig(
   args.push(scenarioPath);
 
   try {
-    const { stdout } = await execFilePromise('scuttlerun', args);
+    const { stdout } = await execFilePromise('scuttlerun', args, signal);
     return { success: true, stdout };
   } catch (err: unknown) {
-    const error = err as Error & { stderr?: string };
+    const error = err as Error & { stderr?: string; code?: string };
     return {
       success: false,
       error: {
         stage: 'scuttlerun',
-        message: error.stderr || error.message,
+        message: isAbortError(error) ? 'Interrupted (SIGINT)' : error.stderr || error.message,
       },
     };
   }
@@ -108,6 +119,7 @@ export interface RunPincenezLintOptions {
   checksPath: string;
   graderModel?: string;
   context?: string;
+  signal?: AbortSignal;
 }
 
 export type LintSubprocessResult =
@@ -117,7 +129,7 @@ export type LintSubprocessResult =
 export async function runPincenezLint(
   options: RunPincenezLintOptions,
 ): Promise<LintSubprocessResult> {
-  const { checksPath, graderModel, context } = options;
+  const { checksPath, graderModel, context, signal } = options;
 
   const args: string[] = ['lint'];
   if (graderModel) {
@@ -129,22 +141,22 @@ export async function runPincenezLint(
   args.push(checksPath);
 
   try {
-    const { stdout } = await execFilePromise('pincenez', args);
+    const { stdout } = await execFilePromise('pincenez', args, signal);
     return { success: true, stdout };
   } catch (err: unknown) {
-    const error = err as Error & { stderr?: string };
+    const error = err as Error & { stderr?: string; code?: string };
     return {
       success: false,
       error: {
         stage: 'pincenez',
-        message: error.stderr || error.message,
+        message: isAbortError(error) ? 'Interrupted (SIGINT)' : error.stderr || error.message,
       },
     };
   }
 }
 
 export async function runPincenez(options: RunPincenezOptions): Promise<SubprocessResult> {
-  const { checksPath, outputPath, gradingPath, graderModel } = options;
+  const { checksPath, outputPath, gradingPath, graderModel, signal } = options;
 
   const args: string[] = [];
   if (graderModel) {
@@ -153,16 +165,16 @@ export async function runPincenez(options: RunPincenezOptions): Promise<Subproce
   args.push(checksPath, outputPath);
 
   try {
-    const { stdout } = await execFilePromise('pincenez', args);
+    const { stdout } = await execFilePromise('pincenez', args, signal);
     await writeFile(gradingPath, stdout);
     return { success: true };
   } catch (err: unknown) {
-    const error = err as Error & { stderr?: string };
+    const error = err as Error & { stderr?: string; code?: string };
     return {
       success: false,
       error: {
         stage: 'pincenez',
-        message: error.stderr || error.message,
+        message: isAbortError(error) ? 'Interrupted (SIGINT)' : error.stderr || error.message,
       },
     };
   }

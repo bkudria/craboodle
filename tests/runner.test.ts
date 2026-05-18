@@ -425,4 +425,140 @@ describe('runner', () => {
       }
     });
   });
+
+  describe('AbortSignal plumbing', () => {
+    it('passes signal into execFile options when provided to runScuttlerun', async () => {
+      const { runScuttlerun } = await import('../src/runner.js');
+      const controller = new AbortController();
+      mockExecFileCall((cb) => cb(null, 'session: abc\n', ''));
+
+      await runScuttlerun({
+        scenarioPath: '/path/to/scenario.yaml',
+        basePath: null,
+        outputPath: join(tmpDir, 'output.yaml'),
+        signal: controller.signal,
+      });
+
+      const [, , options] = mockExecFile.mock.calls[0];
+      expect((options as { signal?: AbortSignal }).signal).toBe(controller.signal);
+    });
+
+    it('passes signal into execFile options for runPincenez', async () => {
+      const { runPincenez } = await import('../src/runner.js');
+      const controller = new AbortController();
+      mockExecFileCall((cb) => cb(null, 'checks: []\n', ''));
+
+      await runPincenez({
+        checksPath: '/path/to/checks.yaml',
+        outputPath: '/path/to/output.yaml',
+        gradingPath: join(tmpDir, 'grading.yaml'),
+        signal: controller.signal,
+      });
+
+      const [, , options] = mockExecFile.mock.calls[0];
+      expect((options as { signal?: AbortSignal }).signal).toBe(controller.signal);
+    });
+
+    it('passes signal into execFile options for runPincenezLint', async () => {
+      const { runPincenezLint } = await import('../src/runner.js');
+      const controller = new AbortController();
+      mockExecFileCall((cb) => cb(null, 'ok\n', ''));
+
+      await runPincenezLint({
+        checksPath: '/path/to/checks.yaml',
+        signal: controller.signal,
+      });
+
+      const [, , options] = mockExecFile.mock.calls[0];
+      expect((options as { signal?: AbortSignal }).signal).toBe(controller.signal);
+    });
+
+    it('passes signal into execFile options for listScuttlerunConfig', async () => {
+      const { listScuttlerunConfig } = await import('../src/runner.js');
+      const controller = new AbortController();
+      mockExecFileCall((cb) => cb(null, 'ok\n', ''));
+
+      await listScuttlerunConfig({
+        scenarioPath: '/path/to/scenario.yaml',
+        basePath: null,
+        signal: controller.signal,
+      });
+
+      const [, , options] = mockExecFile.mock.calls[0];
+      expect((options as { signal?: AbortSignal }).signal).toBe(controller.signal);
+    });
+
+    it('maps ABORT_ERR from runScuttlerun to "Interrupted (SIGINT)"', async () => {
+      const { runScuttlerun } = await import('../src/runner.js');
+      const error = new Error('AbortError') as Error & { code: string };
+      error.code = 'ABORT_ERR';
+      mockExecFileCall((cb) => cb(error, '', ''));
+
+      const result = await runScuttlerun({
+        scenarioPath: '/path/to/scenario.yaml',
+        basePath: null,
+        outputPath: join(tmpDir, 'output.yaml'),
+      });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.stage).toBe('scuttlerun');
+        expect(result.error.message).toBe('Interrupted (SIGINT)');
+      }
+    });
+
+    it('maps ABORT_ERR from runPincenez to "Interrupted (SIGINT)"', async () => {
+      const { runPincenez } = await import('../src/runner.js');
+      const error = new Error('AbortError') as Error & { code: string };
+      error.code = 'ABORT_ERR';
+      mockExecFileCall((cb) => cb(error, '', ''));
+
+      const result = await runPincenez({
+        checksPath: '/path/to/checks.yaml',
+        outputPath: '/path/to/output.yaml',
+        gradingPath: join(tmpDir, 'grading.yaml'),
+      });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.stage).toBe('pincenez');
+        expect(result.error.message).toBe('Interrupted (SIGINT)');
+      }
+    });
+
+    it('maps ABORT_ERR from runPincenezLint to "Interrupted (SIGINT)"', async () => {
+      const { runPincenezLint } = await import('../src/runner.js');
+      const error = new Error('AbortError') as Error & { code: string };
+      error.code = 'ABORT_ERR';
+      mockExecFileCall((cb) => cb(error, '', ''));
+
+      const result = await runPincenezLint({
+        checksPath: '/path/to/checks.yaml',
+      });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.stage).toBe('pincenez');
+        expect(result.error.message).toBe('Interrupted (SIGINT)');
+      }
+    });
+
+    it('maps ABORT_ERR from listScuttlerunConfig to "Interrupted (SIGINT)"', async () => {
+      const { listScuttlerunConfig } = await import('../src/runner.js');
+      const error = new Error('AbortError') as Error & { code: string };
+      error.code = 'ABORT_ERR';
+      mockExecFileCall((cb) => cb(error, '', ''));
+
+      const result = await listScuttlerunConfig({
+        scenarioPath: '/path/to/scenario.yaml',
+        basePath: null,
+      });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.stage).toBe('scuttlerun');
+        expect(result.error.message).toBe('Interrupted (SIGINT)');
+      }
+    });
+  });
 });
