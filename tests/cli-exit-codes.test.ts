@@ -247,6 +247,73 @@ describe('cli exit codes (unified taxonomy)', () => {
     });
   });
 
+  describe('--concurrency validation', () => {
+    it('run: rejects --concurrency 0 with exit 1 and a clean message', async () => {
+      await writeFile(join(tmpDir, 'craboodle.yaml'), stringify({ version: '1' }));
+      await mkdir(join(tmpDir, 'alpha'));
+      await writeFile(join(tmpDir, 'alpha', 'scenario.yaml'), stringify({ prompt: 'a\n' }));
+      await writeFile(
+        join(tmpDir, 'alpha', 'checks.yaml'),
+        stringify({
+          context: 'alpha context',
+          checks: [{ 'check-a': { check: 'alpha check', note: 'note' } }],
+        }),
+      );
+      const { code, stderr } = await runAndCapture(['run', '--concurrency', '0', tmpDir]);
+      expect(code).toBe(1);
+      expect(stderr).toContain('--concurrency');
+      expect(stderr).toContain('positive integer');
+    });
+
+    it('run: rejects --concurrency -5 with exit 1', async () => {
+      await writeFile(join(tmpDir, 'craboodle.yaml'), stringify({ version: '1' }));
+      await mkdir(join(tmpDir, 'alpha'));
+      await writeFile(join(tmpDir, 'alpha', 'scenario.yaml'), stringify({ prompt: 'a\n' }));
+      await writeFile(
+        join(tmpDir, 'alpha', 'checks.yaml'),
+        stringify({
+          context: 'alpha context',
+          checks: [{ 'check-a': { check: 'alpha check', note: 'note' } }],
+        }),
+      );
+      const { code, stderr } = await runAndCapture(['run', '--concurrency', '-5', tmpDir]);
+      expect(code).toBe(1);
+      expect(stderr).toContain('--concurrency');
+    });
+
+    it('run: rejects --concurrency abc with exit 1', async () => {
+      await writeFile(join(tmpDir, 'craboodle.yaml'), stringify({ version: '1' }));
+      await mkdir(join(tmpDir, 'alpha'));
+      await writeFile(join(tmpDir, 'alpha', 'scenario.yaml'), stringify({ prompt: 'a\n' }));
+      await writeFile(
+        join(tmpDir, 'alpha', 'checks.yaml'),
+        stringify({
+          context: 'alpha context',
+          checks: [{ 'check-a': { check: 'alpha check', note: 'note' } }],
+        }),
+      );
+      const { code, stderr } = await runAndCapture(['run', '--concurrency', 'abc', tmpDir]);
+      expect(code).toBe(1);
+      expect(stderr).toContain('--concurrency');
+    });
+
+    it('lint: rejects --concurrency 0 with exit 1', async () => {
+      await writeFile(join(tmpDir, 'craboodle.yaml'), stringify({ version: '1' }));
+      await mkdir(join(tmpDir, 'alpha'));
+      await writeFile(join(tmpDir, 'alpha', 'scenario.yaml'), stringify({ prompt: 'a\n' }));
+      await writeFile(
+        join(tmpDir, 'alpha', 'checks.yaml'),
+        stringify({
+          context: 'alpha context',
+          checks: [{ 'check-a': { check: 'alpha check', note: 'note' } }],
+        }),
+      );
+      const { code, stderr } = await runAndCapture(['lint', '--concurrency', '0', tmpDir]);
+      expect(code).toBe(1);
+      expect(stderr).toContain('--concurrency');
+    });
+  });
+
   describe('code 2 — config-load error', () => {
     it('list: exits 2 when craboodle.yaml has unknown keys', async () => {
       await writeFile(join(tmpDir, 'craboodle.yaml'), 'version: "1"\nbogus_key: 1\n');

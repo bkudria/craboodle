@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { Command } from 'commander';
+import { Command, InvalidArgumentError } from 'commander';
 import { dirname, join } from 'node:path';
 import { mkdtemp, writeFile, mkdir, readFile, access, stat } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
@@ -511,6 +511,14 @@ Fail-fast:
   any completed scenario falls below the threshold. Queued items report
   "Aborted (fail-fast)" in their errors. In-flight reps still finish.`;
 
+function parseConcurrency(value: string): number {
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 1) {
+    throw new InvalidArgumentError(`must be a positive integer (got ${JSON.stringify(value)})`);
+  }
+  return n;
+}
+
 const program = new Command();
 
 program
@@ -529,7 +537,8 @@ program
   .option(
     '--concurrency <n>',
     'Max parallel items per stage (scuttlerun and pincenez run in independent pools)',
-    '10',
+    parseConcurrency,
+    10,
   )
   .option(
     '--scenario, --scenarios <pattern>',
@@ -857,7 +866,7 @@ async function lintCommandInner(
 program
   .command('lint <evals-dir>')
   .description('Lint checks for quality issues without running evals')
-  .option('--concurrency <n>', 'Max parallel pincenez lint invocations', '10')
+  .option('--concurrency <n>', 'Max parallel pincenez lint invocations', parseConcurrency, 10)
   .option(
     '--scenario, --scenarios <pattern>',
     'Filter scenarios by ID (exact, glob, or comma-separated)',
