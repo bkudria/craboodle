@@ -23,9 +23,8 @@ import { runScuttlerun, runPincenez, runPincenezLint, listScuttlerunConfig } fro
 import { findMissingBinaries, formatMissingBinariesError } from './preflight.js';
 import { executePool, type WorkItem } from './pool.js';
 import { runStaged } from './staged.js';
+import { loadStageBResult } from './stage-b-load.js';
 import {
-  parseGrading,
-  parseCostFromTranscript,
   averageResults,
   streamHeader,
   streamScenarioYaml,
@@ -214,17 +213,7 @@ async function runCommandInner(
                 transcriptPath: outputPath,
               };
             }
-            const gradingContent = await readFile(gradingPath, 'utf8');
-            const gradingResult = parseGrading(gradingContent);
-            const outputContent = await readFile(outputPath, 'utf8');
-            const costUsd = parseCostFromTranscript(outputContent);
-            return {
-              type: 'success',
-              grading: gradingResult.checks,
-              costUsd,
-              gradingCostUsd: gradingResult.costUsd,
-              transcriptPath: outputPath,
-            };
+            return loadStageBResult({ gradingPath, outputPath, rep });
           };
 
           const result = await runStaged(scuttleLimit, pincenezLimit, stageA, (a) => a.ok, stageB);
