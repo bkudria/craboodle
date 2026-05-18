@@ -323,6 +323,68 @@ describe('pool', () => {
       }
     });
 
+    it('labels queued items as interrupted (not fail_fast) when isInterrupted is true', async () => {
+      const { executePool } = await import('../src/pool.js');
+
+      let completedCount = 0;
+      let interruptFlag = false;
+
+      const workItems = [
+        {
+          scenarioId: 's1',
+          rep: 1,
+          fn: async () => {
+            completedCount++;
+            interruptFlag = true;
+            return 's1r1';
+          },
+        },
+        {
+          scenarioId: 's2',
+          rep: 1,
+          fn: async () => {
+            completedCount++;
+            return 's2r1';
+          },
+        },
+      ];
+
+      const results = await executePool(workItems, 1, {
+        isInterrupted: () => interruptFlag,
+      });
+
+      expect(completedCount).toBe(1);
+      const s2Error = results.get('s2')![0];
+      expect(s2Error.type).toBe('error');
+      if (s2Error.type === 'error') {
+        expect(s2Error.reason).toBe('interrupted');
+        expect(s2Error.error).toBe('Interrupted (SIGINT)');
+      }
+    });
+
+    it('isInterrupted takes precedence over shouldAbort for reason labeling', async () => {
+      const { executePool } = await import('../src/pool.js');
+
+      const workItems = [
+        {
+          scenarioId: 's1',
+          rep: 1,
+          fn: async () => 's1r1',
+        },
+      ];
+
+      const results = await executePool(workItems, 1, {
+        shouldAbort: () => true,
+        isInterrupted: () => true,
+      });
+
+      const s1Error = results.get('s1')![0];
+      expect(s1Error.type).toBe('error');
+      if (s1Error.type === 'error') {
+        expect(s1Error.reason).toBe('interrupted');
+      }
+    });
+
     it('fires onScenarioComplete for abort-skipped items', async () => {
       const { executePool } = await import('../src/pool.js');
 

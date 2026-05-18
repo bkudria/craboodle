@@ -8,7 +8,12 @@ export interface WorkItem<T> {
 
 export type WorkResult<T> =
   | { type: 'success'; rep: number; data: T }
-  | { type: 'error'; rep: number; error: string; reason?: 'fail_fast' | 'budget' };
+  | {
+      type: 'error';
+      rep: number;
+      error: string;
+      reason?: 'fail_fast' | 'budget' | 'interrupted';
+    };
 
 export interface PoolOptions<T> {
   budgetUsd?: number;
@@ -16,6 +21,7 @@ export interface PoolOptions<T> {
   onScenarioComplete?: (scenarioId: string, results: WorkResult<T>[]) => void;
   onBudgetExceeded?: () => void;
   shouldAbort?: () => boolean;
+  isInterrupted?: () => boolean;
 }
 
 export async function executePool<T>(
@@ -51,11 +57,20 @@ export async function executePool<T>(
 
   const promises = workItems.map((item) =>
     limit(async () => {
-      if (budgetExceeded || options?.shouldAbort?.()) {
-        const reason: 'fail_fast' | 'budget' = budgetExceeded ? 'budget' : 'fail_fast';
-        const error = budgetExceeded
-          ? `Budget exceeded ($${totalCost.toFixed(4)} > $${budgetUsd})`
-          : 'Aborted (fail-fast)';
+      const interrupted = options?.isInterrupted?.() ?? false;
+      if (budgetExceeded || interrupted || options?.shouldAbort?.()) {
+        let reason: 'fail_fast' | 'budget' | 'interrupted';
+        let error: string;
+        if (interrupted) {
+          reason = 'interrupted';
+          error = 'Interrupted (SIGINT)';
+        } else if (budgetExceeded) {
+          reason = 'budget';
+          error = `Budget exceeded ($${totalCost.toFixed(4)} > $${budgetUsd})`;
+        } else {
+          reason = 'fail_fast';
+          error = 'Aborted (fail-fast)';
+        }
         results.get(item.scenarioId)!.push({
           type: 'error',
           rep: item.rep,
