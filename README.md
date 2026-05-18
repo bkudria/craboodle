@@ -55,6 +55,21 @@ craboodle lint ./evals
 craboodle run ./evals
 ```
 
+## Examples
+
+Three runnable eval suites live under [`examples/`](examples/):
+
+- [`examples/haiku-writer`](examples/haiku-writer) — agent writes a haiku to a file given a topic (or asks for one when missing). Demonstrates `prompt`, `user.max_turns`, and basic file-output checks.
+- [`examples/claude-md-instruction`](examples/claude-md-instruction) — verifies whether the agent follows a TDD-style instruction from `CLAUDE.md` under prompt pressure. Demonstrates instruction-following evaluation.
+- [`examples/hook-and-settings`](examples/hook-and-settings) — exercises PreToolUse hooks and `project.settings`. Demonstrates scenario-level project setup.
+
+Run any of them:
+
+```bash
+craboodle run ./examples/haiku-writer
+craboodle lint ./examples/haiku-writer
+```
+
 ## Development
 
 Clone the repo and install dependencies:
