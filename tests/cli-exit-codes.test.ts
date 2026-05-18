@@ -29,6 +29,22 @@ async function runAndCapture(args: string[]): Promise<{ code: number; stderr: st
   }
 }
 
+async function runAndCaptureAll(
+  args: string[],
+): Promise<{ code: number; stdout: string; stderr: string }> {
+  try {
+    const { stdout, stderr } = await execFileAsync('craboodle', args);
+    return { code: 0, stdout, stderr };
+  } catch (err) {
+    const e = err as { code?: number; stdout?: string; stderr?: string };
+    return {
+      code: typeof e.code === 'number' ? e.code : -1,
+      stdout: e.stdout ?? '',
+      stderr: e.stderr ?? '',
+    };
+  }
+}
+
 describe('cli exit codes (unified taxonomy)', () => {
   let tmpDir: string;
 
@@ -139,6 +155,41 @@ describe('cli exit codes (unified taxonomy)', () => {
       await writeFile(join(tmpDir, 'alpha', 'checks.yaml'), 'not_a_checks_file: true\n');
       const code = await runAndGetExit(['lint', tmpDir]);
       expect(code).toBe(4);
+    });
+  });
+
+  describe('lint scenarios_total reflects successful invocations only', () => {
+    it('lint: scenarios_total is 0 when all pincenez invocations fail', async () => {
+      await writeFile(join(tmpDir, 'craboodle.yaml'), stringify({ version: '1' }));
+      // Two scenarios, both with invalid checks.yaml — pincenez lint rejects each
+      for (const id of ['alpha', 'beta']) {
+        await mkdir(join(tmpDir, id));
+        await writeFile(join(tmpDir, id, 'scenario.yaml'), stringify({ prompt: 'a\n' }));
+        await writeFile(join(tmpDir, id, 'checks.yaml'), 'not_a_checks_file: true\n');
+      }
+      const { stdout } = await runAndCaptureAll(['lint', tmpDir]);
+      // Per spec craboodle.allium:255, scenarios_total = lint_results.count
+      // (successful invocations), not selected_scenarios.count.
+      expect(stdout).toContain('scenarios_total: 0');
+      expect(stdout).not.toContain('scenarios_total: 2');
+    });
+  });
+
+  describe('code 2 — config-load error', () => {
+    it('list: exits 2 when craboodle.yaml has unknown keys', async () => {
+      await writeFile(join(tmpDir, 'craboodle.yaml'), 'version: "1"\nbogus_key: 1\n');
+      await mkdir(join(tmpDir, 'alpha'));
+      await writeFile(join(tmpDir, 'alpha', 'scenario.yaml'), stringify({ prompt: 'a\n' }));
+      await writeFile(
+        join(tmpDir, 'alpha', 'checks.yaml'),
+        stringify({
+          context: 'alpha context',
+          checks: [{ 'check-a': { check: 'alpha check', note: 'note' } }],
+        }),
+      );
+      const { code, stderr } = await runAndCapture(['list', tmpDir]);
+      expect(code).toBe(2);
+      expect(stderr).toContain('unknown key');
     });
   });
 

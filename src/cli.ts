@@ -244,7 +244,8 @@ async function runCommandInner(
       if (outcome.gradingCostUsd !== null) cost += outcome.gradingCostUsd;
       return cost;
     },
-    shouldAbort: () => failFastTriggered || isInterrupted(),
+    shouldAbort: () => failFastTriggered,
+    isInterrupted: () => isInterrupted(),
     onBudgetExceeded: () => {
       budgetExceeded = true;
     },
@@ -664,7 +665,7 @@ program
           'craboodle --help',
         ),
       );
-      process.exit(1);
+      process.exit(2);
     }
   });
 
@@ -746,7 +747,7 @@ async function lintCommandInner(
   const limit = pLimit(opts.concurrency);
 
   const totals: LintTotals = {
-    scenarios_total: scenarios.length,
+    scenarios_total: 0,
     scenarios_with_issues: 0,
     checks_total: 0,
     checks_with_issues: 0,
@@ -797,6 +798,7 @@ async function lintCommandInner(
       const checks = parseLintResult(result.stdout);
       const withIssues = checks.filter((a) => a.issues.length > 0).length;
 
+      totals.scenarios_total += 1;
       totals.checks_total += checks.length;
       totals.checks_with_issues += withIssues;
       if (withIssues > 0) {

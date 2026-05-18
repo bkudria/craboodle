@@ -82,7 +82,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for commit conventions and PR guidelines.
 
 ## Exit Codes
 
-Shared taxonomy across scuttlerun/pincenez/craboodle. Codes 5–7 are scuttlerun-only (budget/timeout/max_turns); craboodle emits:
+Shared taxonomy across scuttlerun/pincenez/craboodle. Codes 6–7 are reserved for scuttlerun-only concerns (timed_out, exhausted_turns); craboodle emits:
 
 | Code | Meaning |
 |------|---------|
@@ -91,6 +91,7 @@ Shared taxonomy across scuttlerun/pincenez/craboodle. Codes 5–7 are scuttlerun
 | 2 | Runtime error (caught exception in run/lint action) |
 | 3 | Threshold failure (`min_pass_rate` ratchet) |
 | 4 | Infrastructure/dependency error (no scenarios, empty filter, zero successful reps) |
+| 5 | Budget exhausted (`max_budget_usd`) |
 | 130 | Interrupted (SIGINT) |
 
 ## Contributing
