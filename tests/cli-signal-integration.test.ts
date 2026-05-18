@@ -30,6 +30,20 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function pollFileNonEmpty(path: string, timeoutMs: number): Promise<number> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const contents = await readFile(path, 'utf8');
+      if (contents.trim().length > 0) return Date.now() - start;
+    } catch {
+      /* file may not exist yet */
+    }
+    await delay(25);
+  }
+  throw new Error(`pidFile remained empty for ${timeoutMs}ms: ${path}`);
+}
+
 function pidStillAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
@@ -106,8 +120,8 @@ describe('cli signal handling (integration)', () => {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 
-    // Let scuttlerun stubs start
-    await delay(400);
+    // Wait for scuttlerun stub to record its PID before SIGINT
+    await pollFileNonEmpty(pidFile, 8000);
     child.kill('SIGINT');
 
     const result = await waitForExit(child);
@@ -134,7 +148,7 @@ describe('cli signal handling (integration)', () => {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 
-    await delay(400);
+    await pollFileNonEmpty(pidFile, 8000);
     child.kill('SIGINT');
 
     const result = await waitForExit(child);
