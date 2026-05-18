@@ -191,6 +191,47 @@ describe('pool', () => {
       expect(s1Results.every((r) => r.type === 'success')).toBe(true);
     });
 
+    it('fires onBudgetExceeded callback once when budget first trips', async () => {
+      const { executePool } = await import('../src/pool.js');
+
+      const events: number[] = [];
+      const workItems = [
+        { scenarioId: 's1', rep: 1, fn: async () => ({ cost: 0.6 }) },
+        { scenarioId: 's1', rep: 2, fn: async () => ({ cost: 0.6 }) },
+        { scenarioId: 's2', rep: 1, fn: async () => ({ cost: 0.6 }) },
+      ];
+
+      await executePool(workItems, 1, {
+        budgetUsd: 1.0,
+        costOf: (data: { cost: number }) => data.cost,
+        onBudgetExceeded: () => {
+          events.push(Date.now());
+        },
+      });
+
+      expect(events).toHaveLength(1);
+    });
+
+    it('does not fire onBudgetExceeded when budget is not exceeded', async () => {
+      const { executePool } = await import('../src/pool.js');
+
+      const events: number[] = [];
+      const workItems = [
+        { scenarioId: 's1', rep: 1, fn: async () => ({ cost: 0.3 }) },
+        { scenarioId: 's1', rep: 2, fn: async () => ({ cost: 0.3 }) },
+      ];
+
+      await executePool(workItems, 1, {
+        budgetUsd: 10.0,
+        costOf: (data: { cost: number }) => data.cost,
+        onBudgetExceeded: () => {
+          events.push(Date.now());
+        },
+      });
+
+      expect(events).toHaveLength(0);
+    });
+
     it('fires onScenarioComplete for budget-exceeded items', async () => {
       const { executePool } = await import('../src/pool.js');
 

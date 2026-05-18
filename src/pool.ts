@@ -14,6 +14,7 @@ export interface PoolOptions<T> {
   budgetUsd?: number;
   costOf?: (result: T) => number;
   onScenarioComplete?: (scenarioId: string, results: WorkResult<T>[]) => void;
+  onBudgetExceeded?: () => void;
   shouldAbort?: () => boolean;
 }
 
@@ -81,6 +82,7 @@ export async function executePool<T>(
             process.stderr.write(
               `[craboodle] Budget exceeded: $${totalCost.toFixed(4)} > $${budgetUsd} — skipping remaining items\n`,
             );
+            options?.onBudgetExceeded?.();
           }
         }
       } catch (err: unknown) {

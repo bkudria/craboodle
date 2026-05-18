@@ -22,7 +22,10 @@
 --   4    infrastructure / dependency error
 --          (no scenarios, empty filter, zero successful reps across all
 --          scenarios, zero lint invocations succeeded)
---   5-7  reserved for scuttlerun-only concerns
+--   5    budget exhausted (max_budget_usd reached; mirrors scuttlerun's
+--          exhausted_budget so CI can distinguish budget cutoff from
+--          generic failure)
+--   6-7  reserved for scuttlerun-only concerns (timed_out, exhausted_turns)
 --   130  interrupted (SIGINT)
 
 config {
@@ -576,14 +579,30 @@ rule StreamTotalCost {
     ensures: emit_yaml_doc({ total_cost_usd: round4(inv.total_cost_usd) })
 }
 
+rule ExitRunBudgetExceeded {
+    when: inv: RunInvocation.status transitions_to completed
+    requires: inv.budget_exceeded
+    ensures: inv.exit_code = 5
+    ensures: emit_stderr("Budget exceeded")
+    @guidance
+        -- Budget exhaustion takes precedence over the ratchet and
+        -- has_any_success exits: the run was deliberately cut short, so
+        -- the functional verdict is incomplete and CI should treat the
+        -- run as budget-limited rather than infer pass/fail/ratchet from
+        -- a truncated sample. Exit 5 mirrors scuttlerun's
+        -- exhausted_budget code.
+}
+
 rule ExitRunNoSuccess {
     when: inv: RunInvocation.status transitions_to completed
+    requires: not inv.budget_exceeded
     requires: not inv.has_any_success
     ensures: inv.exit_code = 4
 }
 
 rule ExitRunRatchet {
     when: inv: RunInvocation.status transitions_to completed
+    requires: not inv.budget_exceeded
     requires: inv.has_any_success
     requires: inv.fail_fast_triggered
     ensures: inv.exit_code = 3
@@ -592,6 +611,7 @@ rule ExitRunRatchet {
 
 rule ExitRunSuccess {
     when: inv: RunInvocation.status transitions_to completed
+    requires: not inv.budget_exceeded
     requires: inv.has_any_success
     requires: not inv.fail_fast_triggered
     ensures: inv.exit_code = 0
@@ -747,6 +767,19 @@ rule LintInvokePincenez {
             checks_total: pincenez_lint_total(scenario.checks_config),
             checks_with_issues: pincenez_lint_issue_count(scenario.checks_config)
         )
+}
+
+-- The lint context contract is fixed: pincenez always receives
+-- scenario.scenario_config.prompt_context. When a scenario has no
+-- prompt, pincenez's tautology detection silently degrades, so the
+-- spec requires a per-scenario stderr warning to surface the
+-- degradation rather than letting it pass unnoticed. Exit code is
+-- unaffected; the warning is advisory.
+rule WarnLintMissingPromptContext {
+    when: inv: LintInvocation.status transitions_to streaming
+    for scenario in inv.selected_scenarios:
+        requires: scenario.scenario_config.prompt_context = null
+        ensures: emit_stderr("Scenario has no prompt; tautology detection degraded")
 }
 
 rule StreamLintScenario {
@@ -1092,8 +1125,4 @@ invariant RatchetOnlyWhenConfigured {
 -- Open questions
 -- ============================================================================
 
-open question "When max_budget_usd is reached, what should the process exit code be? Current behaviour falls through to the regular exit path (0 / 3 / 4 based on successful_reps and ratchet). A dedicated code would let CI distinguish budget exhaustion from generic failure, but codes 5-7 are reserved for scuttlerun-only concerns."
-
-open question "Should init scaffold an example scenario directory (with scenario.yaml and checks.yaml) in addition to craboodle.yaml and base.yaml? An example would make first-run friendlier but has to stay current."
-
-open question "Is the lint command's scenario.yaml prompt extraction a fixed contract (always uses 'prompt' as the context field), or should the spec allow scenarios without a 'prompt' to opt out explicitly? Today a missing prompt yields null context and pincenez's tautology detection silently degrades."
+-- (no open questions)

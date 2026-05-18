@@ -19,6 +19,16 @@ async function runAndGetExit(args: string[]): Promise<number> {
   }
 }
 
+async function runAndCapture(args: string[]): Promise<{ code: number; stderr: string }> {
+  try {
+    const { stderr } = await execFileAsync('craboodle', args);
+    return { code: 0, stderr };
+  } catch (err) {
+    const e = err as { code?: number; stderr?: string };
+    return { code: typeof e.code === 'number' ? e.code : -1, stderr: e.stderr ?? '' };
+  }
+}
+
 describe('cli exit codes (unified taxonomy)', () => {
   let tmpDir: string;
 
@@ -121,6 +131,21 @@ describe('cli exit codes (unified taxonomy)', () => {
       await writeFile(join(tmpDir, 'alpha', 'checks.yaml'), 'not_a_checks_file: true\n');
       const code = await runAndGetExit(['lint', tmpDir]);
       expect(code).toBe(4);
+    });
+  });
+
+  describe('lint missing-prompt warning', () => {
+    it('lint: warns to stderr when scenario.yaml has no prompt field', async () => {
+      await writeFile(join(tmpDir, 'craboodle.yaml'), stringify({ version: '1' }));
+      await mkdir(join(tmpDir, 'alpha'));
+      // scenario.yaml present but no `prompt` field — degrades pincenez tautology detection
+      await writeFile(join(tmpDir, 'alpha', 'scenario.yaml'), stringify({}));
+      // Invalid checks.yaml so pincenez bails fast without calling a model;
+      // we only care that the warning fires before pincenez is invoked.
+      await writeFile(join(tmpDir, 'alpha', 'checks.yaml'), 'not_a_checks_file: true\n');
+      const { stderr } = await runAndCapture(['lint', tmpDir]);
+      expect(stderr).toContain('alpha');
+      expect(stderr).toContain('no prompt');
     });
   });
 });

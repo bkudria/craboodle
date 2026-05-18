@@ -185,6 +185,7 @@ async function runCommand(evalsDir: string, opts: RunOptions): Promise<void> {
   // Execute pool with arrival-order streaming
   let hasAnySuccess = false;
   let failFastTriggered = false;
+  let budgetExceeded = false;
   const scenarioOutputs: ScenarioOutput[] = [];
 
   await executePool(workItems, workItems.length, {
@@ -197,6 +198,9 @@ async function runCommand(evalsDir: string, opts: RunOptions): Promise<void> {
       return cost;
     },
     shouldAbort: () => failFastTriggered,
+    onBudgetExceeded: () => {
+      budgetExceeded = true;
+    },
     onScenarioComplete: (scenarioId, repResults) => {
       const successfulGradings: GradingCheck[][] = [];
       const repTranscripts: string[] = [];
@@ -291,6 +295,11 @@ async function runCommand(evalsDir: string, opts: RunOptions): Promise<void> {
   const totalCost = Math.round(totalCostRaw * 10000) / 10000;
   if (totalCost > 0) {
     streamTotalCost(totalCost);
+  }
+
+  if (budgetExceeded) {
+    process.stderr.write('[craboodle] Budget exceeded\n');
+    process.exit(5);
   }
 
   if (!hasAnySuccess) {
@@ -646,6 +655,12 @@ async function lintCommand(evalsDir: string, opts: LintOptions): Promise<void> {
         }
       } catch {
         // scenario.yaml is optional for lint — proceed without context
+      }
+
+      if (context === undefined) {
+        process.stderr.write(
+          `[craboodle] ${scenario.id}: scenario has no prompt; tautology detection degraded\n`,
+        );
       }
 
       const result = await runPincenezLint({
