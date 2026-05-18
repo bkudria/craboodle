@@ -80,6 +80,20 @@ npm run format:check # Prettier check (CI uses this)
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for commit conventions and PR guidelines.
 
+## Artifact Cleanup
+
+Each `craboodle run` creates a per-run artifact directory in `$TMPDIR` (prefixed `craboodle-run-`) holding scuttlerun transcripts, pincenez gradings, and stage outputs. At the start of every run, craboodle garbage-collects prior `craboodle-run-*` directories whose mtime is older than the retention window — best-effort, errors ignored.
+
+The default window is 7 days. Override (or disable) it via `craboodle.yaml`:
+
+```yaml
+version: "1"
+artifact_retention_days: 30   # keep prior runs for 30 days
+# artifact_retention_days: 0  # disable cleanup entirely
+```
+
+Only directories matching the `craboodle-run-` prefix are touched; nothing outside `$TMPDIR` is read or modified.
+
 ## Exit Codes
 
 Shared taxonomy across scuttlerun/pincenez/craboodle. Codes 6–7 are reserved for scuttlerun-only concerns (timed_out, exhausted_turns); craboodle emits:

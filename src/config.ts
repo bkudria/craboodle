@@ -6,10 +6,17 @@ export interface CraboodleConfig {
   minPassRate?: number;
   maxBudgetUsd?: number;
   repeats?: number;
+  artifactRetentionDays?: number;
 }
 
 const SUPPORTED_VERSIONS = ['1'];
-const KNOWN_KEYS = ['version', 'min_pass_rate', 'max_budget_usd', 'repeats'];
+const KNOWN_KEYS = [
+  'version',
+  'min_pass_rate',
+  'max_budget_usd',
+  'repeats',
+  'artifact_retention_days',
+];
 
 export async function loadCraboodleConfig(path: string): Promise<CraboodleConfig> {
   let raw: Record<string, unknown>;
@@ -69,11 +76,24 @@ export async function loadCraboodleConfig(path: string): Promise<CraboodleConfig
     repeats = raw.repeats;
   }
 
+  let artifactRetentionDays: number | undefined;
+  if (raw.artifact_retention_days !== undefined) {
+    if (
+      typeof raw.artifact_retention_days !== 'number' ||
+      !Number.isInteger(raw.artifact_retention_days) ||
+      raw.artifact_retention_days < 0
+    ) {
+      throw new Error('artifact_retention_days must be a non-negative integer (0 disables cleanup)');
+    }
+    artifactRetentionDays = raw.artifact_retention_days;
+  }
+
   return {
     version: versionStr,
     minPassRate,
     maxBudgetUsd,
     repeats,
+    artifactRetentionDays,
   };
 }
 

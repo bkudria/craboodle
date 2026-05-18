@@ -146,6 +146,44 @@ describe('config', () => {
       );
     });
 
+    it('parses artifact_retention_days', async () => {
+      const { loadCraboodleConfig } = await import('../src/config.js');
+      const configPath = join(tmpDir, 'craboodle.yaml');
+      await writeFile(configPath, stringify({ version: '1', artifact_retention_days: 14 }));
+
+      const config = await loadCraboodleConfig(configPath);
+      expect(config.artifactRetentionDays).toBe(14);
+    });
+
+    it('accepts artifact_retention_days: 0 to disable cleanup', async () => {
+      const { loadCraboodleConfig } = await import('../src/config.js');
+      const configPath = join(tmpDir, 'craboodle.yaml');
+      await writeFile(configPath, stringify({ version: '1', artifact_retention_days: 0 }));
+
+      const config = await loadCraboodleConfig(configPath);
+      expect(config.artifactRetentionDays).toBe(0);
+    });
+
+    it('throws on non-integer artifact_retention_days', async () => {
+      const { loadCraboodleConfig } = await import('../src/config.js');
+      const configPath = join(tmpDir, 'craboodle.yaml');
+      await writeFile(configPath, stringify({ version: '1', artifact_retention_days: 1.5 }));
+
+      await expect(loadCraboodleConfig(configPath)).rejects.toThrow(
+        'artifact_retention_days must be a non-negative integer',
+      );
+    });
+
+    it('throws on negative artifact_retention_days', async () => {
+      const { loadCraboodleConfig } = await import('../src/config.js');
+      const configPath = join(tmpDir, 'craboodle.yaml');
+      await writeFile(configPath, stringify({ version: '1', artifact_retention_days: -1 }));
+
+      await expect(loadCraboodleConfig(configPath)).rejects.toThrow(
+        'artifact_retention_days must be a non-negative integer',
+      );
+    });
+
     it('re-throws non-ENOENT errors', async () => {
       const { loadCraboodleConfig } = await import('../src/config.js');
       // Reading a directory as a file gives EISDIR

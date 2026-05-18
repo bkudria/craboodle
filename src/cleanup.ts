@@ -9,11 +9,15 @@ const MS_PER_DAY = 86_400_000;
  * Remove craboodle artifact directories older than maxAgeDays from $TMPDIR.
  * Best-effort: failures are silently ignored.
  * Returns count of directories removed.
+ * If maxAgeDays is 0, cleanup is disabled and the function returns 0.
  */
 export async function cleanOldArtifacts(
   maxAgeDays: number,
   options: { verbose?: boolean } = {},
 ): Promise<number> {
+  if (maxAgeDays === 0) {
+    return 0;
+  }
   const tmp = tmpdir();
   const cutoff = Date.now() - maxAgeDays * MS_PER_DAY;
   let cleaned = 0;

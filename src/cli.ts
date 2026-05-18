@@ -127,8 +127,8 @@ async function runCommandInner(
   // Check base config existence
   const basePath = await checkBaseConfig(join(resolvedDir, 'base.yaml'));
 
-  // Clean old artifacts before creating new ones
-  await cleanOldArtifacts(7, { verbose: opts.verbose });
+  // Clean old artifacts before creating new ones (0 = disabled)
+  await cleanOldArtifacts(craboodleConfig.artifactRetentionDays ?? 7, { verbose: opts.verbose });
 
   // Create artifact directory
   const artifactDir = await mkdtemp(join(tmpdir(), 'craboodle-run-'));

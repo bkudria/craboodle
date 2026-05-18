@@ -31,7 +31,7 @@
 config {
     default_repeats: Integer = 3
     default_concurrency: Integer = 10
-    artifact_retention: Duration = 7.days
+    artifact_retention_days: Integer = 7   -- 0 disables cleanup
     artifact_prefix: String = "craboodle-run-"
     supported_config_versions: Set<String> = {"1"}
 }
@@ -397,12 +397,14 @@ rule BeginRunDiscovery {
 
 -- Garbage-collect prior artifact directories older than the retention window.
 -- Best-effort: the current run's directory does not exist yet at this point;
--- per-directory failures are silently ignored.
+-- per-directory failures are silently ignored. When config.artifact_retention_days
+-- is 0, cleanup is disabled.
 rule CleanOldRunArtifacts {
     when: inv: RunInvocation.status transitions_to discovering
+    requires: config.artifact_retention_days > 0
     ensures: clean_old_artifacts(
         prefix: config.artifact_prefix,
-        older_than: now - config.artifact_retention)
+        older_than: now - config.artifact_retention_days.days)
 }
 
 rule FailRunNoScenarios {

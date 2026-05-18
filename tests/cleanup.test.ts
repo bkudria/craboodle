@@ -71,6 +71,20 @@ describe('cleanOldArtifacts', () => {
     expect(cleaned).toBe(0);
   });
 
+  it('skips cleanup entirely when maxAgeDays is 0 (disabled)', async () => {
+    const { cleanOldArtifacts } = await import('../src/cleanup.js');
+    const oldDir = await createOldDir('craboodle-run-test-disabled-' + Date.now(), 100);
+
+    try {
+      const cleaned = await cleanOldArtifacts(0);
+      expect(cleaned).toBe(0);
+      const info = await stat(oldDir);
+      expect(info.isDirectory()).toBe(true);
+    } finally {
+      await rm(oldDir, { recursive: true }).catch(() => {});
+    }
+  });
+
   it('logs to stderr when verbose and dirs were cleaned', async () => {
     const { cleanOldArtifacts } = await import('../src/cleanup.js');
     const oldDir = await createOldDir('craboodle-run-test-verbose-' + Date.now(), 10);
@@ -110,7 +124,7 @@ describe('cleanOldArtifacts error handling', () => {
     });
 
     const { cleanOldArtifacts } = await import('../src/cleanup.js');
-    const cleaned = await cleanOldArtifacts(0);
+    const cleaned = await cleanOldArtifacts(7);
     expect(cleaned).toBe(0);
 
     vi.doUnmock('node:fs/promises');
