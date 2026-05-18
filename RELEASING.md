@@ -9,6 +9,7 @@ Craboodle uses [release-please](https://github.com/googleapis/release-please) to
 3. **The release PR proposes a version bump and CHANGELOG update.** release-please derives the next version from the unreleased commits (see mapping below) and prepends a new dated release section to `CHANGELOG.md`. It also bumps `package.json`'s `version` and updates `.release-please-manifest.json`.
 4. **A maintainer merges the release PR.** That merge is the release trigger:
    - release-please creates the git tag (e.g. `v0.2.0`) and a GitHub Release.
+   - The `prepublish-check` job re-runs the full CI suite (`npm audit`, lint, format-check, build, test) on the release commit. The `publish` job depends on it via `needs:`, so a red prepublish-check blocks the publish.
    - The `publish` job in the same workflow runs `npm publish --access public`. Authentication is via npm [trusted publishing](https://docs.npmjs.com/trusted-publishers) (OIDC) — no long-lived token. With OIDC, npm automatically generates [provenance attestations](https://docs.npmjs.com/generating-provenance-statements).
 
 No other action is required. Do not push tags by hand. Do not edit `CHANGELOG.md` directly.
@@ -30,7 +31,7 @@ While the project is `0.x`, breaking changes bump the minor (`0.1.0` → `0.2.0`
 
 - [`release-please-config.json`](release-please-config.json) — single-package Node project, changelog at `CHANGELOG.md`, tags without component prefix.
 - [`.release-please-manifest.json`](.release-please-manifest.json) — current released version (source of truth for release-please).
-- [`.github/workflows/release-please.yml`](.github/workflows/release-please.yml) — the workflow itself; the `publish` job depends on the `release_created` output and authenticates to npm via OIDC trusted publishing (no `NPM_TOKEN`).
+- [`.github/workflows/release-please.yml`](.github/workflows/release-please.yml) — the workflow itself. The `prepublish-check` job mirrors `ci.yml` and gates the `publish` job; `publish` depends on both `release-please.outputs.release_created` and a green `prepublish-check`, and authenticates to npm via OIDC trusted publishing (no `NPM_TOKEN`).
 
 ## Prerequisites for publishing
 
