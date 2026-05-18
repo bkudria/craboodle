@@ -14,6 +14,7 @@ const pkg = JSON.parse(
 ) as { version: string };
 
 import pLimit from 'p-limit';
+import { formatErrorWithHint } from './messages.js';
 import { loadCraboodleConfig, checkBaseConfig, resolveRepeatsFromRawFlag } from './config.js';
 import { cleanOldArtifacts } from './cleanup.js';
 import { discoverScenarios, filterScenarios } from './discovery.js';
@@ -61,7 +62,13 @@ async function runCommand(evalsDir: string, opts: RunOptions): Promise<void> {
   // Discover scenarios
   let scenarios = await discoverScenarios(resolvedDir);
   if (scenarios.length === 0) {
-    process.stderr.write(`[craboodle] No scenarios found in ${resolvedDir}\n`);
+    process.stderr.write(
+      formatErrorWithHint(
+        `No scenarios found in ${resolvedDir}`,
+        `craboodle init ${resolvedDir}`,
+        'craboodle --help',
+      ),
+    );
     process.exit(4);
   }
 
@@ -69,7 +76,13 @@ async function runCommand(evalsDir: string, opts: RunOptions): Promise<void> {
   if (opts.scenarios) {
     scenarios = filterScenarios(scenarios, opts.scenarios);
     if (scenarios.length === 0) {
-      process.stderr.write(`[craboodle] No scenarios match filter: ${opts.scenarios}\n`);
+      process.stderr.write(
+        formatErrorWithHint(
+          `No scenarios match filter: ${opts.scenarios}`,
+          `craboodle list ${resolvedDir} to see available IDs`,
+          'craboodle --help',
+        ),
+      );
       process.exit(4);
     }
   }
@@ -304,7 +317,13 @@ async function runCommand(evalsDir: string, opts: RunOptions): Promise<void> {
   }
 
   if (budgetExceeded) {
-    process.stderr.write('[craboodle] Budget exceeded\n');
+    process.stderr.write(
+      formatErrorWithHint(
+        `Budget exceeded (max_budget_usd: ${craboodleConfig.maxBudgetUsd})`,
+        'raise max_budget_usd in craboodle.yaml',
+        'craboodle --help',
+      ),
+    );
     process.exit(5);
   }
 
@@ -326,6 +345,8 @@ async function runCommand(evalsDir: string, opts: RunOptions): Promise<void> {
           `  ${f.id}: ${f.pass_rate ?? 'null'} < ${craboodleConfig.minPassRate}\n`,
         );
       }
+      process.stderr.write('  Try: re-run with -v for per-rep failure context\n');
+      process.stderr.write('  See: craboodle --help\n');
       process.exit(3);
     }
   }
@@ -488,7 +509,11 @@ program
       });
     } catch (err: unknown) {
       process.stderr.write(
-        `[craboodle] Error: ${err instanceof Error ? err.message : String(err)}\n`,
+        formatErrorWithHint(
+          `Error: ${err instanceof Error ? err.message : String(err)}`,
+          'verify scuttlerun and pincenez are installed (scuttlerun --version, pincenez --version) if a subprocess failed',
+          'craboodle --help',
+        ),
       );
       process.exit(2);
     }
@@ -509,14 +534,26 @@ program
       // Discover scenarios
       let scenarios = await discoverScenarios(resolvedDir);
       if (scenarios.length === 0) {
-        process.stderr.write(`[craboodle] No scenarios found in ${resolvedDir}\n`);
+        process.stderr.write(
+          formatErrorWithHint(
+            `No scenarios found in ${resolvedDir}`,
+            `craboodle init ${resolvedDir}`,
+            'craboodle --help',
+          ),
+        );
         process.exit(4);
       }
 
       if (cmdOpts.scenarios) {
         scenarios = filterScenarios(scenarios, cmdOpts.scenarios);
         if (scenarios.length === 0) {
-          process.stderr.write(`[craboodle] No scenarios match filter: ${cmdOpts.scenarios}\n`);
+          process.stderr.write(
+            formatErrorWithHint(
+              `No scenarios match filter: ${cmdOpts.scenarios}`,
+              `craboodle list ${resolvedDir} to see available IDs`,
+              'craboodle --help',
+            ),
+          );
           process.exit(4);
         }
       }
@@ -589,7 +626,11 @@ program
       }
     } catch (err: unknown) {
       process.stderr.write(
-        `[craboodle] Error: ${err instanceof Error ? err.message : String(err)}\n`,
+        formatErrorWithHint(
+          `Error: ${err instanceof Error ? err.message : String(err)}`,
+          'verify scuttlerun and pincenez are installed (scuttlerun --version, pincenez --version) if a subprocess failed',
+          'craboodle --help',
+        ),
       );
       process.exit(1);
     }
@@ -608,7 +649,13 @@ async function lintCommand(evalsDir: string, opts: LintOptions): Promise<void> {
   // Discover scenarios
   let scenarios = await discoverScenarios(resolvedDir);
   if (scenarios.length === 0) {
-    process.stderr.write(`[craboodle] No scenarios found in ${resolvedDir}\n`);
+    process.stderr.write(
+      formatErrorWithHint(
+        `No scenarios found in ${resolvedDir}`,
+        `craboodle init ${resolvedDir}`,
+        'craboodle --help',
+      ),
+    );
     process.exit(4);
   }
 
@@ -616,7 +663,13 @@ async function lintCommand(evalsDir: string, opts: LintOptions): Promise<void> {
   if (opts.scenarios) {
     scenarios = filterScenarios(scenarios, opts.scenarios);
     if (scenarios.length === 0) {
-      process.stderr.write(`[craboodle] No scenarios match filter: ${opts.scenarios}\n`);
+      process.stderr.write(
+        formatErrorWithHint(
+          `No scenarios match filter: ${opts.scenarios}`,
+          `craboodle list ${resolvedDir} to see available IDs`,
+          'craboodle --help',
+        ),
+      );
       process.exit(4);
     }
   }
@@ -735,7 +788,11 @@ program
       });
     } catch (err: unknown) {
       process.stderr.write(
-        `[craboodle] Error: ${err instanceof Error ? err.message : String(err)}\n`,
+        formatErrorWithHint(
+          `Error: ${err instanceof Error ? err.message : String(err)}`,
+          'verify scuttlerun and pincenez are installed (scuttlerun --version, pincenez --version) if a subprocess failed',
+          'craboodle --help',
+        ),
       );
       process.exit(2);
     }
@@ -750,7 +807,12 @@ program
     // Check if directory already has eval files
     try {
       await access(join(resolvedDir, 'craboodle.yaml'));
-      process.stderr.write(`[craboodle] ${resolvedDir} already contains craboodle.yaml\n`);
+      process.stderr.write(
+        formatErrorWithHint(
+          `${resolvedDir} already contains craboodle.yaml`,
+          'pick a different directory or remove the existing file(s)',
+        ),
+      );
       process.exit(1);
     } catch {
       // craboodle.yaml doesn't exist, good
@@ -762,7 +824,12 @@ program
         const { glob: globFn } = await import('glob');
         const existing = await globFn('*/scenario.{yaml,yml}', { cwd: resolvedDir });
         if (existing.length > 0) {
-          process.stderr.write(`[craboodle] ${resolvedDir} already contains scenario files\n`);
+          process.stderr.write(
+            formatErrorWithHint(
+              `${resolvedDir} already contains scenario files`,
+              'pick a different directory or remove the existing file(s)',
+            ),
+          );
           process.exit(1);
         }
       }

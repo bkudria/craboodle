@@ -43,8 +43,11 @@ describe('cli exit codes (unified taxonomy)', () => {
   describe('code 4 — infrastructure/dependency error', () => {
     it('run: exits 4 when no scenarios in evals dir', async () => {
       await writeFile(join(tmpDir, 'craboodle.yaml'), stringify({ version: '1' }));
-      const code = await runAndGetExit(['run', tmpDir]);
+      const { code, stderr } = await runAndCapture(['run', tmpDir]);
       expect(code).toBe(4);
+      expect(stderr).toContain('No scenarios found');
+      expect(stderr).toContain('craboodle init');
+      expect(stderr).toContain('craboodle --help');
     });
 
     it('run: exits 4 when --scenario filter matches nothing', async () => {
@@ -58,14 +61,16 @@ describe('cli exit codes (unified taxonomy)', () => {
           checks: [{ 'check-a': { check: 'alpha check', note: 'note' } }],
         }),
       );
-      const code = await runAndGetExit(['run', '--scenario', 'nomatch', tmpDir]);
+      const { code, stderr } = await runAndCapture(['run', '--scenario', 'nomatch', tmpDir]);
       expect(code).toBe(4);
+      expect(stderr).toContain('craboodle list');
     });
 
     it('list: exits 4 when no scenarios in evals dir', async () => {
       await writeFile(join(tmpDir, 'craboodle.yaml'), stringify({ version: '1' }));
-      const code = await runAndGetExit(['list', tmpDir]);
+      const { code, stderr } = await runAndCapture(['list', tmpDir]);
       expect(code).toBe(4);
+      expect(stderr).toContain('craboodle init');
     });
 
     it('list: exits 4 when --scenario filter matches nothing', async () => {
@@ -79,14 +84,16 @@ describe('cli exit codes (unified taxonomy)', () => {
           checks: [{ 'check-a': { check: 'alpha check', note: 'note' } }],
         }),
       );
-      const code = await runAndGetExit(['list', '--scenario', 'nomatch', tmpDir]);
+      const { code, stderr } = await runAndCapture(['list', '--scenario', 'nomatch', tmpDir]);
       expect(code).toBe(4);
+      expect(stderr).toContain('craboodle list');
     });
 
     it('lint: exits 4 when no scenarios in evals dir', async () => {
       await writeFile(join(tmpDir, 'craboodle.yaml'), stringify({ version: '1' }));
-      const code = await runAndGetExit(['lint', tmpDir]);
+      const { code, stderr } = await runAndCapture(['lint', tmpDir]);
       expect(code).toBe(4);
+      expect(stderr).toContain('craboodle init');
     });
 
     it('lint: exits 4 when --scenario filter matches nothing', async () => {
@@ -100,8 +107,9 @@ describe('cli exit codes (unified taxonomy)', () => {
           checks: [{ 'check-a': { check: 'alpha check', note: 'note' } }],
         }),
       );
-      const code = await runAndGetExit(['lint', '--scenario', 'nomatch', tmpDir]);
+      const { code, stderr } = await runAndCapture(['lint', '--scenario', 'nomatch', tmpDir]);
       expect(code).toBe(4);
+      expect(stderr).toContain('craboodle list');
     });
 
     it('run: exits 4 when all reps fail due to scuttlerun config errors', async () => {

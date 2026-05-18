@@ -1,12 +1,22 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { tmpdir } from 'node:os';
-import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { parse } from 'yaml';
+import { parse, stringify } from 'yaml';
 
 const execFileAsync = promisify(execFile);
+
+async function runAndCapture(args: string[]): Promise<{ code: number; stderr: string }> {
+  try {
+    const { stderr } = await execFileAsync('craboodle', args);
+    return { code: 0, stderr };
+  } catch (err) {
+    const e = err as { code?: number; stderr?: string };
+    return { code: typeof e.code === 'number' ? e.code : -1, stderr: e.stderr ?? '' };
+  }
+}
 
 describe('init', () => {
   let tmpDir: string;
@@ -85,5 +95,27 @@ describe('init', () => {
     const { stdout } = await execFileAsync('craboodle', ['run', '--help']);
     expect(stdout).toContain('--repeats');
     expect(stdout).toMatch(/overrides\s+craboodle\.yaml|takes precedence/i);
+  });
+
+  describe('conflict guidance', () => {
+    it('emits recovery hint when craboodle.yaml already exists', async () => {
+      const initDir = join(tmpDir, 'evals');
+      await mkdir(initDir);
+      await writeFile(join(initDir, 'craboodle.yaml'), stringify({ version: '1' }));
+      const { code, stderr } = await runAndCapture(['init', initDir]);
+      expect(code).toBe(1);
+      expect(stderr).toContain('already contains craboodle.yaml');
+      expect(stderr).toContain('pick a different directory');
+    });
+
+    it('emits recovery hint when directory has existing scenarios', async () => {
+      const initDir = join(tmpDir, 'evals');
+      await mkdir(join(initDir, 'alpha'), { recursive: true });
+      await writeFile(join(initDir, 'alpha', 'scenario.yaml'), 'prompt: x\n');
+      const { code, stderr } = await runAndCapture(['init', initDir]);
+      expect(code).toBe(1);
+      expect(stderr).toContain('already contains scenario files');
+      expect(stderr).toContain('pick a different directory');
+    });
   });
 });
