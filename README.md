@@ -109,6 +109,16 @@ artifact_retention_days: 30   # keep prior runs for 30 days
 
 Only directories matching the `craboodle-run-` prefix are touched; nothing outside `$TMPDIR` is read or modified.
 
+## Troubleshooting
+
+**`scuttlerun is not found on PATH` (or `pincenez …`)** — craboodle requires both companion CLIs on `PATH`. Install them ([scuttlerun](https://github.com/bkudria/scuttlerun), [pincenez](https://github.com/bkudria/pincenez)) and confirm with `which scuttlerun pincenez`. If installed but not found, your shell rc may not be exporting their install directory.
+
+**`The engine "node" is incompatible with this module`** during `npm install -g craboodle` — craboodle requires Node ≥ 24 (`engines.node` in package.json). Use a version manager: `nvm install 24 && nvm use 24`, or `fnm use 24`, then retry.
+
+**Scuttlerun or pincenez fails with an auth error** — both subprocesses call the Anthropic API and need `ANTHROPIC_API_KEY` in the environment. craboodle doesn't read or forward the key itself; export it in your shell (`export ANTHROPIC_API_KEY=…`) before running.
+
+**`No scenarios found in <dir>`** — craboodle expects `<dir>/<scenario-id>/scenario.yaml` files. Scaffold a starter suite with `craboodle init <dir>`, or check that your scenarios live one level deeper than you passed.
+
 ## Exit Codes
 
 Shared taxonomy across scuttlerun/pincenez/craboodle. Codes 6–7 are reserved for scuttlerun-only concerns (timed_out, exhausted_turns); craboodle emits:
