@@ -24,7 +24,9 @@ export async function discoverScenarios(evalsDir: string): Promise<ScenarioRef[]
 
 function matchPattern(id: string, pattern: string): boolean {
   if (!pattern.includes('*')) return id === pattern;
-  const regex = new RegExp('^' + pattern.replace(/\*/g, '.*') + '$');
+  // Escape regex metacharacters except `*`, then translate `*` to `.*`.
+  const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
+  const regex = new RegExp('^' + escaped + '$');
   return regex.test(id);
 }
 

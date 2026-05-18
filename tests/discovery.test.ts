@@ -138,4 +138,37 @@ describe('filterScenarios', () => {
     const result = filterScenarios(scenarios, 'email-validator , url-parser');
     expect(result).toHaveLength(2);
   });
+
+  describe('regex metacharacter escaping in wildcard patterns', () => {
+    const metaScenarios: ScenarioRef[] = [
+      { id: 'a.b', dir: '/tmp/a.b', configPath: '/tmp/a.b/scenario.yaml' },
+      { id: 'aXb', dir: '/tmp/aXb', configPath: '/tmp/aXb/scenario.yaml' },
+      { id: 'a+b', dir: '/tmp/a+b', configPath: '/tmp/a+b/scenario.yaml' },
+      { id: 'aab', dir: '/tmp/aab', configPath: '/tmp/aab/scenario.yaml' },
+      { id: 'x.y', dir: '/tmp/x.y', configPath: '/tmp/x.y/scenario.yaml' },
+      { id: 'x_y', dir: '/tmp/x_y', configPath: '/tmp/x_y/scenario.yaml' },
+    ];
+
+    it('does not treat literal `.` as a wildcard', () => {
+      // Pattern `a.*` should anchor on a literal dot, then any suffix
+      const result = filterScenarios(metaScenarios, 'a.*');
+      expect(result.map((s) => s.id)).toEqual(['a.b']);
+    });
+
+    it('does not treat literal `+` as a quantifier', () => {
+      const result = filterScenarios(metaScenarios, 'a+*');
+      expect(result.map((s) => s.id)).toEqual(['a+b']);
+    });
+
+    it('matches a literal dot inside an exact pattern', () => {
+      // No `*` → exact-match fast path; not affected by regex
+      const result = filterScenarios(metaScenarios, 'x.y');
+      expect(result.map((s) => s.id)).toEqual(['x.y']);
+    });
+
+    it('does not throw SyntaxError on unbalanced metacharacters', () => {
+      // Previously: `a(` + `*` → regex `^a(.*$` → invalid → SyntaxError
+      expect(() => filterScenarios(metaScenarios, 'a(*')).not.toThrow();
+    });
+  });
 });
