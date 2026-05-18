@@ -1,5 +1,8 @@
-import { execFile } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { writeFile } from 'node:fs/promises';
+
+const SIGTERM_GRACE_MS = 500;
+const MAX_BUFFER = 10 * 1024 * 1024;
 
 export interface RepError {
   stage: 'scuttlerun' | 'pincenez';
@@ -30,23 +33,107 @@ function execFilePromise(
   signal?: AbortSignal,
 ): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
-    execFile(
-      cmd,
-      args,
-      { encoding: 'utf8', maxBuffer: 10 * 1024 * 1024, signal },
-      (error, stdout, stderr) => {
-        if (error) {
-          const err = error as Error & { stderr?: string };
-          err.stderr = stderr;
-          reject(err);
-        } else {
-          if (stderr) {
-            process.stderr.write(stderr);
+    let aborted = false;
+    let bufferExceeded = false;
+    let stdout = '';
+    let stderr = '';
+    const isWindows = process.platform === 'win32';
+    // `detached: true` on POSIX makes the child the leader of a new process
+    // group, so we can signal the whole subtree via process.kill(-pid, ...).
+    // On Windows it spawns a new console; we'll fall back to direct child
+    // signaling below.
+    const child = spawn(cmd, args, { detached: !isWindows });
+
+    child.stdout?.setEncoding('utf8');
+    child.stderr?.setEncoding('utf8');
+
+    child.stdout?.on('data', (chunk: string) => {
+      stdout += chunk;
+      if (stdout.length > MAX_BUFFER) {
+        bufferExceeded = true;
+        child.kill();
+      }
+    });
+    child.stderr?.on('data', (chunk: string) => {
+      stderr += chunk;
+    });
+
+    child.on('error', (err: Error & { code?: string }) => {
+      // Spawn-level error (ENOENT, EACCES, ...). The error already carries
+      // a meaningful message; surface it as-is.
+      reject(err);
+    });
+
+    child.on('close', (code: number | null, killSignal: NodeJS.Signals | null) => {
+      if (aborted) {
+        const err = new Error('The operation was aborted') as Error & {
+          code?: string;
+          stderr?: string;
+        };
+        err.code = 'ABORT_ERR';
+        err.stderr = stderr;
+        reject(err);
+        return;
+      }
+      if (bufferExceeded) {
+        const err = new Error('stdout maxBuffer length exceeded') as Error & {
+          code?: string;
+          stderr?: string;
+        };
+        err.code = 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER';
+        err.stderr = stderr;
+        reject(err);
+        return;
+      }
+      if (code !== 0 || killSignal !== null) {
+        const err = new Error(`Command failed: ${cmd} ${args.join(' ')}`) as Error & {
+          code?: number | string;
+          stderr?: string;
+        };
+        if (code !== null) err.code = code;
+        err.stderr = stderr;
+        reject(err);
+        return;
+      }
+      if (stderr) {
+        process.stderr.write(stderr);
+      }
+      resolve({ stdout, stderr });
+    });
+
+    if (signal) {
+      const onAbort = (): void => {
+        aborted = true;
+        const pid = child.pid;
+        if (pid === undefined) return;
+        if (isWindows) {
+          try {
+            child.kill('SIGTERM');
+          } catch {
+            /* already gone */
           }
-          resolve({ stdout, stderr });
+          return;
         }
-      },
-    );
+        try {
+          process.kill(-pid, 'SIGTERM');
+        } catch {
+          /* already gone */
+        }
+        const handle = setTimeout(() => {
+          try {
+            process.kill(-pid, 'SIGKILL');
+          } catch {
+            /* already gone */
+          }
+        }, SIGTERM_GRACE_MS);
+        (handle as { unref?: () => void }).unref?.();
+      };
+      if (signal.aborted) {
+        onAbort();
+      } else {
+        signal.addEventListener('abort', onAbort, { once: true });
+      }
+    }
   });
 }
 

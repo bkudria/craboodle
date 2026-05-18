@@ -44,6 +44,22 @@ async function pollFileNonEmpty(path: string, timeoutMs: number): Promise<number
   throw new Error(`pidFile remained empty for ${timeoutMs}ms: ${path}`);
 }
 
+async function pollFileLines(path: string, atLeast: number, timeoutMs: number): Promise<number> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const lines = (await readFile(path, 'utf8'))
+        .split('\n')
+        .filter((s) => s.trim().length > 0);
+      if (lines.length >= atLeast) return Date.now() - start;
+    } catch {
+      /* file may not exist yet */
+    }
+    await delay(25);
+  }
+  throw new Error(`pidFile had fewer than ${atLeast} lines after ${timeoutMs}ms: ${path}`);
+}
+
 function pidStillAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
@@ -57,6 +73,22 @@ async function makeStubBin(stubDir: string, name: string, pidFile: string): Prom
   const script = `#!/bin/sh
 echo $$ >> "${pidFile}"
 exec sleep 30
+`;
+  const path = join(stubDir, name);
+  await writeFile(path, script);
+  await chmod(path, 0o755);
+}
+
+async function makeForkingStubBin(stubDir: string, name: string, pidFile: string): Promise<void> {
+  // Records the direct child's PID and a grandchild's PID. The grandchild is
+  // a non-exec'd subshell that survives if SIGINT is sent only to the direct
+  // child — exercising the process-group cleanup path.
+  // The pidfile path is passed as $1 to the inner sh -c to avoid env-export
+  // concerns and double-quoting traps.
+  const script = `#!/bin/sh
+sh -c 'echo $$ >> "$1"; exec sleep 30' _ "${pidFile}" &
+echo $$ >> "${pidFile}"
+wait
 `;
   const path = join(stubDir, name);
   await writeFile(path, script);
@@ -141,6 +173,34 @@ describe('cli signal handling (integration)', () => {
     const alive = pids.filter(pidStillAlive);
     expect(alive).toEqual([]);
   }, 15000);
+
+  it('run: SIGINT kills grandchildren (process-group cleanup)', async () => {
+    // Override the default stubs with forking variants
+    await makeForkingStubBin(stubDir, 'scuttlerun', pidFile);
+    await makeForkingStubBin(stubDir, 'pincenez', pidFile);
+
+    const child = spawn('craboodle', ['run', '--repeats', '1', evalsDir], {
+      env: { ...process.env, PATH: `${stubDir}:${process.env.PATH}` },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    // Wait for both direct child AND grandchild PIDs to be recorded
+    await pollFileLines(pidFile, 2, 8000);
+    child.kill('SIGINT');
+
+    await waitForExit(child);
+
+    // Allow SIGKILL escalation to land
+    await delay(800);
+
+    const pids = (await readFile(pidFile, 'utf8'))
+      .split('\n')
+      .map((s) => parseInt(s, 10))
+      .filter((n) => Number.isInteger(n) && n > 0);
+    expect(pids.length).toBeGreaterThanOrEqual(2);
+    const alive = pids.filter(pidStillAlive);
+    expect(alive).toEqual([]);
+  }, 20000);
 
   it('lint: SIGINT exits 130 and leaves no zombie subprocesses', async () => {
     const child = spawn('craboodle', ['lint', evalsDir], {
