@@ -1,12 +1,33 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { tmpdir } from 'node:os';
 import { mkdtemp, writeFile, mkdir, rm } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { stringify } from 'yaml';
 
 const execFileAsync = promisify(execFile);
+
+const CLI_PATH = join(dirname(fileURLToPath(import.meta.url)), '..', 'dist', 'cli.js');
+
+async function runWithRestrictedPath(
+  args: string[],
+): Promise<{ code: number; stdout: string; stderr: string }> {
+  try {
+    const { stdout, stderr } = await execFileAsync(process.execPath, [CLI_PATH, ...args], {
+      env: { PATH: '/usr/bin:/bin', HOME: process.env.HOME ?? '/tmp' },
+    });
+    return { code: 0, stdout, stderr };
+  } catch (err) {
+    const e = err as { code?: number; stdout?: string; stderr?: string };
+    return {
+      code: typeof e.code === 'number' ? e.code : -1,
+      stdout: e.stdout ?? '',
+      stderr: e.stderr ?? '',
+    };
+  }
+}
 
 async function runAndGetExit(args: string[]): Promise<number> {
   try {
@@ -155,6 +176,57 @@ describe('cli exit codes (unified taxonomy)', () => {
       await writeFile(join(tmpDir, 'alpha', 'checks.yaml'), 'not_a_checks_file: true\n');
       const code = await runAndGetExit(['lint', tmpDir]);
       expect(code).toBe(4);
+    });
+
+    it('run: exits 4 with a friendly message when scuttlerun is not on PATH', async () => {
+      await writeFile(join(tmpDir, 'craboodle.yaml'), stringify({ version: '1' }));
+      await mkdir(join(tmpDir, 'alpha'));
+      await writeFile(join(tmpDir, 'alpha', 'scenario.yaml'), stringify({ prompt: 'a\n' }));
+      await writeFile(
+        join(tmpDir, 'alpha', 'checks.yaml'),
+        stringify({
+          context: 'alpha context',
+          checks: [{ 'check-a': { check: 'alpha check', note: 'note' } }],
+        }),
+      );
+      const { code, stderr } = await runWithRestrictedPath(['run', '--repeats', '1', tmpDir]);
+      expect(code).toBe(4);
+      expect(stderr).toContain('scuttlerun');
+      expect(stderr).toContain('not found');
+    });
+
+    it('list: exits 4 with a friendly message when scuttlerun is not on PATH', async () => {
+      await writeFile(join(tmpDir, 'craboodle.yaml'), stringify({ version: '1' }));
+      await mkdir(join(tmpDir, 'alpha'));
+      await writeFile(join(tmpDir, 'alpha', 'scenario.yaml'), stringify({ prompt: 'a\n' }));
+      await writeFile(
+        join(tmpDir, 'alpha', 'checks.yaml'),
+        stringify({
+          context: 'alpha context',
+          checks: [{ 'check-a': { check: 'alpha check', note: 'note' } }],
+        }),
+      );
+      const { code, stderr } = await runWithRestrictedPath(['list', tmpDir]);
+      expect(code).toBe(4);
+      expect(stderr).toContain('scuttlerun');
+      expect(stderr).toContain('not found');
+    });
+
+    it('lint: exits 4 with a friendly message when pincenez is not on PATH', async () => {
+      await writeFile(join(tmpDir, 'craboodle.yaml'), stringify({ version: '1' }));
+      await mkdir(join(tmpDir, 'alpha'));
+      await writeFile(join(tmpDir, 'alpha', 'scenario.yaml'), stringify({ prompt: 'a\n' }));
+      await writeFile(
+        join(tmpDir, 'alpha', 'checks.yaml'),
+        stringify({
+          context: 'alpha context',
+          checks: [{ 'check-a': { check: 'alpha check', note: 'note' } }],
+        }),
+      );
+      const { code, stderr } = await runWithRestrictedPath(['lint', tmpDir]);
+      expect(code).toBe(4);
+      expect(stderr).toContain('pincenez');
+      expect(stderr).toContain('not found');
     });
   });
 

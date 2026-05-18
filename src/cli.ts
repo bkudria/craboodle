@@ -20,6 +20,7 @@ import { loadCraboodleConfig, checkBaseConfig, resolveRepeatsFromRawFlag } from 
 import { cleanOldArtifacts } from './cleanup.js';
 import { discoverScenarios, filterScenarios } from './discovery.js';
 import { runScuttlerun, runPincenez, runPincenezLint, listScuttlerunConfig } from './runner.js';
+import { findMissingBinaries, formatMissingBinariesError } from './preflight.js';
 import { executePool, type WorkItem } from './pool.js';
 import { runStaged } from './staged.js';
 import {
@@ -84,6 +85,13 @@ async function runCommandInner(
   isInterrupted: () => boolean,
 ): Promise<void> {
   const resolvedDir = resolve(evalsDir);
+
+  // Pre-flight: companion CLIs must be on PATH
+  const missing = await findMissingBinaries(['scuttlerun', 'pincenez']);
+  if (missing.length > 0) {
+    process.stderr.write(formatMissingBinariesError(missing));
+    process.exit(4);
+  }
 
   // Discover scenarios
   let scenarios = await discoverScenarios(resolvedDir);
@@ -564,6 +572,13 @@ program
     try {
       const resolvedDir = resolve(evalsDir);
 
+      // Pre-flight: scuttlerun is required for --dry-run validation
+      const missing = await findMissingBinaries(['scuttlerun']);
+      if (missing.length > 0) {
+        process.stderr.write(formatMissingBinariesError(missing));
+        process.exit(4);
+      }
+
       // Discover scenarios
       let scenarios = await discoverScenarios(resolvedDir);
       if (scenarios.length === 0) {
@@ -703,6 +718,13 @@ async function lintCommandInner(
   isInterrupted: () => boolean,
 ): Promise<void> {
   const resolvedDir = resolve(evalsDir);
+
+  // Pre-flight: pincenez is required for lint
+  const missing = await findMissingBinaries(['pincenez']);
+  if (missing.length > 0) {
+    process.stderr.write(formatMissingBinariesError(missing));
+    process.exit(4);
+  }
 
   // Discover scenarios
   let scenarios = await discoverScenarios(resolvedDir);
