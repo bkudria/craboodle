@@ -1,0 +1,4 @@
+version: "1"
+# min_pass_rate:      # default: unset (no gating); reachable values are k/(checks*reps)
+# max_budget_usd:     # default: unset (no cap)
+# repeats: 3          # default: 3
