@@ -134,7 +134,7 @@ describe('init', () => {
     const initDir = join(tmpDir, 'my-skill');
     const { stdout } = await execFileAsync(process.execPath, [CLI_PATH, 'init', initDir]);
     // hint mentions `craboodle run <dir>` (not run <dir>/evals)
-    expect(stdout).toMatch(new RegExp(`craboodle run ${initDir.replace(/\//g, '\\/')}\\b`));
+    expect(stdout).toContain(`craboodle run ${initDir}`);
     expect(stdout).not.toMatch(/run\s+\S+\/evals\b/);
   });
 
