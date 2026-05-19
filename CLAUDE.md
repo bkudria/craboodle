@@ -19,19 +19,21 @@ npm run test:coverage # vitest with v8 coverage
 
 ## Project overview
 
-TypeScript CLI that orchestrates eval pipelines. Discovers `*/scenario.yaml` directories, passes scenario.yaml to scuttlerun and checks.yaml to pincenez, averages across repetitions, and streams results as YAML.
+TypeScript CLI that orchestrates eval pipelines. Reads `<root>/evals.yaml`, discovers `<root>/evals/*/scenario.yaml` directories, stages a filtered view of `<root>` (excluding the scenarios dir), passes scenario.yaml to scuttlerun and checks.yaml to pincenez, averages across repetitions, and streams results as YAML.
 
 See [GOALS.md](GOALS.md) for design philosophy and [craboodle.allium](craboodle.allium) for the behavioural specification.
 
 ## Architecture
 
 - `src/cli.ts` — Commander CLI entry point
-- `src/config.ts` — Craboodle config parsing (craboodle.yaml)
+- `src/config.ts` — evals.yaml parsing and mode detection (skill/plugin/generic)
+- `src/staged-view.ts` — Filtered tempdir view of `<root>` (excludes scenarios dir)
+- `src/prepare-run.ts` — Stages the view, rewrites skill paths, materialises base config
 - `src/discovery.ts` — Scenario directory discovery (glob)
 - `src/pool.ts` — Flat (scenario, rep) work pool with concurrency control
 - `src/runner.ts` — scuttlerun/pincenez subprocess invocation
 - `src/output.ts` — Results averaging and streaming YAML output
-- `src/cleanup.ts` — Old artifact directory cleanup
+- `src/cleanup.ts` — Old artifact directory cleanup (craboodle-run-* and craboodle-staged-*)
 
 ## Key decisions
 
@@ -39,7 +41,8 @@ See [GOALS.md](GOALS.md) for design philosophy and [craboodle.allium](craboodle.
 - Raw fractional pass rates — no verdicts, no majority voting
 - Flat concurrency pool over all (scenario, rep) pairs
 - Streaming YAML output (scenario by scenario, arrival order)
-- Separated tool configs: scenario.yaml (scuttlerun), checks.yaml (pincenez), craboodle.yaml (pipeline)
+- Unified pipeline + base config in a single `evals.yaml` at the project root; per-scenario configs split across `scenario.yaml` (scuttlerun) and `checks.yaml` (pincenez)
+- Staged filtered view: at run time, the project root is symlink-mirrored into a tempdir with the scenarios dir excluded, so the eval agent sees a clean tree and self-referential `project.skills: [.]` Just Works
 
 ## Authoritative artifacts
 
