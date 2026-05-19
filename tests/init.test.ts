@@ -32,89 +32,136 @@ describe('init', () => {
     await rm(tmpDir, { recursive: true });
   });
 
-  it('creates craboodle.yaml and base.yaml with no example scenario', async () => {
-    const initDir = join(tmpDir, 'evals');
+  it('creates only evals.yaml at the root (no base.yaml, no craboodle.yaml)', async () => {
+    const initDir = join(tmpDir, 'my-skill');
     await execFileAsync(process.execPath, [CLI_PATH, 'init', initDir]);
-
-    const craboodleContent = await readFile(join(initDir, 'craboodle.yaml'), 'utf8');
-    const craboodleData = parse(craboodleContent);
-    expect(craboodleData).toHaveProperty('version');
 
     const entries = await readdir(initDir);
-    expect([...entries].sort()).toEqual(['base.yaml', 'craboodle.yaml']);
+    expect(entries).toContain('evals.yaml');
+    expect(entries).not.toContain('craboodle.yaml');
+    expect(entries).not.toContain('base.yaml');
   });
 
-  it('base.yaml header documents the tools-array replace semantic', async () => {
-    const initDir = join(tmpDir, 'evals');
+  it('evals.yaml has version "1" and a scenarios.base block', async () => {
+    const initDir = join(tmpDir, 'my-skill');
     await execFileAsync(process.execPath, [CLI_PATH, 'init', initDir]);
 
-    const baseContent = await readFile(join(initDir, 'base.yaml'), 'utf8');
-    expect(baseContent).toMatch(/REPLACE/);
-  });
-
-  it('base.yaml documents additional_tools: as the additive pattern', async () => {
-    const initDir = join(tmpDir, 'evals');
-    await execFileAsync(process.execPath, [CLI_PATH, 'init', initDir]);
-
-    const baseContent = await readFile(join(initDir, 'base.yaml'), 'utf8');
-    expect(baseContent).toMatch(/^\s*#\s*additional_tools:/m);
-  });
-
-  it('base.yaml parses as empty (all fields commented)', async () => {
-    const initDir = join(tmpDir, 'evals');
-    await execFileAsync(process.execPath, [CLI_PATH, 'init', initDir]);
-
-    const baseContent = await readFile(join(initDir, 'base.yaml'), 'utf8');
-    const parsed = parse(baseContent);
-    expect(parsed ?? null).toBeNull();
-  });
-
-  it('omits min_pass_rate from the default template', async () => {
-    const initDir = join(tmpDir, 'evals');
-    await execFileAsync(process.execPath, [CLI_PATH, 'init', initDir]);
-
-    const craboodleContent = await readFile(join(initDir, 'craboodle.yaml'), 'utf8');
-    const craboodleData = parse(craboodleContent);
-    expect(craboodleData).not.toHaveProperty('min_pass_rate');
+    const content = await readFile(join(initDir, 'evals.yaml'), 'utf8');
+    const parsed = parse(content);
+    expect(parsed).toHaveProperty('version', '1');
+    expect(parsed).toHaveProperty('scenarios.base');
   });
 
   it('mentions min_pass_rate as a commented guidance line', async () => {
-    const initDir = join(tmpDir, 'evals');
+    const initDir = join(tmpDir, 'my-skill');
     await execFileAsync(process.execPath, [CLI_PATH, 'init', initDir]);
 
-    const craboodleContent = await readFile(join(initDir, 'craboodle.yaml'), 'utf8');
-    expect(craboodleContent).toMatch(/^\s*#.*min_pass_rate/m);
+    const content = await readFile(join(initDir, 'evals.yaml'), 'utf8');
+    expect(content).toMatch(/^\s*#.*min_pass_rate/m);
   });
 
   it('surfaces the repeats default value (3) in the scaffold', async () => {
-    const initDir = join(tmpDir, 'evals');
+    const initDir = join(tmpDir, 'my-skill');
     await execFileAsync(process.execPath, [CLI_PATH, 'init', initDir]);
 
-    const craboodleContent = await readFile(join(initDir, 'craboodle.yaml'), 'utf8');
-    expect(craboodleContent).toMatch(/^\s*#\s*repeats:.*\b3\b/m);
+    const content = await readFile(join(initDir, 'evals.yaml'), 'utf8');
+    expect(content).toMatch(/^\s*#\s*repeats:.*\b3\b/m);
+  });
+
+  it('omits min_pass_rate from the parsed YAML', async () => {
+    const initDir = join(tmpDir, 'my-skill');
+    await execFileAsync(process.execPath, [CLI_PATH, 'init', initDir]);
+
+    const content = await readFile(join(initDir, 'evals.yaml'), 'utf8');
+    const parsed = parse(content);
+    expect(parsed).not.toHaveProperty('min_pass_rate');
+  });
+
+  it('documents additional_tools: as the additive pattern in evals.yaml', async () => {
+    const initDir = join(tmpDir, 'my-skill');
+    await execFileAsync(process.execPath, [CLI_PATH, 'init', initDir]);
+
+    const content = await readFile(join(initDir, 'evals.yaml'), 'utf8');
+    expect(content).toMatch(/^\s*#.*additional_tools:/m);
+  });
+
+  it('skill mode: when SKILL.md exists, comments suggest project.skills: [.]', async () => {
+    const initDir = join(tmpDir, 'my-skill');
+    await mkdir(initDir, { recursive: true });
+    await writeFile(join(initDir, 'SKILL.md'), '---\nname: my-skill\n---\n# My Skill\n');
+
+    await execFileAsync(process.execPath, [CLI_PATH, 'init', initDir]);
+    const content = await readFile(join(initDir, 'evals.yaml'), 'utf8');
+    // commented project.skills hint with [.] for self-reference
+    expect(content).toMatch(/#\s*skills:[\s\S]*?#\s*-\s*\./);
+  });
+
+  it('plugin mode: when .claude-plugin/plugin.json exists, comments suggest skills: skills/<id>', async () => {
+    const initDir = join(tmpDir, 'my-plugin');
+    await mkdir(join(initDir, '.claude-plugin'), { recursive: true });
+    await writeFile(join(initDir, '.claude-plugin', 'plugin.json'), '{}');
+    await mkdir(join(initDir, 'skills', 'first-skill'), { recursive: true });
+    await writeFile(
+      join(initDir, 'skills', 'first-skill', 'SKILL.md'),
+      '---\nname: first-skill\n---\n',
+    );
+
+    await execFileAsync(process.execPath, [CLI_PATH, 'init', initDir]);
+    const content = await readFile(join(initDir, 'evals.yaml'), 'utf8');
+    expect(content).toMatch(/skills\/first-skill/);
+  });
+
+  it('plugin mode without discoverable skills: emits a placeholder hint', async () => {
+    const initDir = join(tmpDir, 'my-plugin');
+    await mkdir(join(initDir, '.claude-plugin'), { recursive: true });
+    await writeFile(join(initDir, '.claude-plugin', 'plugin.json'), '{}');
+
+    await execFileAsync(process.execPath, [CLI_PATH, 'init', initDir]);
+    const content = await readFile(join(initDir, 'evals.yaml'), 'utf8');
+    // Some kind of commented placeholder for skills
+    expect(content).toMatch(/#\s*skills:/);
+  });
+
+  it('generic mode (no marker): emits a commented placeholder for skills', async () => {
+    const initDir = join(tmpDir, 'just-a-dir');
+    await execFileAsync(process.execPath, [CLI_PATH, 'init', initDir]);
+
+    const content = await readFile(join(initDir, 'evals.yaml'), 'utf8');
+    expect(content).toMatch(/#\s*skills:/);
+  });
+
+  it('next-steps hint uses the new single-root arg shape', async () => {
+    const initDir = join(tmpDir, 'my-skill');
+    const { stdout } = await execFileAsync(process.execPath, [CLI_PATH, 'init', initDir]);
+    // hint mentions `craboodle run <dir>` (not run <dir>/evals)
+    expect(stdout).toContain(`craboodle run ${initDir}`);
+    expect(stdout).not.toMatch(/run\s+\S+\/evals\b/);
   });
 
   it('run --help documents CLI > config precedence for --repeats', async () => {
     const { stdout } = await execFileAsync(process.execPath, [CLI_PATH, 'run', '--help']);
     expect(stdout).toContain('--repeats');
-    expect(stdout).toMatch(/overrides\s+craboodle\.yaml|takes precedence/i);
+    expect(stdout).toMatch(/overrides\s+evals\.yaml|takes precedence/i);
   });
 
   describe('conflict guidance', () => {
-    it('emits recovery hint when craboodle.yaml already exists', async () => {
-      const initDir = join(tmpDir, 'evals');
+    it('emits recovery hint when evals.yaml already exists', async () => {
+      const initDir = join(tmpDir, 'my-skill');
       await mkdir(initDir);
-      await writeFile(join(initDir, 'craboodle.yaml'), stringify({ version: '1' }));
+      await writeFile(
+        join(initDir, 'evals.yaml'),
+        stringify({ version: '1', scenarios: { base: {} } }),
+      );
       const { code, stderr } = await runAndCapture(['init', initDir]);
       expect(code).toBe(1);
-      expect(stderr).toContain('already contains craboodle.yaml');
+      expect(stderr).toContain('already contains evals.yaml');
       expect(stderr).toContain('pick a different directory');
     });
 
-    it('emits recovery hint when directory has existing scenarios', async () => {
-      const initDir = join(tmpDir, 'evals');
-      await mkdir(join(initDir, 'alpha'), { recursive: true });
-      await writeFile(join(initDir, 'alpha', 'scenario.yaml'), 'prompt: x\n');
+    it('emits recovery hint when directory has existing scenarios under evals/', async () => {
+      const initDir = join(tmpDir, 'my-skill');
+      await mkdir(join(initDir, 'evals', 'alpha'), { recursive: true });
+      await writeFile(join(initDir, 'evals', 'alpha', 'scenario.yaml'), 'prompt: x\n');
       const { code, stderr } = await runAndCapture(['init', initDir]);
       expect(code).toBe(1);
       expect(stderr).toContain('already contains scenario files');

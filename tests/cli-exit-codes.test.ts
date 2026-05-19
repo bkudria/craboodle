@@ -91,9 +91,29 @@ describe('cli exit codes (unified taxonomy)', () => {
     await rm(tmpDir, { recursive: true });
   });
 
+  async function writeEvals(content: unknown = { version: '1', scenarios: { base: {} } }) {
+    await writeFile(join(tmpDir, 'evals.yaml'), stringify(content));
+  }
+
+  async function writeAlpha(checks?: unknown) {
+    await mkdir(join(tmpDir, 'evals', 'alpha'), { recursive: true });
+    await writeFile(join(tmpDir, 'evals', 'alpha', 'scenario.yaml'), stringify({ prompt: 'a\n' }));
+    await writeFile(
+      join(tmpDir, 'evals', 'alpha', 'checks.yaml'),
+      typeof checks === 'string'
+        ? checks
+        : stringify(
+            checks ?? {
+              context: 'alpha context',
+              checks: [{ 'check-a': { check: 'alpha check', note: 'note' } }],
+            },
+          ),
+    );
+  }
+
   describe('code 4 — infrastructure/dependency error', () => {
     it('run: exits 4 when no scenarios in evals dir', async () => {
-      await writeFile(join(tmpDir, 'craboodle.yaml'), stringify({ version: '1' }));
+      await writeEvals();
       const { code, stderr } = await runAndCapture(['run', tmpDir]);
       expect(code).toBe(4);
       expect(stderr).toContain('No scenarios found');
@@ -102,82 +122,51 @@ describe('cli exit codes (unified taxonomy)', () => {
     });
 
     it('run: exits 4 when --scenario filter matches nothing', async () => {
-      await writeFile(join(tmpDir, 'craboodle.yaml'), stringify({ version: '1' }));
-      await mkdir(join(tmpDir, 'alpha'));
-      await writeFile(join(tmpDir, 'alpha', 'scenario.yaml'), stringify({ prompt: 'a\n' }));
-      await writeFile(
-        join(tmpDir, 'alpha', 'checks.yaml'),
-        stringify({
-          context: 'alpha context',
-          checks: [{ 'check-a': { check: 'alpha check', note: 'note' } }],
-        }),
-      );
+      await writeEvals();
+      await writeAlpha();
       const { code, stderr } = await runAndCapture(['run', '--scenario', 'nomatch', tmpDir]);
       expect(code).toBe(4);
       expect(stderr).toContain('craboodle list');
     });
 
     it('list: exits 4 when no scenarios in evals dir', async () => {
-      await writeFile(join(tmpDir, 'craboodle.yaml'), stringify({ version: '1' }));
+      await writeEvals();
       const { code, stderr } = await runAndCapture(['list', tmpDir]);
       expect(code).toBe(4);
       expect(stderr).toContain('craboodle init');
     });
 
     it('list: exits 4 when --scenario filter matches nothing', async () => {
-      await writeFile(join(tmpDir, 'craboodle.yaml'), stringify({ version: '1' }));
-      await mkdir(join(tmpDir, 'alpha'));
-      await writeFile(join(tmpDir, 'alpha', 'scenario.yaml'), stringify({ prompt: 'a\n' }));
-      await writeFile(
-        join(tmpDir, 'alpha', 'checks.yaml'),
-        stringify({
-          context: 'alpha context',
-          checks: [{ 'check-a': { check: 'alpha check', note: 'note' } }],
-        }),
-      );
+      await writeEvals();
+      await writeAlpha();
       const { code, stderr } = await runAndCapture(['list', '--scenario', 'nomatch', tmpDir]);
       expect(code).toBe(4);
       expect(stderr).toContain('craboodle list');
     });
 
     it('lint: exits 4 when no scenarios in evals dir', async () => {
-      await writeFile(join(tmpDir, 'craboodle.yaml'), stringify({ version: '1' }));
+      await writeEvals();
       const { code, stderr } = await runAndCapture(['lint', tmpDir]);
       expect(code).toBe(4);
       expect(stderr).toContain('craboodle init');
     });
 
     it('lint: exits 4 when --scenario filter matches nothing', async () => {
-      await writeFile(join(tmpDir, 'craboodle.yaml'), stringify({ version: '1' }));
-      await mkdir(join(tmpDir, 'alpha'));
-      await writeFile(join(tmpDir, 'alpha', 'scenario.yaml'), stringify({ prompt: 'a\n' }));
-      await writeFile(
-        join(tmpDir, 'alpha', 'checks.yaml'),
-        stringify({
-          context: 'alpha context',
-          checks: [{ 'check-a': { check: 'alpha check', note: 'note' } }],
-        }),
-      );
+      await writeEvals();
+      await writeAlpha();
       const { code, stderr } = await runAndCapture(['lint', '--scenario', 'nomatch', tmpDir]);
       expect(code).toBe(4);
       expect(stderr).toContain('craboodle list');
     });
 
     it('run: exits 4 when all reps fail due to scuttlerun config errors', async () => {
-      await writeFile(join(tmpDir, 'craboodle.yaml'), stringify({ version: '1' }));
-      await writeFile(
-        join(tmpDir, 'base.yaml'),
-        stringify({ project: { skills: ['/nonexistent/skill-path-for-test'] } }),
-      );
-      await mkdir(join(tmpDir, 'alpha'));
-      await writeFile(join(tmpDir, 'alpha', 'scenario.yaml'), stringify({ prompt: 'a\n' }));
-      await writeFile(
-        join(tmpDir, 'alpha', 'checks.yaml'),
-        stringify({
-          context: 'alpha context',
-          checks: [{ 'check-a': { check: 'alpha check', note: 'note' } }],
-        }),
-      );
+      await writeEvals({
+        version: '1',
+        scenarios: {
+          base: { project: { skills: ['/nonexistent/skill-path-for-test'] } },
+        },
+      });
+      await writeAlpha();
       const code = await runAndGetExit(['run', '--repeats', '1', tmpDir], {
         CRABOODLE_STUB_SCUTTLERUN_EXIT: '5',
       });
@@ -185,26 +174,15 @@ describe('cli exit codes (unified taxonomy)', () => {
     });
 
     it('lint: exits 4 when all pincenez lint invocations fail', async () => {
-      await writeFile(join(tmpDir, 'craboodle.yaml'), stringify({ version: '1' }));
-      await mkdir(join(tmpDir, 'alpha'));
-      await writeFile(join(tmpDir, 'alpha', 'scenario.yaml'), stringify({ prompt: 'a\n' }));
-      // Invalid checks.yaml structure — pincenez lint rejects it at load time (exit 1)
-      await writeFile(join(tmpDir, 'alpha', 'checks.yaml'), 'not_a_checks_file: true\n');
+      await writeEvals();
+      await writeAlpha('not_a_checks_file: true\n');
       const code = await runAndGetExit(['lint', tmpDir], { CRABOODLE_STUB_PINCENEZ_EXIT: '1' });
       expect(code).toBe(4);
     });
 
     it('run: exits 4 with a friendly message when scuttlerun is not on PATH', async () => {
-      await writeFile(join(tmpDir, 'craboodle.yaml'), stringify({ version: '1' }));
-      await mkdir(join(tmpDir, 'alpha'));
-      await writeFile(join(tmpDir, 'alpha', 'scenario.yaml'), stringify({ prompt: 'a\n' }));
-      await writeFile(
-        join(tmpDir, 'alpha', 'checks.yaml'),
-        stringify({
-          context: 'alpha context',
-          checks: [{ 'check-a': { check: 'alpha check', note: 'note' } }],
-        }),
-      );
+      await writeEvals();
+      await writeAlpha();
       const { code, stderr } = await runWithRestrictedPath(['run', '--repeats', '1', tmpDir]);
       expect(code).toBe(4);
       expect(stderr).toContain('scuttlerun');
@@ -212,16 +190,8 @@ describe('cli exit codes (unified taxonomy)', () => {
     });
 
     it('list: exits 4 with a friendly message when scuttlerun is not on PATH', async () => {
-      await writeFile(join(tmpDir, 'craboodle.yaml'), stringify({ version: '1' }));
-      await mkdir(join(tmpDir, 'alpha'));
-      await writeFile(join(tmpDir, 'alpha', 'scenario.yaml'), stringify({ prompt: 'a\n' }));
-      await writeFile(
-        join(tmpDir, 'alpha', 'checks.yaml'),
-        stringify({
-          context: 'alpha context',
-          checks: [{ 'check-a': { check: 'alpha check', note: 'note' } }],
-        }),
-      );
+      await writeEvals();
+      await writeAlpha();
       const { code, stderr } = await runWithRestrictedPath(['list', tmpDir]);
       expect(code).toBe(4);
       expect(stderr).toContain('scuttlerun');
@@ -229,16 +199,8 @@ describe('cli exit codes (unified taxonomy)', () => {
     });
 
     it('lint: exits 4 with a friendly message when pincenez is not on PATH', async () => {
-      await writeFile(join(tmpDir, 'craboodle.yaml'), stringify({ version: '1' }));
-      await mkdir(join(tmpDir, 'alpha'));
-      await writeFile(join(tmpDir, 'alpha', 'scenario.yaml'), stringify({ prompt: 'a\n' }));
-      await writeFile(
-        join(tmpDir, 'alpha', 'checks.yaml'),
-        stringify({
-          context: 'alpha context',
-          checks: [{ 'check-a': { check: 'alpha check', note: 'note' } }],
-        }),
-      );
+      await writeEvals();
+      await writeAlpha();
       const { code, stderr } = await runWithRestrictedPath(['lint', tmpDir]);
       expect(code).toBe(4);
       expect(stderr).toContain('pincenez');
@@ -248,12 +210,12 @@ describe('cli exit codes (unified taxonomy)', () => {
 
   describe('lint scenarios_total reflects successful invocations only', () => {
     it('lint: scenarios_total is 0 when all pincenez invocations fail', async () => {
-      await writeFile(join(tmpDir, 'craboodle.yaml'), stringify({ version: '1' }));
+      await writeEvals();
       // Two scenarios, both with invalid checks.yaml — pincenez lint rejects each
       for (const id of ['alpha', 'beta']) {
-        await mkdir(join(tmpDir, id));
-        await writeFile(join(tmpDir, id, 'scenario.yaml'), stringify({ prompt: 'a\n' }));
-        await writeFile(join(tmpDir, id, 'checks.yaml'), 'not_a_checks_file: true\n');
+        await mkdir(join(tmpDir, 'evals', id), { recursive: true });
+        await writeFile(join(tmpDir, 'evals', id, 'scenario.yaml'), stringify({ prompt: 'a\n' }));
+        await writeFile(join(tmpDir, 'evals', id, 'checks.yaml'), 'not_a_checks_file: true\n');
       }
       const { stdout } = await runAndCaptureAll(['lint', tmpDir], {
         CRABOODLE_STUB_PINCENEZ_EXIT: '1',
@@ -267,16 +229,8 @@ describe('cli exit codes (unified taxonomy)', () => {
 
   describe('--concurrency validation', () => {
     it('run: rejects --concurrency 0 with exit 1 and a clean message', async () => {
-      await writeFile(join(tmpDir, 'craboodle.yaml'), stringify({ version: '1' }));
-      await mkdir(join(tmpDir, 'alpha'));
-      await writeFile(join(tmpDir, 'alpha', 'scenario.yaml'), stringify({ prompt: 'a\n' }));
-      await writeFile(
-        join(tmpDir, 'alpha', 'checks.yaml'),
-        stringify({
-          context: 'alpha context',
-          checks: [{ 'check-a': { check: 'alpha check', note: 'note' } }],
-        }),
-      );
+      await writeEvals();
+      await writeAlpha();
       const { code, stderr } = await runAndCapture(['run', '--concurrency', '0', tmpDir]);
       expect(code).toBe(1);
       expect(stderr).toContain('--concurrency');
@@ -284,48 +238,24 @@ describe('cli exit codes (unified taxonomy)', () => {
     });
 
     it('run: rejects --concurrency -5 with exit 1', async () => {
-      await writeFile(join(tmpDir, 'craboodle.yaml'), stringify({ version: '1' }));
-      await mkdir(join(tmpDir, 'alpha'));
-      await writeFile(join(tmpDir, 'alpha', 'scenario.yaml'), stringify({ prompt: 'a\n' }));
-      await writeFile(
-        join(tmpDir, 'alpha', 'checks.yaml'),
-        stringify({
-          context: 'alpha context',
-          checks: [{ 'check-a': { check: 'alpha check', note: 'note' } }],
-        }),
-      );
+      await writeEvals();
+      await writeAlpha();
       const { code, stderr } = await runAndCapture(['run', '--concurrency', '-5', tmpDir]);
       expect(code).toBe(1);
       expect(stderr).toContain('--concurrency');
     });
 
     it('run: rejects --concurrency abc with exit 1', async () => {
-      await writeFile(join(tmpDir, 'craboodle.yaml'), stringify({ version: '1' }));
-      await mkdir(join(tmpDir, 'alpha'));
-      await writeFile(join(tmpDir, 'alpha', 'scenario.yaml'), stringify({ prompt: 'a\n' }));
-      await writeFile(
-        join(tmpDir, 'alpha', 'checks.yaml'),
-        stringify({
-          context: 'alpha context',
-          checks: [{ 'check-a': { check: 'alpha check', note: 'note' } }],
-        }),
-      );
+      await writeEvals();
+      await writeAlpha();
       const { code, stderr } = await runAndCapture(['run', '--concurrency', 'abc', tmpDir]);
       expect(code).toBe(1);
       expect(stderr).toContain('--concurrency');
     });
 
     it('lint: rejects --concurrency 0 with exit 1', async () => {
-      await writeFile(join(tmpDir, 'craboodle.yaml'), stringify({ version: '1' }));
-      await mkdir(join(tmpDir, 'alpha'));
-      await writeFile(join(tmpDir, 'alpha', 'scenario.yaml'), stringify({ prompt: 'a\n' }));
-      await writeFile(
-        join(tmpDir, 'alpha', 'checks.yaml'),
-        stringify({
-          context: 'alpha context',
-          checks: [{ 'check-a': { check: 'alpha check', note: 'note' } }],
-        }),
-      );
+      await writeEvals();
+      await writeAlpha();
       const { code, stderr } = await runAndCapture(['lint', '--concurrency', '0', tmpDir]);
       expect(code).toBe(1);
       expect(stderr).toContain('--concurrency');
@@ -333,17 +263,12 @@ describe('cli exit codes (unified taxonomy)', () => {
   });
 
   describe('code 2 — config-load error', () => {
-    it('list: exits 2 when craboodle.yaml has unknown keys', async () => {
-      await writeFile(join(tmpDir, 'craboodle.yaml'), 'version: "1"\nbogus_key: 1\n');
-      await mkdir(join(tmpDir, 'alpha'));
-      await writeFile(join(tmpDir, 'alpha', 'scenario.yaml'), stringify({ prompt: 'a\n' }));
+    it('list: exits 2 when evals.yaml has unknown keys', async () => {
       await writeFile(
-        join(tmpDir, 'alpha', 'checks.yaml'),
-        stringify({
-          context: 'alpha context',
-          checks: [{ 'check-a': { check: 'alpha check', note: 'note' } }],
-        }),
+        join(tmpDir, 'evals.yaml'),
+        'version: "1"\nbogus_key: 1\nscenarios:\n  base: {}\n',
       );
+      await writeAlpha();
       const { code, stderr } = await runAndCapture(['list', tmpDir]);
       expect(code).toBe(2);
       expect(stderr).toContain('unknown key');
@@ -352,13 +277,13 @@ describe('cli exit codes (unified taxonomy)', () => {
 
   describe('lint missing-prompt warning', () => {
     it('lint: warns to stderr when scenario.yaml has no prompt field', async () => {
-      await writeFile(join(tmpDir, 'craboodle.yaml'), stringify({ version: '1' }));
-      await mkdir(join(tmpDir, 'alpha'));
+      await writeEvals();
+      await mkdir(join(tmpDir, 'evals', 'alpha'), { recursive: true });
       // scenario.yaml present but no `prompt` field — degrades pincenez tautology detection
-      await writeFile(join(tmpDir, 'alpha', 'scenario.yaml'), stringify({}));
+      await writeFile(join(tmpDir, 'evals', 'alpha', 'scenario.yaml'), stringify({}));
       // Invalid checks.yaml so pincenez bails fast without calling a model;
       // we only care that the warning fires before pincenez is invoked.
-      await writeFile(join(tmpDir, 'alpha', 'checks.yaml'), 'not_a_checks_file: true\n');
+      await writeFile(join(tmpDir, 'evals', 'alpha', 'checks.yaml'), 'not_a_checks_file: true\n');
       const { stderr } = await runAndCapture(['lint', tmpDir]);
       expect(stderr).toContain('alpha');
       expect(stderr).toContain('no prompt');

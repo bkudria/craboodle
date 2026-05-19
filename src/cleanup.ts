@@ -2,7 +2,7 @@ import { readdir, stat, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
-const PREFIX = 'craboodle-run-';
+const PREFIXES = ['craboodle-run-', 'craboodle-staged-'];
 const MS_PER_DAY = 86_400_000;
 
 /**
@@ -26,7 +26,7 @@ export async function cleanOldArtifacts(
     const entries = await readdir(tmp, { withFileTypes: true });
 
     for (const entry of entries) {
-      if (!entry.isDirectory() || !entry.name.startsWith(PREFIX)) continue;
+      if (!entry.isDirectory() || !PREFIXES.some((p) => entry.name.startsWith(p))) continue;
 
       const dirPath = join(tmp, entry.name);
       try {

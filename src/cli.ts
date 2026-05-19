@@ -2,7 +2,7 @@
 
 import { Command, InvalidArgumentError } from 'commander';
 import { dirname, join } from 'node:path';
-import { mkdtemp, writeFile, mkdir, readFile, access, stat } from 'node:fs/promises';
+import { mkdtemp, writeFile, mkdir, readFile, readdir, access, stat } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
@@ -16,14 +16,15 @@ const pkg = JSON.parse(
 import pLimit from 'p-limit';
 import { formatErrorWithHint } from './messages.js';
 import { installSignalHandler } from './signals.js';
-import { loadCraboodleConfig, checkBaseConfig, resolveRepeatsFromRawFlag } from './config.js';
+import { resolveRepeatsFromRawFlag } from './config.js';
 import { cleanOldArtifacts } from './cleanup.js';
-import { discoverScenarios, filterScenarios } from './discovery.js';
+import { filterScenarios } from './discovery.js';
 import { runScuttlerun, runPincenez, runPincenezLint, listScuttlerunConfig } from './runner.js';
 import { findMissingBinaries, formatMissingBinariesError } from './preflight.js';
 import { executePool, type WorkItem } from './pool.js';
 import { runStaged } from './staged.js';
 import { loadStageBResult } from './stage-b-load.js';
+import { prepareRun } from './prepare-run.js';
 import {
   averageResults,
   streamHeader,
@@ -57,7 +58,7 @@ type RepOutcome =
     }
   | { type: 'error'; rep: number; stage: string; message: string; transcriptPath?: string };
 
-async function runCommand(evalsDir: string, opts: RunOptions): Promise<void> {
+async function runCommand(root: string, opts: RunOptions): Promise<void> {
   const controller = new AbortController();
   let interrupted = false;
   const uninstallSignal = installSignalHandler({
@@ -68,7 +69,7 @@ async function runCommand(evalsDir: string, opts: RunOptions): Promise<void> {
   });
 
   try {
-    return await runCommandInner(evalsDir, opts, controller, () => interrupted);
+    return await runCommandInner(root, opts, controller, () => interrupted);
   } finally {
     uninstallSignal();
     if (interrupted) {
@@ -78,12 +79,12 @@ async function runCommand(evalsDir: string, opts: RunOptions): Promise<void> {
 }
 
 async function runCommandInner(
-  evalsDir: string,
+  root: string,
   opts: RunOptions,
   controller: AbortController,
   isInterrupted: () => boolean,
 ): Promise<void> {
-  const resolvedDir = resolve(evalsDir);
+  const resolvedRoot = resolve(root);
 
   // Pre-flight: companion CLIs must be on PATH
   const missing = await findMissingBinaries(['scuttlerun', 'pincenez']);
@@ -92,13 +93,17 @@ async function runCommandInner(
     process.exit(4);
   }
 
-  // Discover scenarios
-  let scenarios = await discoverScenarios(resolvedDir);
+  // Load evals.yaml, stage filtered view, materialise scuttlerun base config,
+  // and discover scenarios.
+  const prepared = await prepareRun(resolvedRoot);
+  const { basePath, pipeline } = prepared;
+  let scenarios = prepared.scenarios;
+
   if (scenarios.length === 0) {
     process.stderr.write(
       formatErrorWithHint(
-        `No scenarios found in ${resolvedDir}`,
-        `craboodle init ${resolvedDir}`,
+        `No scenarios found in ${resolvedRoot}`,
+        `craboodle init ${resolvedRoot}`,
         'craboodle --help',
       ),
     );
@@ -112,7 +117,7 @@ async function runCommandInner(
       process.stderr.write(
         formatErrorWithHint(
           `No scenarios match filter: ${opts.scenarios}`,
-          `craboodle list ${resolvedDir} to see available IDs`,
+          `craboodle list ${resolvedRoot} to see available IDs`,
           'craboodle --help',
         ),
       );
@@ -124,18 +129,8 @@ async function runCommandInner(
     process.stderr.write(`[craboodle] Found ${scenarios.length} scenario(s)\n`);
   }
 
-  // Load craboodle config
-  const craboodleConfig = await loadCraboodleConfig(join(resolvedDir, 'craboodle.yaml'));
-
-  if (opts.verbose && craboodleConfig.version) {
-    process.stderr.write(`[craboodle] Eval format version: ${craboodleConfig.version}\n`);
-  }
-
-  // Check base config existence
-  const basePath = await checkBaseConfig(join(resolvedDir, 'base.yaml'));
-
   // Clean old artifacts before creating new ones (0 = disabled)
-  await cleanOldArtifacts(craboodleConfig.artifactRetentionDays ?? 7, { verbose: opts.verbose });
+  await cleanOldArtifacts(pipeline.artifactRetentionDays ?? 7, { verbose: opts.verbose });
 
   // Create artifact directory
   const artifactDir = await mkdtemp(join(tmpdir(), 'craboodle-run-'));
@@ -143,8 +138,8 @@ async function runCommandInner(
   // Stream header
   streamHeader(artifactDir);
 
-  // Determine repeats: CLI flag > craboodle.yaml > DEFAULT_REPEATS
-  const repeats = resolveRepeatsFromRawFlag(opts.repeats, craboodleConfig.repeats);
+  // Determine repeats: CLI flag > evals.yaml > DEFAULT_REPEATS
+  const repeats = resolveRepeatsFromRawFlag(opts.repeats, pipeline.repeats);
 
   const scuttleLimit = pLimit(opts.concurrency);
   const pincenezLimit = pLimit(opts.concurrency);
@@ -233,7 +228,7 @@ async function runCommandInner(
   const scenarioOutputs: ScenarioOutput[] = [];
 
   await executePool(workItems, workItems.length, {
-    budgetUsd: craboodleConfig.maxBudgetUsd,
+    budgetUsd: pipeline.maxBudgetUsd,
     costOf: (outcome: RepOutcome) => {
       if (outcome.type !== 'success') return 0;
       let cost = 0;
@@ -321,13 +316,12 @@ async function runCommandInner(
       }
 
       if (
-        craboodleConfig.minPassRate !== undefined &&
-        (scenarioOutput.pass_rate === null ||
-          scenarioOutput.pass_rate < craboodleConfig.minPassRate)
+        pipeline.minPassRate !== undefined &&
+        (scenarioOutput.pass_rate === null || scenarioOutput.pass_rate < pipeline.minPassRate)
       ) {
         if (!failFastTriggered && opts.verbose) {
           process.stderr.write(
-            `[craboodle] Fail-fast triggered: ${scenarioId} pass_rate=${scenarioOutput.pass_rate} < ${craboodleConfig.minPassRate}\n`,
+            `[craboodle] Fail-fast triggered: ${scenarioId} pass_rate=${scenarioOutput.pass_rate} < ${pipeline.minPassRate}\n`,
           );
         }
         failFastTriggered = true;
@@ -349,8 +343,8 @@ async function runCommandInner(
   if (budgetExceeded) {
     process.stderr.write(
       formatErrorWithHint(
-        `Budget exceeded (max_budget_usd: ${craboodleConfig.maxBudgetUsd})`,
-        'raise max_budget_usd in craboodle.yaml',
+        `Budget exceeded (max_budget_usd: ${pipeline.maxBudgetUsd})`,
+        'raise max_budget_usd in evals.yaml',
         'craboodle --help',
       ),
     );
@@ -362,18 +356,16 @@ async function runCommandInner(
   }
 
   // Check ratchet threshold
-  if (craboodleConfig.minPassRate !== undefined) {
+  if (pipeline.minPassRate !== undefined) {
     const failures = scenarioOutputs.filter(
-      (s) => s.pass_rate === null || s.pass_rate < craboodleConfig.minPassRate!,
+      (s) => s.pass_rate === null || s.pass_rate < pipeline.minPassRate!,
     );
     if (failures.length > 0) {
       process.stderr.write(
-        `[craboodle] Threshold check failed (min_pass_rate: ${craboodleConfig.minPassRate}):\n`,
+        `[craboodle] Threshold check failed (min_pass_rate: ${pipeline.minPassRate}):\n`,
       );
       for (const f of failures) {
-        process.stderr.write(
-          `  ${f.id}: ${f.pass_rate ?? 'null'} < ${craboodleConfig.minPassRate}\n`,
-        );
+        process.stderr.write(`  ${f.id}: ${f.pass_rate ?? 'null'} < ${pipeline.minPassRate}\n`);
       }
       process.stderr.write('  Try: re-run with -v for per-rep failure context\n');
       process.stderr.write('  See: craboodle --help\n');
@@ -384,41 +376,54 @@ async function runCommandInner(
 
 const HELP_TEXT = `
 Directory Structure:
-  craboodle discovers scenarios by globbing */scenario.{yaml,yml} within <evals-dir>:
+  craboodle reads <root>/evals.yaml and discovers scenarios under <root>/evals/:
 
-    <evals-dir>/
-    ├── craboodle.yaml                 # Craboodle config (version, thresholds)
-    ├── base.yaml                      # Scuttlerun defaults (optional)
-    ├── scenario-a/
-    │   ├── scenario.yaml              # Scuttlerun input (prompt, config)
-    │   └── checks.yaml                # Pincenez checks (id-as-key format)
-    ├── scenario-b/
-    │   ├── scenario.yaml
-    │   └── checks.yaml
-    └── ...
+    <root>/                            # skill root (next to SKILL.md), plugin
+    │                                  #   root (next to .claude-plugin/plugin.json),
+    │                                  #   or a generic eval suite
+    ├── evals.yaml                     # Pipeline + scuttlerun base config
+    ├── evals/
+    │   ├── scenario-a/
+    │   │   ├── scenario.yaml          # Scuttlerun input (prompt, config)
+    │   │   └── checks.yaml            # Pincenez checks (id-as-key format)
+    │   └── scenario-b/
+    │       ├── scenario.yaml
+    │       └── checks.yaml
+    └── ...                            # other skill / plugin assets, ignored
+                                       #   at scenario-discovery time
 
-craboodle.yaml Schema:
-  Pipeline configuration. Controls version, thresholds, and repetitions.
+  At run time craboodle stages a filtered view of <root> into $TMPDIR
+  (excluding the scenarios dir) and invokes scuttlerun against the staged
+  view, so \`project.skills: [.]\` cleanly self-references the skill / plugin.
+
+evals.yaml Schema:
+  Single config file at <root>. Holds pipeline knobs at top level and a
+  scuttlerun base config under scenarios.base.
 
     version: "1"                       # Schema version (required)
     min_pass_rate: 0.8                 # Ratchet threshold — exit 3 if any scenario
                                        #   falls below (optional, 0-1)
     max_budget_usd: 10.0               # Budget cap (optional)
-    repeats: 3                          # Repetitions per scenario (optional, default: 3)
-                                        #   Overridden by --repeats flag if passed
+    repeats: 3                         # Repetitions per scenario (optional, default: 3)
+                                       #   Overridden by --repeats flag if passed
+    artifact_retention_days: 7         # tmp-dir GC window (optional, default: 7;
+                                       #   0 disables cleanup)
 
-base.yaml Schema:
-  Pure scuttlerun defaults applied to all scenarios. Passed as base config
-  to scuttlerun. No craboodle-specific keys.
-
-    model: claude-sonnet-4-6
-    tools:
-      - Read
-      - Write
-      - Bash
-    project:
-      claude_md: |
-        Use relative paths. Do not use absolute paths.
+    scenarios:
+      path: evals                      # subdir holding scenario folders (optional,
+                                       #   single dir name, default: "evals")
+      base:                            # required; scuttlerun config applied to every
+                                       #   scenario. Arbitrary scuttlerun keys allowed.
+        model: claude-sonnet-4-6
+        tools:
+          - Read
+          - Write
+          - Bash
+        project:
+          skills:
+            - .                        # self-reference for standalone skills
+          claude_md: |
+            Use relative paths. Do not use absolute paths.
 
 scenario.yaml Schema:
   Pure scuttlerun input file. Contains prompt and any scuttlerun config overrides.
@@ -466,26 +471,29 @@ Output Format:
   cost_usd includes both agent (scuttlerun) and grading (pincenez) costs.
 
 Examples:
+  # Scaffold an evals.yaml at the skill / plugin root
+  craboodle init ./my-skill
+
   # List and validate scenarios without running
-  craboodle list ./evals
+  craboodle list ./my-skill
 
   # Lint checks for quality issues (no sessions run)
-  craboodle lint ./evals
+  craboodle lint ./my-skill
 
-  # Run all scenarios in an evals directory
-  craboodle run ./evals
+  # Run all scenarios for a skill
+  craboodle run ./my-skill
 
   # Override model and repetition count
-  craboodle run ./evals --agent-model claude-sonnet-4-6 --repeats 5
+  craboodle run ./my-skill --agent-model claude-sonnet-4-6 --repeats 5
 
   # Run a single scenario by ID
-  craboodle run ./evals --scenario email-validator
+  craboodle run ./my-skill --scenario email-validator
 
   # Use a stronger grader model
-  craboodle run ./evals --grader-model claude-sonnet-4-6
+  craboodle run ./my-skill --grader-model claude-sonnet-4-6
 
   # CI quality gate with yq
-  craboodle run ./evals | yq '.scenarios[].pass_rate'
+  craboodle run ./my-skill | yq '.scenarios[].pass_rate'
 
 Exit Codes (shared scuttlerun/pincenez/craboodle taxonomy; codes 5-7 scuttlerun-only):
   0   Pipeline completed successfully
@@ -517,11 +525,11 @@ program
   .addHelpText('after', HELP_TEXT);
 
 program
-  .command('run <evals-dir>')
+  .command('run <root>')
   .description('Run eval pipeline')
   .option(
     '--repeats <n>',
-    'Number of repetitions per scenario (overrides craboodle.yaml repeats; default: 3)',
+    'Number of repetitions per scenario (overrides evals.yaml repeats; default: 3)',
   )
   .option(
     '--concurrency <n>',
@@ -536,9 +544,9 @@ program
   .option('--agent-model <model>', 'Override scuttlerun model for all scenarios')
   .option('--grader-model <model>', 'Override pincenez model for all checks')
   .option('-v, --verbose', 'Verbose logging (to stderr)')
-  .action(async (evalsDir: string, cmdOpts: Record<string, string>) => {
+  .action(async (root: string, cmdOpts: Record<string, string>) => {
     try {
-      await runCommand(evalsDir, {
+      await runCommand(root, {
         repeats: cmdOpts.repeats,
         concurrency: parseInt(cmdOpts.concurrency, 10),
         agentModel: cmdOpts.agentModel,
@@ -559,16 +567,16 @@ program
   });
 
 program
-  .command('list <evals-dir>')
+  .command('list <root>')
   .description('List and validate scenarios (including scuttlerun config validation)')
   .option(
     '--scenario, --scenarios <pattern>',
     'Filter scenarios by ID (exact, glob, or comma-separated)',
   )
   .option('-v, --verbose', 'Verbose logging (to stderr)')
-  .action(async (evalsDir: string, cmdOpts: { scenarios?: string; verbose?: boolean }) => {
+  .action(async (root: string, cmdOpts: { scenarios?: string; verbose?: boolean }) => {
     try {
-      const resolvedDir = resolve(evalsDir);
+      const resolvedRoot = resolve(root);
 
       // Pre-flight: scuttlerun is required for --dry-run validation
       const missing = await findMissingBinaries(['scuttlerun']);
@@ -577,13 +585,14 @@ program
         process.exit(4);
       }
 
-      // Discover scenarios
-      let scenarios = await discoverScenarios(resolvedDir);
+      // Load evals.yaml, stage filtered view, materialise scuttlerun base, discover.
+      const prepared = await prepareRun(resolvedRoot);
+      let scenarios = prepared.scenarios;
       if (scenarios.length === 0) {
         process.stderr.write(
           formatErrorWithHint(
-            `No scenarios found in ${resolvedDir}`,
-            `craboodle init ${resolvedDir}`,
+            `No scenarios found in ${resolvedRoot}`,
+            `craboodle init ${resolvedRoot}`,
             'craboodle --help',
           ),
         );
@@ -596,7 +605,7 @@ program
           process.stderr.write(
             formatErrorWithHint(
               `No scenarios match filter: ${cmdOpts.scenarios}`,
-              `craboodle list ${resolvedDir} to see available IDs`,
+              `craboodle list ${resolvedRoot} to see available IDs`,
               'craboodle --help',
             ),
           );
@@ -604,17 +613,12 @@ program
         }
       }
 
-      // Load craboodle config
-      const craboodleConfig = await loadCraboodleConfig(join(resolvedDir, 'craboodle.yaml'));
-
-      // Check base config existence
-      const basePath = await checkBaseConfig(join(resolvedDir, 'base.yaml'));
+      const basePath = prepared.basePath;
 
       // Output base config summary
-      const baseSummary: Record<string, unknown> = {};
-      if (craboodleConfig.version) baseSummary.version = craboodleConfig.version;
-      if (craboodleConfig.minPassRate !== undefined)
-        baseSummary.min_pass_rate = craboodleConfig.minPassRate;
+      const baseSummary: Record<string, unknown> = { version: prepared.pipeline.version };
+      if (prepared.pipeline.minPassRate !== undefined)
+        baseSummary.min_pass_rate = prepared.pipeline.minPassRate;
       process.stdout.write(stringify({ base: baseSummary }, { lineWidth: 0 }));
 
       // Validate each scenario
@@ -689,7 +693,7 @@ interface LintOptions {
   verbose?: boolean;
 }
 
-async function lintCommand(evalsDir: string, opts: LintOptions): Promise<void> {
+async function lintCommand(root: string, opts: LintOptions): Promise<void> {
   const controller = new AbortController();
   let interrupted = false;
   const uninstallSignal = installSignalHandler({
@@ -700,7 +704,7 @@ async function lintCommand(evalsDir: string, opts: LintOptions): Promise<void> {
   });
 
   try {
-    return await lintCommandInner(evalsDir, opts, controller, () => interrupted);
+    return await lintCommandInner(root, opts, controller, () => interrupted);
   } finally {
     uninstallSignal();
     if (interrupted) {
@@ -710,12 +714,12 @@ async function lintCommand(evalsDir: string, opts: LintOptions): Promise<void> {
 }
 
 async function lintCommandInner(
-  evalsDir: string,
+  root: string,
   opts: LintOptions,
   controller: AbortController,
   isInterrupted: () => boolean,
 ): Promise<void> {
-  const resolvedDir = resolve(evalsDir);
+  const resolvedRoot = resolve(root);
 
   // Pre-flight: pincenez is required for lint
   const missing = await findMissingBinaries(['pincenez']);
@@ -724,13 +728,15 @@ async function lintCommandInner(
     process.exit(4);
   }
 
-  // Discover scenarios
-  let scenarios = await discoverScenarios(resolvedDir);
+  // Load evals.yaml + discover. Lint doesn't itself need the staged base, but
+  // sharing prepareRun keeps validation + discovery uniform across commands.
+  const prepared = await prepareRun(resolvedRoot);
+  let scenarios = prepared.scenarios;
   if (scenarios.length === 0) {
     process.stderr.write(
       formatErrorWithHint(
-        `No scenarios found in ${resolvedDir}`,
-        `craboodle init ${resolvedDir}`,
+        `No scenarios found in ${resolvedRoot}`,
+        `craboodle init ${resolvedRoot}`,
         'craboodle --help',
       ),
     );
@@ -744,7 +750,7 @@ async function lintCommandInner(
       process.stderr.write(
         formatErrorWithHint(
           `No scenarios match filter: ${opts.scenarios}`,
-          `craboodle list ${resolvedDir} to see available IDs`,
+          `craboodle list ${resolvedRoot} to see available IDs`,
           'craboodle --help',
         ),
       );
@@ -755,9 +761,6 @@ async function lintCommandInner(
   if (opts.verbose) {
     process.stderr.write(`[craboodle] Linting ${scenarios.length} scenario(s)\n`);
   }
-
-  // Load craboodle config (validates structure)
-  await loadCraboodleConfig(join(resolvedDir, 'craboodle.yaml'));
 
   // Stream header
   process.stdout.write('scenarios:\n');
@@ -853,7 +856,7 @@ async function lintCommandInner(
 }
 
 program
-  .command('lint <evals-dir>')
+  .command('lint <root>')
   .description('Lint checks for quality issues without running evals')
   .option('--concurrency <n>', 'Max parallel pincenez lint invocations', parseConcurrency, 10)
   .option(
@@ -862,9 +865,9 @@ program
   )
   .option('--grader-model <model>', 'Override pincenez model for linting')
   .option('-v, --verbose', 'Verbose logging (to stderr)')
-  .action(async (evalsDir: string, cmdOpts: Record<string, string>) => {
+  .action(async (root: string, cmdOpts: Record<string, string>) => {
     try {
-      await lintCommand(evalsDir, {
+      await lintCommand(root, {
         concurrency: parseInt(cmdOpts.concurrency, 10),
         graderModel: cmdOpts.graderModel,
         scenarios: cmdOpts.scenarios,
@@ -882,31 +885,100 @@ program
     }
   });
 
+async function detectInitMode(
+  root: string,
+): Promise<{ mode: 'skill' | 'plugin' | 'generic'; firstPluginSkill?: string }> {
+  const hasPluginMarker = await access(join(root, '.claude-plugin', 'plugin.json')).then(
+    () => true,
+    () => false,
+  );
+  if (hasPluginMarker) {
+    try {
+      const skillsDir = join(root, 'skills');
+      const entries = await readdir(skillsDir, { withFileTypes: true });
+      for (const e of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+        if (!e.isDirectory()) continue;
+        const hasSkillMd = await access(join(skillsDir, e.name, 'SKILL.md')).then(
+          () => true,
+          () => false,
+        );
+        if (hasSkillMd) return { mode: 'plugin', firstPluginSkill: e.name };
+      }
+    } catch {
+      // skills/ dir doesn't exist
+    }
+    return { mode: 'plugin' };
+  }
+  const hasSkillMd = await access(join(root, 'SKILL.md')).then(
+    () => true,
+    () => false,
+  );
+  if (hasSkillMd) return { mode: 'skill' };
+  return { mode: 'generic' };
+}
+
+function renderEvalsYaml(mode: 'skill' | 'plugin' | 'generic', firstPluginSkill?: string): string {
+  let skillsBlock: string;
+  if (mode === 'skill') {
+    skillsBlock = `#   skills:\n#     - .                            # self-reference: this skill\n`;
+  } else if (mode === 'plugin' && firstPluginSkill) {
+    skillsBlock = `#   skills:\n#     - skills/${firstPluginSkill}\n`;
+  } else if (mode === 'plugin') {
+    skillsBlock = `#   skills:\n#     - skills/<your-skill-id>       # path relative to this evals.yaml\n`;
+  } else {
+    skillsBlock = `#   skills:\n#     - /absolute/path/to/skill\n`;
+  }
+
+  return (
+    `version: "1"\n` +
+    `# min_pass_rate:      # default: unset (no gating); reachable values are k/(checks*reps)\n` +
+    `# max_budget_usd:     # default: unset (no cap)\n` +
+    `# repeats: 3          # default: 3\n` +
+    `# artifact_retention_days: 7   # default: 7 (0 disables cleanup)\n` +
+    `\n` +
+    `scenarios:\n` +
+    `  # path: evals       # default: "evals" — single dir name, no slashes\n` +
+    `  base:\n` +
+    `    # Shared scuttlerun config applied to every scenario in this suite.\n` +
+    `    # To ADD tools to scuttlerun's defaults, use \`additional_tools:\` — it is appended\n` +
+    `    # and deduped. To REPLACE the defaults entirely, use \`tools:\` (arrays replace).\n` +
+    `    #\n` +
+    `    # model: claude-haiku-4-5\n` +
+    `    # additional_tools:\n` +
+    `    #   - TodoWrite\n` +
+    `    # project:\n` +
+    `    #   claude_md: |\n` +
+    `    #     # Project-level instructions here\n` +
+    skillsBlock +
+    `    # user:\n` +
+    `    #   max_turns: 30\n`
+  );
+}
+
 program
   .command('init <dir>')
-  .description('Scaffold a new evals directory with craboodle.yaml')
+  .description('Scaffold an evals.yaml at the given skill/plugin root')
   .action(async (dir: string) => {
     const resolvedDir = resolve(dir);
 
-    // Check if directory already has eval files
     try {
-      await access(join(resolvedDir, 'craboodle.yaml'));
+      await access(join(resolvedDir, 'evals.yaml'));
       process.stderr.write(
         formatErrorWithHint(
-          `${resolvedDir} already contains craboodle.yaml`,
+          `${resolvedDir} already contains evals.yaml`,
           'pick a different directory or remove the existing file(s)',
         ),
       );
       process.exit(1);
     } catch {
-      // craboodle.yaml doesn't exist, good
+      // evals.yaml doesn't exist, good
     }
 
     try {
       const dirStat = await stat(resolvedDir);
       if (dirStat.isDirectory()) {
         const { glob: globFn } = await import('glob');
-        const existing = await globFn('*/scenario.{yaml,yml}', { cwd: resolvedDir });
+        const existing = await globFn('evals/*/scenario.{yaml,yml}', { cwd: resolvedDir });
         if (existing.length > 0) {
           process.stderr.write(
             formatErrorWithHint(
@@ -923,38 +995,13 @@ program
 
     await mkdir(resolvedDir, { recursive: true });
 
-    const craboodleContent =
-      `version: "1"\n` +
-      `# min_pass_rate:      # default: unset (no gating); reachable values are k/(checks*reps)\n` +
-      `# max_budget_usd:     # default: unset (no cap)\n` +
-      `# repeats: 3          # default: 3\n`;
-    await writeFile(join(resolvedDir, 'craboodle.yaml'), craboodleContent);
-
-    const baseContent =
-      `# base.yaml — shared scuttlerun config for all scenarios in this suite.\n` +
-      `# Every scenario.yaml is deep-merged onto this base.\n` +
-      `#\n` +
-      `# To ADD tools to scuttlerun's defaults, use \`additional_tools:\` — it is appended\n` +
-      `# to the default tool list and deduped. To REPLACE the defaults entirely, use\n` +
-      `# \`tools:\` (arrays replace wholesale on merge).\n` +
-      `#\n` +
-      `# model: claude-haiku-4-5\n` +
-      `# additional_tools:\n` +
-      `#   - TodoWrite\n` +
-      `# project:\n` +
-      `#   claude_md: |\n` +
-      `#     # Project-level instructions here\n` +
-      `#   skills:\n` +
-      `#     - /absolute/path/to/skill\n` +
-      `# user:\n` +
-      `#   max_turns: 30\n`;
-    await writeFile(join(resolvedDir, 'base.yaml'), baseContent);
+    const { mode, firstPluginSkill } = await detectInitMode(resolvedDir);
+    await writeFile(join(resolvedDir, 'evals.yaml'), renderEvalsYaml(mode, firstPluginSkill));
 
     process.stdout.write(`Created ${resolvedDir}/\n`);
-    process.stdout.write(`  craboodle.yaml\n`);
-    process.stdout.write(`  base.yaml\n`);
+    process.stdout.write(`  evals.yaml\n`);
     process.stdout.write(`\nNext steps:\n`);
-    process.stdout.write(`  Create <scenario-id>/scenario.yaml and <scenario-id>/checks.yaml\n`);
+    process.stdout.write(`  Create evals/<scenario-id>/scenario.yaml and checks.yaml\n`);
     process.stdout.write(`  craboodle list ${dir}     # validate scenarios\n`);
     process.stdout.write(`  craboodle lint ${dir}     # check quality\n`);
     process.stdout.write(`  craboodle run ${dir}      # run eval pipeline\n`);

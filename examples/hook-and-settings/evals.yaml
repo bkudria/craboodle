@@ -1,0 +1,6 @@
+version: "1"
+# Example: hook + settings injection via scuttlerun.
+
+scenarios:
+  base:
+    model: claude-sonnet-4-6

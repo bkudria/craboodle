@@ -1,114 +1,183 @@
 import { readFile, access } from 'node:fs/promises';
+import { join } from 'node:path';
 import { parse } from 'yaml';
 
-export interface CraboodleConfig {
-  version?: string;
+export type EvalsRootMode = 'skill' | 'plugin' | 'generic';
+
+export interface EvalsConfig {
+  version: string;
   minPassRate?: number;
   maxBudgetUsd?: number;
   repeats?: number;
   artifactRetentionDays?: number;
+  scenariosPath: string;
+  scenariosBase: Record<string, unknown>;
+  mode: EvalsRootMode;
 }
 
 const SUPPORTED_VERSIONS = ['1'];
-const KNOWN_KEYS = [
+const KNOWN_TOP_LEVEL_KEYS = [
   'version',
   'min_pass_rate',
   'max_budget_usd',
   'repeats',
   'artifact_retention_days',
+  'scenarios',
 ];
+const KNOWN_SCENARIOS_KEYS = ['path', 'base'];
 
-export async function loadCraboodleConfig(path: string): Promise<CraboodleConfig> {
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function validateVersion(raw: unknown): string {
+  if (raw === undefined) {
+    throw new Error(
+      `evals.yaml missing required "version" field (supported: ${SUPPORTED_VERSIONS.join(', ')})`,
+    );
+  }
+  const v = String(raw);
+  if (!SUPPORTED_VERSIONS.includes(v)) {
+    throw new Error(
+      `Unsupported eval format version: ${v} (supported: ${SUPPORTED_VERSIONS.join(', ')})`,
+    );
+  }
+  return v;
+}
+
+function validateMinPassRate(raw: unknown): number | undefined {
+  if (raw === undefined) return undefined;
+  if (typeof raw !== 'number' || raw < 0 || raw > 1) {
+    throw new Error('min_pass_rate must be a number between 0 and 1');
+  }
+  return raw;
+}
+
+function validateMaxBudgetUsd(raw: unknown): number | undefined {
+  if (raw === undefined) return undefined;
+  if (typeof raw !== 'number' || raw <= 0) {
+    throw new Error('max_budget_usd must be a positive number');
+  }
+  return raw;
+}
+
+function validateRepeats(raw: unknown): number | undefined {
+  if (raw === undefined) return undefined;
+  if (typeof raw !== 'number' || !Number.isInteger(raw) || raw < 1) {
+    throw new Error('repeats must be a positive integer');
+  }
+  return raw;
+}
+
+function validateArtifactRetentionDays(raw: unknown): number | undefined {
+  if (raw === undefined) return undefined;
+  if (typeof raw !== 'number' || !Number.isInteger(raw) || raw < 0) {
+    throw new Error('artifact_retention_days must be a non-negative integer (0 disables cleanup)');
+  }
+  return raw;
+}
+
+function detectMode(root: string): Promise<EvalsRootMode> {
+  // Plugin marker wins (more specific). Probe in order: plugin → skill → generic.
+  return (async () => {
+    if (await fileExists(join(root, '.claude-plugin', 'plugin.json'))) return 'plugin';
+    if (await fileExists(join(root, 'SKILL.md'))) return 'skill';
+    return 'generic';
+  })();
+}
+
+async function fileExists(path: string): Promise<boolean> {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function loadEvalsConfig(root: string): Promise<EvalsConfig> {
+  const configPath = join(root, 'evals.yaml');
   let raw: Record<string, unknown>;
   try {
-    const content = await readFile(path, 'utf8');
-    raw = parse(content) as Record<string, unknown>;
+    const content = await readFile(configPath, 'utf8');
+    const parsed = parse(content);
+    if (parsed !== null && parsed !== undefined && !isPlainObject(parsed)) {
+      throw new Error(`evals.yaml must be a YAML mapping at the top level`);
+    }
+    raw = (parsed as Record<string, unknown> | null) ?? {};
   } catch (err: unknown) {
     if (err instanceof Error && 'code' in err && (err as NodeJS.ErrnoException).code === 'ENOENT') {
-      return {};
+      throw new Error(`evals.yaml not found at ${configPath}`, { cause: err });
     }
     throw err;
   }
 
-  const unknownKeys = Object.keys(raw).filter((k) => !KNOWN_KEYS.includes(k));
-  if (unknownKeys.length > 0) {
+  const unknownTop = Object.keys(raw).filter((k) => !KNOWN_TOP_LEVEL_KEYS.includes(k));
+  if (unknownTop.length > 0) {
     throw new Error(
-      `craboodle.yaml has unknown key(s): ${unknownKeys.join(', ')} (supported: ${KNOWN_KEYS.join(', ')})`,
+      `evals.yaml has unknown key(s): ${unknownTop.join(', ')} (supported: ${KNOWN_TOP_LEVEL_KEYS.join(', ')})`,
     );
   }
 
-  // Validate version (required when file exists)
-  if (raw.version === undefined) {
+  const version = validateVersion(raw.version);
+  const minPassRate = validateMinPassRate(raw.min_pass_rate);
+  const maxBudgetUsd = validateMaxBudgetUsd(raw.max_budget_usd);
+  const repeats = validateRepeats(raw.repeats);
+  const artifactRetentionDays = validateArtifactRetentionDays(raw.artifact_retention_days);
+
+  if (raw.scenarios === undefined) {
+    throw new Error('evals.yaml missing required "scenarios" block');
+  }
+  if (!isPlainObject(raw.scenarios)) {
+    throw new Error('evals.yaml "scenarios" must be a mapping');
+  }
+  const scenarios = raw.scenarios;
+
+  const unknownScenarios = Object.keys(scenarios).filter((k) => !KNOWN_SCENARIOS_KEYS.includes(k));
+  if (unknownScenarios.length > 0) {
     throw new Error(
-      'craboodle.yaml missing required "version" field (supported: ' +
-        SUPPORTED_VERSIONS.join(', ') +
-        ')',
+      `evals.yaml "scenarios" has unknown key(s): ${unknownScenarios.join(', ')} (supported: ${KNOWN_SCENARIOS_KEYS.join(', ')})`,
     );
   }
-  const versionStr = String(raw.version);
-  if (!SUPPORTED_VERSIONS.includes(versionStr)) {
-    throw new Error(
-      `Unsupported eval format version: ${versionStr} (supported: ${SUPPORTED_VERSIONS.join(', ')})`,
-    );
-  }
 
-  let minPassRate: number | undefined;
-  if (raw.min_pass_rate !== undefined) {
-    if (typeof raw.min_pass_rate !== 'number' || raw.min_pass_rate < 0 || raw.min_pass_rate > 1) {
-      throw new Error('min_pass_rate must be a number between 0 and 1');
+  if (scenarios.base === undefined) {
+    throw new Error('evals.yaml missing required "scenarios.base" block');
+  }
+  if (!isPlainObject(scenarios.base)) {
+    throw new Error('evals.yaml "scenarios.base" must be a mapping');
+  }
+  const scenariosBase = scenarios.base;
+
+  let scenariosPath = 'evals';
+  if (scenarios.path !== undefined) {
+    if (typeof scenarios.path !== 'string' || scenarios.path.length === 0) {
+      throw new Error('evals.yaml "scenarios.path" must be a non-empty string');
     }
-    minPassRate = raw.min_pass_rate;
-  }
-
-  let maxBudgetUsd: number | undefined;
-  if (raw.max_budget_usd !== undefined) {
-    if (typeof raw.max_budget_usd !== 'number' || raw.max_budget_usd <= 0) {
-      throw new Error('max_budget_usd must be a positive number');
-    }
-    maxBudgetUsd = raw.max_budget_usd;
-  }
-
-  let repeats: number | undefined;
-  if (raw.repeats !== undefined) {
-    if (typeof raw.repeats !== 'number' || !Number.isInteger(raw.repeats) || raw.repeats < 1) {
-      throw new Error('repeats must be a positive integer');
-    }
-    repeats = raw.repeats;
-  }
-
-  let artifactRetentionDays: number | undefined;
-  if (raw.artifact_retention_days !== undefined) {
     if (
-      typeof raw.artifact_retention_days !== 'number' ||
-      !Number.isInteger(raw.artifact_retention_days) ||
-      raw.artifact_retention_days < 0
+      scenarios.path.includes('/') ||
+      scenarios.path.includes('\\') ||
+      scenarios.path === '.' ||
+      scenarios.path === '..'
     ) {
       throw new Error(
-        'artifact_retention_days must be a non-negative integer (0 disables cleanup)',
+        `evals.yaml "scenarios.path" must be a single directory name (no path separators, no '.' or '..'), got: ${scenarios.path}`,
       );
     }
-    artifactRetentionDays = raw.artifact_retention_days;
+    scenariosPath = scenarios.path;
   }
 
+  const mode = await detectMode(root);
+
   return {
-    version: versionStr,
+    version,
     minPassRate,
     maxBudgetUsd,
     repeats,
     artifactRetentionDays,
+    scenariosPath,
+    scenariosBase,
+    mode,
   };
-}
-
-/**
- * Check if a base config file exists and return its path, or null if not found.
- */
-export async function checkBaseConfig(path: string): Promise<string | null> {
-  try {
-    await access(path);
-    return path;
-  } catch {
-    return null;
-  }
 }
 
 export const DEFAULT_REPEATS = 3;

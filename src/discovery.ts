@@ -7,11 +7,14 @@ export interface ScenarioRef {
   configPath: string;
 }
 
-export async function discoverScenarios(evalsDir: string): Promise<ScenarioRef[]> {
-  const matches = await glob('*/scenario.{yaml,yml}', { cwd: evalsDir });
+export async function discoverScenarios(
+  root: string,
+  scenariosPath: string = 'evals',
+): Promise<ScenarioRef[]> {
+  const matches = await glob(`${scenariosPath}/*/scenario.{yaml,yml}`, { cwd: root });
 
   const scenarios: ScenarioRef[] = matches.map((match) => {
-    const configPath = join(evalsDir, match);
+    const configPath = join(root, match);
     const dir = dirname(configPath);
     const id = basename(dir);
     return { id, dir, configPath };

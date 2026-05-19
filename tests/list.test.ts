@@ -22,23 +22,26 @@ describe('list', () => {
     await rm(tmpDir, { recursive: true });
   });
 
+  async function writeEvals(content: unknown = { version: '1', scenarios: { base: {} } }) {
+    await writeFile(join(tmpDir, 'evals.yaml'), stringify(content));
+  }
+
+  async function writeScenario(id: string, checks: unknown): Promise<void> {
+    await mkdir(join(tmpDir, 'evals', id), { recursive: true });
+    await writeFile(join(tmpDir, 'evals', id, 'scenario.yaml'), stringify({ prompt: `${id}\n` }));
+    await writeFile(join(tmpDir, 'evals', id, 'checks.yaml'), stringify(checks));
+  }
+
   it('reports correct check count from checks: array', async () => {
-    // Setup: craboodle.yaml + scenario with 3 checks
-    await writeFile(join(tmpDir, 'craboodle.yaml'), stringify({ version: '1' }));
-    await writeFile(join(tmpDir, 'base.yaml'), '# defaults\n');
-    await mkdir(join(tmpDir, 'my-scenario'));
-    await writeFile(join(tmpDir, 'my-scenario', 'scenario.yaml'), stringify({ prompt: 'test\n' }));
-    await writeFile(
-      join(tmpDir, 'my-scenario', 'checks.yaml'),
-      stringify({
-        context: 'The agent was asked to test something',
-        checks: [
-          { 'check-a': { check: 'First check', note: 'note' } },
-          { 'check-b': { check: 'Second check', note: 'note' } },
-          { 'check-c': { check: 'Third check', note: 'note' } },
-        ],
-      }),
-    );
+    await writeEvals();
+    await writeScenario('my-scenario', {
+      context: 'The agent was asked to test something',
+      checks: [
+        { 'check-a': { check: 'First check', note: 'note' } },
+        { 'check-b': { check: 'Second check', note: 'note' } },
+        { 'check-c': { check: 'Third check', note: 'note' } },
+      ],
+    });
 
     const { stdout } = await execFileAsync(process.execPath, [CLI_PATH, 'list', tmpDir]);
 
@@ -48,25 +51,15 @@ describe('list', () => {
   });
 
   it('filters scenarios with --scenario flag', async () => {
-    await writeFile(join(tmpDir, 'craboodle.yaml'), stringify({ version: '1' }));
-    await mkdir(join(tmpDir, 'alpha'));
-    await writeFile(join(tmpDir, 'alpha', 'scenario.yaml'), stringify({ prompt: 'a\n' }));
-    await writeFile(
-      join(tmpDir, 'alpha', 'checks.yaml'),
-      stringify({
-        context: 'The agent was asked to do alpha',
-        checks: [{ 'check-a': { check: 'alpha check', note: 'note' } }],
-      }),
-    );
-    await mkdir(join(tmpDir, 'beta'));
-    await writeFile(join(tmpDir, 'beta', 'scenario.yaml'), stringify({ prompt: 'b\n' }));
-    await writeFile(
-      join(tmpDir, 'beta', 'checks.yaml'),
-      stringify({
-        context: 'The agent was asked to do beta',
-        checks: [{ 'check-b': { check: 'beta check', note: 'note' } }],
-      }),
-    );
+    await writeEvals();
+    await writeScenario('alpha', {
+      context: 'The agent was asked to do alpha',
+      checks: [{ 'check-a': { check: 'alpha check', note: 'note' } }],
+    });
+    await writeScenario('beta', {
+      context: 'The agent was asked to do beta',
+      checks: [{ 'check-b': { check: 'beta check', note: 'note' } }],
+    });
 
     const { stdout } = await execFileAsync(process.execPath, [
       CLI_PATH,

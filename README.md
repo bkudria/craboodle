@@ -42,18 +42,20 @@ npx craboodle <command> [args]
 ## Usage
 
 ```bash
-# Scaffold a new eval suite
-craboodle init ./evals
+# Scaffold an evals.yaml at the skill / plugin root
+craboodle init ./my-skill
 
 # Validate scenarios
-craboodle list ./evals
+craboodle list ./my-skill
 
 # Check checks quality (no sessions run)
-craboodle lint ./evals
+craboodle lint ./my-skill
 
 # Run the eval pipeline
-craboodle run ./evals
+craboodle run ./my-skill
 ```
+
+craboodle expects a single `evals.yaml` at the project root (next to `SKILL.md` for skills, or next to `.claude-plugin/plugin.json` for plugins) and scenarios under `evals/<scenario-id>/`. At run time it stages a filtered view of the project root (excluding `evals/`) and hands that to scuttlerun, so `project.skills: [.]` in `scenarios.base` cleanly self-references the skill being tested.
 
 ## Examples
 
@@ -97,9 +99,9 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for commit conventions and PR guidelines.
 
 ## Artifact Cleanup
 
-Each `craboodle run` creates a per-run artifact directory in `$TMPDIR` (prefixed `craboodle-run-`) holding scuttlerun transcripts, pincenez gradings, and stage outputs. At the start of every run, craboodle garbage-collects prior `craboodle-run-*` directories whose mtime is older than the retention window — best-effort, errors ignored.
+Each `craboodle run` creates a per-run artifact directory and a staged filtered view of the project root in `$TMPDIR` (prefixed `craboodle-run-` and `craboodle-staged-` respectively). At the start of every run, craboodle garbage-collects prior `craboodle-run-*` and `craboodle-staged-*` directories whose mtime is older than the retention window — best-effort, errors ignored.
 
-The default window is 7 days. Override (or disable) it via `craboodle.yaml`:
+The default window is 7 days. Override (or disable) it via `evals.yaml`:
 
 ```yaml
 version: "1"
@@ -107,7 +109,7 @@ artifact_retention_days: 30   # keep prior runs for 30 days
 # artifact_retention_days: 0  # disable cleanup entirely
 ```
 
-Only directories matching the `craboodle-run-` prefix are touched; nothing outside `$TMPDIR` is read or modified.
+Only directories matching the `craboodle-run-` or `craboodle-staged-` prefixes are touched; nothing outside `$TMPDIR` is read or modified.
 
 ## Troubleshooting
 
@@ -117,7 +119,7 @@ Only directories matching the `craboodle-run-` prefix are touched; nothing outsi
 
 **Scuttlerun or pincenez fails with an auth error** — both subprocesses call the Anthropic API and need `ANTHROPIC_API_KEY` in the environment. craboodle doesn't read or forward the key itself; export it in your shell (`export ANTHROPIC_API_KEY=…`) before running.
 
-**`No scenarios found in <dir>`** — craboodle expects `<dir>/<scenario-id>/scenario.yaml` files. Scaffold a starter suite with `craboodle init <dir>`, or check that your scenarios live one level deeper than you passed.
+**`No scenarios found`** — craboodle expects `<root>/evals/<scenario-id>/scenario.yaml` files (the `evals/` subdirectory name is configurable via `scenarios.path` in `evals.yaml`). Scaffold a starter `evals.yaml` with `craboodle init <root>`, or check that your scenarios live under `evals/`.
 
 ## Exit Codes
 

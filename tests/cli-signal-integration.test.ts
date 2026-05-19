@@ -111,12 +111,18 @@ describe('cli signal handling (integration)', () => {
     await mkdir(stubDir);
     await writeFile(pidFile, '');
 
-    // Minimal evals dir with one scenario
-    await writeFile(join(evalsDir, 'craboodle.yaml'), stringify({ version: '1' }));
-    await mkdir(join(evalsDir, 'alpha'));
-    await writeFile(join(evalsDir, 'alpha', 'scenario.yaml'), stringify({ prompt: 'hello\n' }));
+    // Minimal eval root: evals.yaml at the root, scenario(s) under evals/.
     await writeFile(
-      join(evalsDir, 'alpha', 'checks.yaml'),
+      join(evalsDir, 'evals.yaml'),
+      stringify({ version: '1', scenarios: { base: {} } }),
+    );
+    await mkdir(join(evalsDir, 'evals', 'alpha'), { recursive: true });
+    await writeFile(
+      join(evalsDir, 'evals', 'alpha', 'scenario.yaml'),
+      stringify({ prompt: 'hello\n' }),
+    );
+    await writeFile(
+      join(evalsDir, 'evals', 'alpha', 'checks.yaml'),
       stringify({
         context: 'alpha context',
         checks: [{ 'check-a': { check: 'alpha check', note: 'note' } }],

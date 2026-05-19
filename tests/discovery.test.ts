@@ -15,41 +15,82 @@ describe('discovery', () => {
     await rm(tmpDir, { recursive: true });
   });
 
-  it('discovers scenario directories containing scenario.yaml', async () => {
+  it('discovers scenario directories under <root>/<scenariosPath>', async () => {
     const { discoverScenarios } = await import('../src/discovery.js');
 
-    await mkdir(join(tmpDir, 'scenario-a'));
-    await writeFile(join(tmpDir, 'scenario-a', 'scenario.yaml'), 'prompt: hi\n');
-    await mkdir(join(tmpDir, 'scenario-b'));
-    await writeFile(join(tmpDir, 'scenario-b', 'scenario.yaml'), 'prompt: hi\n');
+    await mkdir(join(tmpDir, 'evals'));
+    await mkdir(join(tmpDir, 'evals', 'scenario-a'));
+    await writeFile(join(tmpDir, 'evals', 'scenario-a', 'scenario.yaml'), 'prompt: hi\n');
+    await mkdir(join(tmpDir, 'evals', 'scenario-b'));
+    await writeFile(join(tmpDir, 'evals', 'scenario-b', 'scenario.yaml'), 'prompt: hi\n');
 
-    const scenarios = await discoverScenarios(tmpDir);
+    const scenarios = await discoverScenarios(tmpDir, 'evals');
 
     expect(scenarios).toHaveLength(2);
     expect(scenarios[0].id).toBe('scenario-a');
     expect(scenarios[1].id).toBe('scenario-b');
-    expect(scenarios[0].configPath).toBe(join(tmpDir, 'scenario-a', 'scenario.yaml'));
+    expect(scenarios[0].configPath).toBe(join(tmpDir, 'evals', 'scenario-a', 'scenario.yaml'));
+  });
+
+  it("defaults scenariosPath to 'evals' when omitted", async () => {
+    const { discoverScenarios } = await import('../src/discovery.js');
+
+    await mkdir(join(tmpDir, 'evals'));
+    await mkdir(join(tmpDir, 'evals', 'only'));
+    await writeFile(join(tmpDir, 'evals', 'only', 'scenario.yaml'), 'prompt: hi\n');
+
+    const scenarios = await discoverScenarios(tmpDir);
+
+    expect(scenarios).toHaveLength(1);
+    expect(scenarios[0].id).toBe('only');
+  });
+
+  it('honours a custom scenariosPath', async () => {
+    const { discoverScenarios } = await import('../src/discovery.js');
+
+    await mkdir(join(tmpDir, 'my-evals'));
+    await mkdir(join(tmpDir, 'my-evals', 'custom'));
+    await writeFile(join(tmpDir, 'my-evals', 'custom', 'scenario.yaml'), 'prompt: hi\n');
+    // Also write a stale 'evals/' tree that the default would have picked up
+    await mkdir(join(tmpDir, 'evals'));
+    await mkdir(join(tmpDir, 'evals', 'stale'));
+    await writeFile(join(tmpDir, 'evals', 'stale', 'scenario.yaml'), 'prompt: hi\n');
+
+    const scenarios = await discoverScenarios(tmpDir, 'my-evals');
+
+    expect(scenarios).toHaveLength(1);
+    expect(scenarios[0].id).toBe('custom');
   });
 
   it('sorts scenarios alphabetically by ID', async () => {
     const { discoverScenarios } = await import('../src/discovery.js');
 
-    await mkdir(join(tmpDir, 'zebra'));
-    await writeFile(join(tmpDir, 'zebra', 'scenario.yaml'), 'prompt: hi\n');
-    await mkdir(join(tmpDir, 'alpha'));
-    await writeFile(join(tmpDir, 'alpha', 'scenario.yaml'), 'prompt: hi\n');
-    await mkdir(join(tmpDir, 'middle'));
-    await writeFile(join(tmpDir, 'middle', 'scenario.yaml'), 'prompt: hi\n');
+    await mkdir(join(tmpDir, 'evals'));
+    await mkdir(join(tmpDir, 'evals', 'zebra'));
+    await writeFile(join(tmpDir, 'evals', 'zebra', 'scenario.yaml'), 'prompt: hi\n');
+    await mkdir(join(tmpDir, 'evals', 'alpha'));
+    await writeFile(join(tmpDir, 'evals', 'alpha', 'scenario.yaml'), 'prompt: hi\n');
+    await mkdir(join(tmpDir, 'evals', 'middle'));
+    await writeFile(join(tmpDir, 'evals', 'middle', 'scenario.yaml'), 'prompt: hi\n');
 
-    const scenarios = await discoverScenarios(tmpDir);
+    const scenarios = await discoverScenarios(tmpDir, 'evals');
 
     expect(scenarios.map((s) => s.id)).toEqual(['alpha', 'middle', 'zebra']);
   });
 
-  it('returns empty array for empty evals dir', async () => {
+  it('returns empty array when scenariosPath has no scenarios', async () => {
+    const { discoverScenarios } = await import('../src/discovery.js');
+    await mkdir(join(tmpDir, 'evals'));
+
+    const scenarios = await discoverScenarios(tmpDir, 'evals');
+
+    expect(scenarios).toEqual([]);
+  });
+
+  it('returns empty array when scenariosPath does not exist', async () => {
     const { discoverScenarios } = await import('../src/discovery.js');
 
-    const scenarios = await discoverScenarios(tmpDir);
+    const scenarios = await discoverScenarios(tmpDir, 'evals');
 
     expect(scenarios).toEqual([]);
   });
@@ -57,12 +98,13 @@ describe('discovery', () => {
   it('ignores directories without scenario.yaml', async () => {
     const { discoverScenarios } = await import('../src/discovery.js');
 
-    await mkdir(join(tmpDir, 'has-scenario'));
-    await writeFile(join(tmpDir, 'has-scenario', 'scenario.yaml'), 'prompt: hi\n');
-    await mkdir(join(tmpDir, 'no-scenario'));
-    await writeFile(join(tmpDir, 'no-scenario', 'other.yaml'), 'foo: bar\n');
+    await mkdir(join(tmpDir, 'evals'));
+    await mkdir(join(tmpDir, 'evals', 'has-scenario'));
+    await writeFile(join(tmpDir, 'evals', 'has-scenario', 'scenario.yaml'), 'prompt: hi\n');
+    await mkdir(join(tmpDir, 'evals', 'no-scenario'));
+    await writeFile(join(tmpDir, 'evals', 'no-scenario', 'other.yaml'), 'foo: bar\n');
 
-    const scenarios = await discoverScenarios(tmpDir);
+    const scenarios = await discoverScenarios(tmpDir, 'evals');
 
     expect(scenarios).toHaveLength(1);
     expect(scenarios[0].id).toBe('has-scenario');
@@ -71,27 +113,46 @@ describe('discovery', () => {
   it('discovers scenario directories with .yml extension', async () => {
     const { discoverScenarios } = await import('../src/discovery.js');
 
-    await mkdir(join(tmpDir, 'yaml-ext'));
-    await writeFile(join(tmpDir, 'yaml-ext', 'scenario.yaml'), 'prompt: hi\n');
-    await mkdir(join(tmpDir, 'yml-ext'));
-    await writeFile(join(tmpDir, 'yml-ext', 'scenario.yml'), 'prompt: hi\n');
+    await mkdir(join(tmpDir, 'evals'));
+    await mkdir(join(tmpDir, 'evals', 'yaml-ext'));
+    await writeFile(join(tmpDir, 'evals', 'yaml-ext', 'scenario.yaml'), 'prompt: hi\n');
+    await mkdir(join(tmpDir, 'evals', 'yml-ext'));
+    await writeFile(join(tmpDir, 'evals', 'yml-ext', 'scenario.yml'), 'prompt: hi\n');
 
-    const scenarios = await discoverScenarios(tmpDir);
+    const scenarios = await discoverScenarios(tmpDir, 'evals');
 
     expect(scenarios).toHaveLength(2);
     expect(scenarios.map((s) => s.id)).toEqual(['yaml-ext', 'yml-ext']);
   });
 
-  it('ignores files at evals dir root', async () => {
+  it('ignores files at scenariosPath root', async () => {
     const { discoverScenarios } = await import('../src/discovery.js');
 
-    await writeFile(join(tmpDir, 'base.yaml'), 'model: sonnet\n');
-    await mkdir(join(tmpDir, 'scenario-a'));
-    await writeFile(join(tmpDir, 'scenario-a', 'scenario.yaml'), 'prompt: hi\n');
+    await mkdir(join(tmpDir, 'evals'));
+    await writeFile(join(tmpDir, 'evals', 'README.md'), 'unrelated\n');
+    await mkdir(join(tmpDir, 'evals', 'scenario-a'));
+    await writeFile(join(tmpDir, 'evals', 'scenario-a', 'scenario.yaml'), 'prompt: hi\n');
 
-    const scenarios = await discoverScenarios(tmpDir);
+    const scenarios = await discoverScenarios(tmpDir, 'evals');
 
     expect(scenarios).toHaveLength(1);
+  });
+
+  it('ignores entries in the root that are not under scenariosPath', async () => {
+    const { discoverScenarios } = await import('../src/discovery.js');
+
+    // Top-level look-alike that must NOT be picked up
+    await mkdir(join(tmpDir, 'pretend-scenario'));
+    await writeFile(join(tmpDir, 'pretend-scenario', 'scenario.yaml'), 'prompt: hi\n');
+    // Real scenario under evals/
+    await mkdir(join(tmpDir, 'evals'));
+    await mkdir(join(tmpDir, 'evals', 'real'));
+    await writeFile(join(tmpDir, 'evals', 'real', 'scenario.yaml'), 'prompt: hi\n');
+
+    const scenarios = await discoverScenarios(tmpDir, 'evals');
+
+    expect(scenarios).toHaveLength(1);
+    expect(scenarios[0].id).toBe('real');
   });
 });
 

@@ -1,0 +1,20 @@
+version: "1"
+min_pass_rate: 0.8
+# Example: a generic eval suite (no skill / plugin marker).
+# Demonstrates injecting CLAUDE.md instructions via scuttlerun.
+
+scenarios:
+  base:
+    model: claude-haiku-4-5
+    tools:
+      - Read
+      - Write
+      - Edit
+      - Bash
+      - Glob
+      - Grep
+    project:
+      claude_md: |
+        ## Development Rules
+        Always write tests before production code. No exceptions. Create a
+        test file first, then write the implementation to make the tests pass.

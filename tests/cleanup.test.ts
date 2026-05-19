@@ -85,6 +85,32 @@ describe('cleanOldArtifacts', () => {
     }
   });
 
+  it('removes craboodle-staged dirs older than threshold', async () => {
+    const { cleanOldArtifacts } = await import('../src/cleanup.js');
+    const oldDir = await createOldDir('craboodle-staged-test-old-' + Date.now(), 10);
+
+    try {
+      const cleaned = await cleanOldArtifacts(7);
+      expect(cleaned).toBeGreaterThanOrEqual(1);
+      await expect(stat(oldDir)).rejects.toThrow();
+    } finally {
+      await rm(oldDir, { recursive: true }).catch(() => {});
+    }
+  });
+
+  it('preserves craboodle-staged dirs newer than threshold', async () => {
+    const { cleanOldArtifacts } = await import('../src/cleanup.js');
+    const freshDir = await createFreshDir('craboodle-staged-test-fresh-' + Date.now());
+
+    try {
+      await cleanOldArtifacts(7);
+      const info = await stat(freshDir);
+      expect(info.isDirectory()).toBe(true);
+    } finally {
+      await rm(freshDir, { recursive: true }).catch(() => {});
+    }
+  });
+
   it('logs to stderr when verbose and dirs were cleaned', async () => {
     const { cleanOldArtifacts } = await import('../src/cleanup.js');
     const oldDir = await createOldDir('craboodle-run-test-verbose-' + Date.now(), 10);
