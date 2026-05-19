@@ -7,7 +7,8 @@
 --   - Scenario discovery, repetition averaging, streaming YAML output
 --   - Ratchet and budget gates (mid-run fail-fast)
 --   - Artifact directory lifecycle and garbage collection
---   - craboodle.yaml load-time validation
+--   - evals.yaml load-time validation
+--   - Staged filtered view of the eval root (one tempdir per invocation)
 -- Excludes:
 --   - Scuttlerun session behaviour (external; modelled as a contract)
 --   - Pincenez grading and lint logic (external; modelled as contracts)
@@ -17,7 +18,7 @@
 -- Exit code taxonomy (shared with scuttlerun and pincenez):
 --   0    pipeline completed (some rep succeeded; ratchet not violated)
 --   1    configuration / input error, or lint found issues
---   2    uncaught runtime exception (incl. craboodle.yaml load failure)
+--   2    uncaught runtime exception (incl. evals.yaml load failure)
 --   3    ratchet failure (any scenario below min_pass_rate)
 --   4    infrastructure / dependency error
 --          (no scenarios, empty filter, zero successful reps across all
@@ -31,8 +32,10 @@
 config {
     default_repeats: Integer = 3
     default_concurrency: Integer = 10
+    default_scenarios_path: String = "evals"
     artifact_retention_days: Integer = 7   -- 0 disables cleanup
     artifact_prefix: String = "craboodle-run-"
+    staged_view_prefix: String = "craboodle-staged-"
     supported_config_versions: Set<String> = {"1"}
 }
 
@@ -110,29 +113,50 @@ actor Operator {
 -- Inputs
 -- ============================================================================
 
-entity EvalDirectory {
+-- The directory containing evals.yaml. The same directory typically also
+-- contains SKILL.md (skill mode) or .claude-plugin/plugin.json (plugin mode);
+-- mode = generic when neither marker is present and skill paths in
+-- scenarios.base.project.skills must be absolute or ~-prefixed.
+entity EvalRoot {
     path: String
-    base_config: ScuttlerunConfig?
-    scenarios: Set<Scenario> with eval_directory = this
-    craboodle_config: CraboodleConfig? with eval_directory = this
-
-    has_craboodle_config: craboodle_config != null
-    has_base_config: base_config != null
+    mode: skill | plugin | generic
+    evals_config: EvalsConfig with eval_root = this
+    scenarios: Set<Scenario> with eval_root = this
 }
 
 entity Scenario {
-    eval_directory: EvalDirectory
+    eval_root: EvalRoot
     id: String
     scenario_config: ScuttlerunConfig
     checks_config: ChecksConfig
 }
 
-entity CraboodleConfig {
-    eval_directory: EvalDirectory
+-- The parsed evals.yaml file at <eval_root>/evals.yaml. The top-level
+-- pipeline knobs (min_pass_rate, max_budget_usd, repeats, retention) sit
+-- alongside scenarios.base, which is an opaque scuttlerun config block
+-- applied to every scenario.
+entity EvalsConfig {
+    eval_root: EvalRoot
     version: String
     min_pass_rate: Decimal?
     max_budget_usd: Decimal?
     repeats_override: Integer?
+    artifact_retention_days_override: Integer?
+    scenarios_path: String                  -- defaults to config.default_scenarios_path
+    scenarios_base: ScuttlerunConfig        -- opaque to craboodle; passed to scuttlerun
+}
+
+-- A per-invocation tempdir that mirrors eval_root, symlinking every child
+-- except scenarios_path. scenarios.base is materialised into the staged
+-- view as .craboodle-base.yaml so scuttlerun can be invoked with a pair of
+-- file paths (its existing two-config-file API). The basename of the
+-- staged root is preserved from eval_root so self-referential
+-- project.skills: [.] resolves cleanly. Staged views are GC'd by the same
+-- retention window as artifact_dir.
+entity StagedView {
+    path: String                            -- <tmpdir>/<staged_view_prefix>X/<basename(eval_root.path)>
+    base_config_path: String                -- <path>/.craboodle-base.yaml
+    excluded_path: String                   -- = eval_root.evals_config.scenarios_path
 }
 
 -- ============================================================================
@@ -141,7 +165,7 @@ entity CraboodleConfig {
 
 entity RunInvocation {
     operator: Operator
-    eval_directory: EvalDirectory
+    eval_root: EvalRoot
     repeats: Integer
     concurrency: Integer
     scenario_filter: String?
@@ -151,6 +175,7 @@ entity RunInvocation {
     status: starting | discovering | streaming | completed | failed
     exit_code: Integer when status = completed | failed
     artifact_dir: String when status = streaming | completed
+    staged_view: StagedView? with invocation = this
 
     work_items: Set<WorkItem> with invocation = this
     scenario_results: Set<ScenarioResult> with invocation = this
@@ -158,9 +183,9 @@ entity RunInvocation {
     -- Projections
     selected_scenarios:
         if scenario_filter != null:
-            eval_directory.scenarios where matches_pattern(id, scenario_filter)
+            eval_root.scenarios where matches_pattern(id, scenario_filter)
         else:
-            eval_directory.scenarios
+            eval_root.scenarios
 
     queued_items: work_items where status = queued
     successful_items: work_items where status = succeeded
@@ -177,14 +202,14 @@ entity RunInvocation {
     total_cost_usd: sum_decimals(scenario_results.cost_usd)
 
     budget_exceeded:
-        eval_directory.craboodle_config?.max_budget_usd != null
-        and cumulative_cost_usd > eval_directory.craboodle_config.max_budget_usd
+        eval_root.evals_config.max_budget_usd != null
+        and cumulative_cost_usd > eval_root.evals_config.max_budget_usd
 
     fail_fast_triggered:
-        eval_directory.craboodle_config?.min_pass_rate != null
+        eval_root.evals_config.min_pass_rate != null
         and scenario_results.any(s =>
             s.pass_rate = null
-            or s.pass_rate < eval_directory.craboodle_config.min_pass_rate)
+            or s.pass_rate < eval_root.evals_config.min_pass_rate)
 
     interrupt_requested: Boolean = false
 
@@ -199,20 +224,21 @@ entity RunInvocation {
 
 entity ListInvocation {
     operator: Operator
-    eval_directory: EvalDirectory
+    eval_root: EvalRoot
     scenario_filter: String?
 
     status: starting | discovering | streaming | completed | failed
     exit_code: Integer when status = completed | failed
+    staged_view: StagedView? with invocation = this
 
     list_entries: Set<ListEntry> with invocation = this
     invalid_entries: list_entries where not valid
 
     selected_scenarios:
         if scenario_filter != null:
-            eval_directory.scenarios where matches_pattern(id, scenario_filter)
+            eval_root.scenarios where matches_pattern(id, scenario_filter)
         else:
-            eval_directory.scenarios
+            eval_root.scenarios
 
     all_entries_done: list_entries.count = selected_scenarios.count
     any_invalid: list_entries.any(e => not e.valid)
@@ -232,22 +258,23 @@ entity ListInvocation {
 
 entity LintInvocation {
     operator: Operator
-    eval_directory: EvalDirectory
+    eval_root: EvalRoot
     scenario_filter: String?
     concurrency: Integer
     grader_model_override: String?
 
     status: starting | discovering | streaming | completed | failed
     exit_code: Integer when status = completed | failed
+    staged_view: StagedView? with invocation = this
 
     lint_results: Set<LintScenarioResult> with invocation = this
     results_with_issues: lint_results where checks_with_issues > 0
 
     selected_scenarios:
         if scenario_filter != null:
-            eval_directory.scenarios where matches_pattern(id, scenario_filter)
+            eval_root.scenarios where matches_pattern(id, scenario_filter)
         else:
-            eval_directory.scenarios
+            eval_root.scenarios
 
     all_lint_invocations_done: lint_results.count = selected_scenarios.count
     total_issues: sum_integers(lint_results.checks_with_issues)
@@ -271,7 +298,7 @@ entity InitInvocation {
     target_dir: String
 
     status: starting | refused | created
-    refusal_reason: existing_craboodle_yaml | existing_scenario_files
+    refusal_reason: existing_evals_yaml | existing_scenario_files
         when status = refused
     exit_code: Integer when status = refused | created
 
@@ -372,14 +399,14 @@ entity LintScenarioResult {
 rule StartRun {
     when: RunInvoked(operator, evals_dir, raw_repeats?, raw_concurrency?,
                      scenario_filter?, agent_model?, grader_model?)
-    let dir = eval_directory_at(evals_dir)
+    let dir = eval_root_at(evals_dir)
     let effective_repeats =
         raw_repeats
-        ?? dir.craboodle_config?.repeats_override
+        ?? dir.evals_config.repeats_override
         ?? config.default_repeats
     ensures: RunInvocation.created(
         operator: operator,
-        eval_directory: dir,
+        eval_root: dir,
         repeats: effective_repeats,
         concurrency: raw_concurrency ?? config.default_concurrency,
         scenario_filter: scenario_filter,
@@ -395,21 +422,25 @@ rule BeginRunDiscovery {
     ensures: inv.status = discovering
 }
 
--- Garbage-collect prior artifact directories older than the retention window.
--- Best-effort: the current run's directory does not exist yet at this point;
--- per-directory failures are silently ignored. When config.artifact_retention_days
--- is 0, cleanup is disabled.
+-- Garbage-collect prior artifact and staged-view tempdirs older than the
+-- retention window. Best-effort: the current run's directories do not exist
+-- yet at this point; per-directory failures are silently ignored. When
+-- config.artifact_retention_days is 0 (or the evals.yaml override is 0),
+-- cleanup is disabled.
 rule CleanOldRunArtifacts {
     when: inv: RunInvocation.status transitions_to discovering
-    requires: config.artifact_retention_days > 0
+    let retention =
+        inv.eval_root.evals_config.artifact_retention_days_override
+        ?? config.artifact_retention_days
+    requires: retention > 0
     ensures: clean_old_artifacts(
-        prefix: config.artifact_prefix,
-        older_than: now - config.artifact_retention_days.days)
+        prefixes: {config.artifact_prefix, config.staged_view_prefix},
+        older_than: now - retention.days)
 }
 
 rule FailRunNoScenarios {
     when: inv: RunInvocation.status transitions_to discovering
-    requires: inv.eval_directory.scenarios.count = 0
+    requires: inv.eval_root.scenarios.count = 0
     ensures: inv.status = failed
     ensures: inv.exit_code = 4
     ensures: emit_stderr("No scenarios found")
@@ -418,23 +449,38 @@ rule FailRunNoScenarios {
 rule FailRunFilterEmpty {
     when: inv: RunInvocation.status transitions_to discovering
     requires: inv.scenario_filter != null
-    requires: inv.eval_directory.scenarios.count > 0
+    requires: inv.eval_root.scenarios.count > 0
     requires: inv.selected_scenarios.count = 0
     ensures: inv.status = failed
     ensures: inv.exit_code = 4
     ensures: emit_stderr("No scenarios match filter")
 }
 
--- Validation passed: create the artifact directory and transition into
--- streaming. The header is emitted on the transition into streaming so it
--- is never written for a run that fails discovery.
+-- Validation passed: create the artifact directory, stage a filtered view
+-- of eval_root, and transition into streaming. The header is emitted on
+-- the transition into streaming so it is never written for a run that
+-- fails discovery.
 rule BeginRunStreaming {
     when: inv: RunInvocation.status transitions_to discovering
-    requires: inv.eval_directory.scenarios.count > 0
+    requires: inv.eval_root.scenarios.count > 0
     requires: inv.selected_scenarios.count > 0
     ensures: inv.artifact_dir =
         create_temp_dir(prefix: config.artifact_prefix)
+    ensures: inv.staged_view = stage_eval_root(
+        eval_root: inv.eval_root,
+        scenarios_base: inv.eval_root.evals_config.scenarios_base,
+        excluded_path: inv.eval_root.evals_config.scenarios_path,
+        prefix: config.staged_view_prefix)
     ensures: inv.status = streaming
+    @guidance
+        -- stage_eval_root creates <tmpdir>/<staged_view_prefix>X/<basename>/,
+        -- symlinks every direct child of eval_root.path into it except
+        -- evals_config.scenarios_path, and materialises evals_config.scenarios_base
+        -- as <basename>/.craboodle-base.yaml. Scuttlerun is then invoked with
+        -- (.craboodle-base.yaml, scenario.yaml), and its first-config-file's
+        -- directory rule means the staged root becomes its working project
+        -- root. Self-referential project.skills: [.] resolves to the staged
+        -- root, whose basename is preserved from eval_root.path.
 }
 
 rule StreamRunHeader {
@@ -645,10 +691,10 @@ rule ExitRunSuccess {
 
 rule StartList {
     when: ListInvoked(operator, evals_dir, scenario_filter?)
-    let dir = eval_directory_at(evals_dir)
+    let dir = eval_root_at(evals_dir)
     ensures: ListInvocation.created(
         operator: operator,
-        eval_directory: dir,
+        eval_root: dir,
         scenario_filter: scenario_filter,
         status: starting
     )
@@ -662,7 +708,7 @@ rule BeginListDiscovery {
 
 rule FailListNoScenarios {
     when: inv: ListInvocation.status transitions_to discovering
-    requires: inv.eval_directory.scenarios.count = 0
+    requires: inv.eval_root.scenarios.count = 0
     ensures: inv.status = failed
     ensures: inv.exit_code = 4
     ensures: emit_stderr("No scenarios found")
@@ -671,7 +717,7 @@ rule FailListNoScenarios {
 rule FailListFilterEmpty {
     when: inv: ListInvocation.status transitions_to discovering
     requires: inv.scenario_filter != null
-    requires: inv.eval_directory.scenarios.count > 0
+    requires: inv.eval_root.scenarios.count > 0
     requires: inv.selected_scenarios.count = 0
     ensures: inv.status = failed
     ensures: inv.exit_code = 4
@@ -680,13 +726,20 @@ rule FailListFilterEmpty {
 
 rule BeginListStreaming {
     when: inv: ListInvocation.status transitions_to discovering
-    requires: inv.eval_directory.scenarios.count > 0
+    requires: inv.eval_root.scenarios.count > 0
     requires: inv.selected_scenarios.count > 0
+    ensures: inv.staged_view = stage_eval_root(
+        eval_root: inv.eval_root,
+        scenarios_base: inv.eval_root.evals_config.scenarios_base,
+        excluded_path: inv.eval_root.evals_config.scenarios_path,
+        prefix: config.staged_view_prefix)
     ensures: inv.status = streaming
 }
 
 -- For each selected scenario: count its checks and validate the merged
--- scuttlerun config via dry_run. The entry records validity + any error.
+-- scuttlerun config via dry_run. The base config materialised inside the
+-- staged view is what scuttlerun dry-runs against; this matches the run
+-- command's invocation shape so list and run agree on validity.
 rule ListValidateAndEmit {
     when: inv: ListInvocation.status transitions_to streaming
     for scenario in inv.selected_scenarios:
@@ -696,10 +749,10 @@ rule ListValidateAndEmit {
             check_count: scenario.checks_config.check_count,
             valid: scuttlerun_dry_run_valid(
                 scenario_config: scenario.scenario_config,
-                base_config: inv.eval_directory.base_config),
+                base_config_path: inv.staged_view.base_config_path),
             error_message: scuttlerun_dry_run_error(
                 scenario_config: scenario.scenario_config,
-                base_config: inv.eval_directory.base_config)
+                base_config_path: inv.staged_view.base_config_path)
         )
         ensures: emit_list_entry(scenario.id)
 }
@@ -729,10 +782,10 @@ rule ExitListSuccess {
 rule StartLint {
     when: LintInvoked(operator, evals_dir, raw_concurrency?, scenario_filter?,
                       grader_model?)
-    let dir = eval_directory_at(evals_dir)
+    let dir = eval_root_at(evals_dir)
     ensures: LintInvocation.created(
         operator: operator,
-        eval_directory: dir,
+        eval_root: dir,
         scenario_filter: scenario_filter,
         concurrency: raw_concurrency ?? config.default_concurrency,
         grader_model_override: grader_model,
@@ -748,7 +801,7 @@ rule BeginLintDiscovery {
 
 rule FailLintNoScenarios {
     when: inv: LintInvocation.status transitions_to discovering
-    requires: inv.eval_directory.scenarios.count = 0
+    requires: inv.eval_root.scenarios.count = 0
     ensures: inv.status = failed
     ensures: inv.exit_code = 4
     ensures: emit_stderr("No scenarios found")
@@ -757,7 +810,7 @@ rule FailLintNoScenarios {
 rule FailLintFilterEmpty {
     when: inv: LintInvocation.status transitions_to discovering
     requires: inv.scenario_filter != null
-    requires: inv.eval_directory.scenarios.count > 0
+    requires: inv.eval_root.scenarios.count > 0
     requires: inv.selected_scenarios.count = 0
     ensures: inv.status = failed
     ensures: inv.exit_code = 4
@@ -766,8 +819,13 @@ rule FailLintFilterEmpty {
 
 rule BeginLintStreaming {
     when: inv: LintInvocation.status transitions_to discovering
-    requires: inv.eval_directory.scenarios.count > 0
+    requires: inv.eval_root.scenarios.count > 0
     requires: inv.selected_scenarios.count > 0
+    ensures: inv.staged_view = stage_eval_root(
+        eval_root: inv.eval_root,
+        scenarios_base: inv.eval_root.evals_config.scenarios_base,
+        excluded_path: inv.eval_root.evals_config.scenarios_path,
+        prefix: config.staged_view_prefix)
     ensures: inv.status = streaming
 }
 
@@ -855,20 +913,20 @@ rule StartInit {
     )
 }
 
-rule InitRefuseExistingCraboodle {
+rule InitRefuseExistingEvals {
     when: init: InitInvocation.created
     requires: init.status = starting
-    requires: file_exists(init.target_dir, "craboodle.yaml")
+    requires: file_exists(init.target_dir, "evals.yaml")
     ensures: init.status = refused
-    ensures: init.refusal_reason = existing_craboodle_yaml
+    ensures: init.refusal_reason = existing_evals_yaml
     ensures: init.exit_code = 1
-    ensures: emit_stderr("already contains craboodle.yaml")
+    ensures: emit_stderr("already contains evals.yaml")
 }
 
 rule InitRefuseExistingScenarios {
     when: init: InitInvocation.created
     requires: init.status = starting
-    requires: not file_exists(init.target_dir, "craboodle.yaml")
+    requires: not file_exists(init.target_dir, "evals.yaml")
     requires: scenario_files_present(init.target_dir)
     ensures: init.status = refused
     ensures: init.refusal_reason = existing_scenario_files
@@ -876,33 +934,39 @@ rule InitRefuseExistingScenarios {
     ensures: emit_stderr("already contains scenario files")
 }
 
+-- The scaffold writes a single evals.yaml. Its body is mode-flavoured:
+-- when SKILL.md is present the commented project.skills hint is `.`;
+-- when .claude-plugin/plugin.json is present, `skills/<first-skill>`;
+-- otherwise a generic placeholder. Detection is by filesystem probe of
+-- target_dir; the spec abstracts over which template variant is rendered.
 rule InitCreateScaffold {
     when: init: InitInvocation.created
     requires: init.status = starting
-    requires: not file_exists(init.target_dir, "craboodle.yaml")
+    requires: not file_exists(init.target_dir, "evals.yaml")
     requires: not scenario_files_present(init.target_dir)
-    ensures: write_scaffold(init.target_dir, "craboodle.yaml",
-                            craboodle_template)
-    ensures: write_scaffold(init.target_dir, "base.yaml", base_template)
+    ensures: write_scaffold(init.target_dir, "evals.yaml",
+                            evals_template_for(init.target_dir))
     ensures: init.status = created
     ensures: init.exit_code = 0
 }
 
 -- ============================================================================
--- craboodle.yaml validation (eager, at load time)
+-- evals.yaml validation (eager, at load time)
 -- ============================================================================
 
 rule RejectUnknownConfigKeys {
-    when: cfg: CraboodleConfig.created
-    requires: craboodle_yaml_has_unknown_keys(cfg.eval_directory.path)
+    when: cfg: EvalsConfig.created
+    requires: evals_yaml_has_unknown_keys(cfg.eval_root.path)
     @guidance
         -- Load fails with exit 2; the rejecting invocation never reaches
-        -- the state machine above. Recognised keys are: version,
-        -- min_pass_rate, max_budget_usd, repeats.
+        -- the state machine above. Recognised top-level keys are: version,
+        -- min_pass_rate, max_budget_usd, repeats, artifact_retention_days,
+        -- scenarios. Inside scenarios: path, base. The base block itself
+        -- is not validated by craboodle; that contract belongs to scuttlerun.
 }
 
 rule RejectUnsupportedVersion {
-    when: cfg: CraboodleConfig.created
+    when: cfg: EvalsConfig.created
     requires: cfg.version not in config.supported_config_versions
     @guidance
         -- Load fails with exit 2. Bumping the supported version set means
@@ -911,7 +975,7 @@ rule RejectUnsupportedVersion {
 }
 
 rule RejectInvalidMinPassRate {
-    when: cfg: CraboodleConfig.created
+    when: cfg: EvalsConfig.created
     requires: cfg.min_pass_rate != null
     requires: cfg.min_pass_rate < 0 or cfg.min_pass_rate > 1
     @guidance
@@ -970,8 +1034,8 @@ surface ListCommand {
         ListInvoked(operator, evals_dir, scenario_filter?)
 
     exposes:
-        invocation.eval_directory.craboodle_config?.version
-        invocation.eval_directory.craboodle_config?.min_pass_rate
+        invocation.eval_root.evals_config.version
+        invocation.eval_root.evals_config.min_pass_rate
         invocation.list_entries
         invocation.total_scenarios
         invocation.total_checks
@@ -989,9 +1053,9 @@ surface ListCommand {
 
     @guarantee ListBaseHeader
         -- Before the scenarios block, a `base:` header summarises the
-        -- craboodle-level config: version and min_pass_rate are included
-        -- only when present in craboodle.yaml. The header is emitted even
-        -- when both fields are absent (as an empty mapping).
+        -- pipeline-level fields from evals.yaml. version is always present
+        -- (required by the schema); min_pass_rate is included only when
+        -- set. The header is emitted even when min_pass_rate is absent.
 
     @guarantee ListTotalsFooter
         -- After the scenarios block, a `total:` line summarises the
@@ -1057,9 +1121,9 @@ surface InitCommand {
         invocation.exit_code
 
     @guarantee RefusesOverwrite
-        -- If the target already contains craboodle.yaml or any scenario
-        -- directory with scenario.yaml, init refuses with exit code 1 and
-        -- writes nothing.
+        -- If the target already contains evals.yaml or any scenario
+        -- directory matching <scenarios_path>/<id>/scenario.{yaml,yml},
+        -- init refuses with exit code 1 and writes nothing.
 
     @guarantee InitSuccessMessage
         -- On successful scaffold, init writes a confirmation block to
@@ -1087,9 +1151,12 @@ contract Scuttlerun {
         -- grading subject.
 
     @invariant ConfigMergeIsScuttlerunsConcern
-        -- craboodle passes both files (base.yaml, scenario.yaml) to
-        -- scuttlerun and relies on scuttlerun's native merging. craboodle
-        -- never reads, merges or transforms either file.
+        -- craboodle materialises scenarios.base from evals.yaml as
+        -- .craboodle-base.yaml inside the staged view, then passes both
+        -- files (.craboodle-base.yaml, scenario.yaml) to scuttlerun and
+        -- relies on scuttlerun's native deep merge. craboodle never reads,
+        -- merges or transforms scenario.yaml; its only handling of
+        -- scenarios.base is to emit it verbatim into the staged file.
 }
 
 contract Pincenez {
@@ -1140,7 +1207,30 @@ invariant RatchetOnlyWhenConfigured {
     for inv in RunInvocations:
         inv.status = completed and inv.exit_code = 3
         implies
-        inv.eval_directory.craboodle_config?.min_pass_rate != null
+        inv.eval_root.evals_config.min_pass_rate != null
+}
+
+-- Generic mode (neither SKILL.md nor .claude-plugin/plugin.json present at
+-- the eval root) has no portable self-referential skill path. Relative
+-- paths inside scenarios.base.project.skills only resolve under skill or
+-- plugin mode; generic-mode suites must use absolute or ~-prefixed paths.
+invariant GenericModeForbidsRelativeSkills {
+    for root in EvalRoots:
+        root.mode in {skill, plugin}
+        or scenarios_base_skill_paths_are_anchored(root.evals_config.scenarios_base)
+}
+
+invariant StagedViewExistsWhenStreaming {
+    for inv in RunInvocations:
+        inv.status in {starting, discovering, failed}
+        or inv.staged_view != null
+}
+
+invariant StagedViewExcludesScenariosPath {
+    for inv in RunInvocations:
+        inv.staged_view = null
+        or inv.staged_view.excluded_path
+            = inv.eval_root.evals_config.scenarios_path
 }
 
 -- ============================================================================
