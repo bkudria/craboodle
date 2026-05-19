@@ -1,6 +1,6 @@
 {
   "name": "craboodle",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Eval pipeline orchestrator for Claude Code",
   "keywords": [
     "claude",
