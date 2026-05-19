@@ -1,9 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { tmpdir } from 'node:os';
 import { mkdtemp, mkdir, writeFile, readFile, chmod, rm } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
 import { stringify } from 'yaml';
+
+const CLI_PATH = join(dirname(fileURLToPath(import.meta.url)), '..', 'dist', 'cli.js');
 
 function waitForExit(child: ReturnType<typeof spawn>): Promise<{
   code: number | null;
@@ -145,7 +148,7 @@ describe('cli signal handling (integration)', () => {
   });
 
   it('run: SIGINT exits 130, prints cleanup message, leaves no zombie subprocesses', async () => {
-    const child = spawn('craboodle', ['run', '--repeats', '1', evalsDir], {
+    const child = spawn(process.execPath, [CLI_PATH, 'run', '--repeats', '1', evalsDir], {
       env: { ...process.env, PATH: `${stubDir}:${process.env.PATH}` },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -177,7 +180,7 @@ describe('cli signal handling (integration)', () => {
     await makeForkingStubBin(stubDir, 'scuttlerun', pidFile);
     await makeForkingStubBin(stubDir, 'pincenez', pidFile);
 
-    const child = spawn('craboodle', ['run', '--repeats', '1', evalsDir], {
+    const child = spawn(process.execPath, [CLI_PATH, 'run', '--repeats', '1', evalsDir], {
       env: { ...process.env, PATH: `${stubDir}:${process.env.PATH}` },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -201,7 +204,7 @@ describe('cli signal handling (integration)', () => {
   }, 20000);
 
   it('lint: SIGINT exits 130 and leaves no zombie subprocesses', async () => {
-    const child = spawn('craboodle', ['lint', evalsDir], {
+    const child = spawn(process.execPath, [CLI_PATH, 'lint', evalsDir], {
       env: { ...process.env, PATH: `${stubDir}:${process.env.PATH}` },
       stdio: ['ignore', 'pipe', 'pipe'],
     });

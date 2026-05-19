@@ -29,9 +29,15 @@ async function runWithRestrictedPath(
   }
 }
 
-async function runAndGetExit(args: string[]): Promise<number> {
+type ExtraEnv = Record<string, string>;
+
+function childEnv(extra?: ExtraEnv): NodeJS.ProcessEnv | undefined {
+  return extra ? { ...process.env, ...extra } : undefined;
+}
+
+async function runAndGetExit(args: string[], extraEnv?: ExtraEnv): Promise<number> {
   try {
-    await execFileAsync('craboodle', args);
+    await execFileAsync(process.execPath, [CLI_PATH, ...args], { env: childEnv(extraEnv) });
     return 0;
   } catch (err) {
     const e = err as { code?: number };
@@ -40,9 +46,14 @@ async function runAndGetExit(args: string[]): Promise<number> {
   }
 }
 
-async function runAndCapture(args: string[]): Promise<{ code: number; stderr: string }> {
+async function runAndCapture(
+  args: string[],
+  extraEnv?: ExtraEnv,
+): Promise<{ code: number; stderr: string }> {
   try {
-    const { stderr } = await execFileAsync('craboodle', args);
+    const { stderr } = await execFileAsync(process.execPath, [CLI_PATH, ...args], {
+      env: childEnv(extraEnv),
+    });
     return { code: 0, stderr };
   } catch (err) {
     const e = err as { code?: number; stderr?: string };
@@ -52,9 +63,12 @@ async function runAndCapture(args: string[]): Promise<{ code: number; stderr: st
 
 async function runAndCaptureAll(
   args: string[],
+  extraEnv?: ExtraEnv,
 ): Promise<{ code: number; stdout: string; stderr: string }> {
   try {
-    const { stdout, stderr } = await execFileAsync('craboodle', args);
+    const { stdout, stderr } = await execFileAsync(process.execPath, [CLI_PATH, ...args], {
+      env: childEnv(extraEnv),
+    });
     return { code: 0, stdout, stderr };
   } catch (err) {
     const e = err as { code?: number; stdout?: string; stderr?: string };
@@ -164,7 +178,9 @@ describe('cli exit codes (unified taxonomy)', () => {
           checks: [{ 'check-a': { check: 'alpha check', note: 'note' } }],
         }),
       );
-      const code = await runAndGetExit(['run', '--repeats', '1', tmpDir]);
+      const code = await runAndGetExit(['run', '--repeats', '1', tmpDir], {
+        CRABOODLE_STUB_SCUTTLERUN_EXIT: '5',
+      });
       expect(code).toBe(4);
     });
 
@@ -174,7 +190,7 @@ describe('cli exit codes (unified taxonomy)', () => {
       await writeFile(join(tmpDir, 'alpha', 'scenario.yaml'), stringify({ prompt: 'a\n' }));
       // Invalid checks.yaml structure — pincenez lint rejects it at load time (exit 1)
       await writeFile(join(tmpDir, 'alpha', 'checks.yaml'), 'not_a_checks_file: true\n');
-      const code = await runAndGetExit(['lint', tmpDir]);
+      const code = await runAndGetExit(['lint', tmpDir], { CRABOODLE_STUB_PINCENEZ_EXIT: '1' });
       expect(code).toBe(4);
     });
 
@@ -239,7 +255,9 @@ describe('cli exit codes (unified taxonomy)', () => {
         await writeFile(join(tmpDir, id, 'scenario.yaml'), stringify({ prompt: 'a\n' }));
         await writeFile(join(tmpDir, id, 'checks.yaml'), 'not_a_checks_file: true\n');
       }
-      const { stdout } = await runAndCaptureAll(['lint', tmpDir]);
+      const { stdout } = await runAndCaptureAll(['lint', tmpDir], {
+        CRABOODLE_STUB_PINCENEZ_EXIT: '1',
+      });
       // Per spec craboodle.allium:255, scenarios_total = lint_results.count
       // (successful invocations), not selected_scenarios.count.
       expect(stdout).toContain('scenarios_total: 0');

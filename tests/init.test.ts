@@ -1,16 +1,19 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { tmpdir } from 'node:os';
 import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { parse, stringify } from 'yaml';
 
 const execFileAsync = promisify(execFile);
 
+const CLI_PATH = join(dirname(fileURLToPath(import.meta.url)), '..', 'dist', 'cli.js');
+
 async function runAndCapture(args: string[]): Promise<{ code: number; stderr: string }> {
   try {
-    const { stderr } = await execFileAsync('craboodle', args);
+    const { stderr } = await execFileAsync(process.execPath, [CLI_PATH, ...args]);
     return { code: 0, stderr };
   } catch (err) {
     const e = err as { code?: number; stderr?: string };
@@ -31,7 +34,7 @@ describe('init', () => {
 
   it('creates craboodle.yaml and base.yaml with no example scenario', async () => {
     const initDir = join(tmpDir, 'evals');
-    await execFileAsync('craboodle', ['init', initDir]);
+    await execFileAsync(process.execPath, [CLI_PATH, 'init', initDir]);
 
     const craboodleContent = await readFile(join(initDir, 'craboodle.yaml'), 'utf8');
     const craboodleData = parse(craboodleContent);
@@ -43,7 +46,7 @@ describe('init', () => {
 
   it('base.yaml header documents the tools-array replace semantic', async () => {
     const initDir = join(tmpDir, 'evals');
-    await execFileAsync('craboodle', ['init', initDir]);
+    await execFileAsync(process.execPath, [CLI_PATH, 'init', initDir]);
 
     const baseContent = await readFile(join(initDir, 'base.yaml'), 'utf8');
     expect(baseContent).toMatch(/REPLACE/);
@@ -51,7 +54,7 @@ describe('init', () => {
 
   it('base.yaml documents additional_tools: as the additive pattern', async () => {
     const initDir = join(tmpDir, 'evals');
-    await execFileAsync('craboodle', ['init', initDir]);
+    await execFileAsync(process.execPath, [CLI_PATH, 'init', initDir]);
 
     const baseContent = await readFile(join(initDir, 'base.yaml'), 'utf8');
     expect(baseContent).toMatch(/^\s*#\s*additional_tools:/m);
@@ -59,7 +62,7 @@ describe('init', () => {
 
   it('base.yaml parses as empty (all fields commented)', async () => {
     const initDir = join(tmpDir, 'evals');
-    await execFileAsync('craboodle', ['init', initDir]);
+    await execFileAsync(process.execPath, [CLI_PATH, 'init', initDir]);
 
     const baseContent = await readFile(join(initDir, 'base.yaml'), 'utf8');
     const parsed = parse(baseContent);
@@ -68,7 +71,7 @@ describe('init', () => {
 
   it('omits min_pass_rate from the default template', async () => {
     const initDir = join(tmpDir, 'evals');
-    await execFileAsync('craboodle', ['init', initDir]);
+    await execFileAsync(process.execPath, [CLI_PATH, 'init', initDir]);
 
     const craboodleContent = await readFile(join(initDir, 'craboodle.yaml'), 'utf8');
     const craboodleData = parse(craboodleContent);
@@ -77,7 +80,7 @@ describe('init', () => {
 
   it('mentions min_pass_rate as a commented guidance line', async () => {
     const initDir = join(tmpDir, 'evals');
-    await execFileAsync('craboodle', ['init', initDir]);
+    await execFileAsync(process.execPath, [CLI_PATH, 'init', initDir]);
 
     const craboodleContent = await readFile(join(initDir, 'craboodle.yaml'), 'utf8');
     expect(craboodleContent).toMatch(/^\s*#.*min_pass_rate/m);
@@ -85,14 +88,14 @@ describe('init', () => {
 
   it('surfaces the repeats default value (3) in the scaffold', async () => {
     const initDir = join(tmpDir, 'evals');
-    await execFileAsync('craboodle', ['init', initDir]);
+    await execFileAsync(process.execPath, [CLI_PATH, 'init', initDir]);
 
     const craboodleContent = await readFile(join(initDir, 'craboodle.yaml'), 'utf8');
     expect(craboodleContent).toMatch(/^\s*#\s*repeats:.*\b3\b/m);
   });
 
   it('run --help documents CLI > config precedence for --repeats', async () => {
-    const { stdout } = await execFileAsync('craboodle', ['run', '--help']);
+    const { stdout } = await execFileAsync(process.execPath, [CLI_PATH, 'run', '--help']);
     expect(stdout).toContain('--repeats');
     expect(stdout).toMatch(/overrides\s+craboodle\.yaml|takes precedence/i);
   });
