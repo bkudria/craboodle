@@ -28,11 +28,11 @@ Ctrl+L
 Show
 
 # Show the checks so viewers know what's being graded.
-Type "cat examples/haiku-writer/topic-provided/checks.yaml"
+Type "cat examples/haiku-writer/evals/topic-provided/checks.yaml"
 Sleep 1s
 Enter
 Sleep 6s
-Type "cat examples/haiku-writer/topic-not-provided/checks.yaml"
+Type "cat examples/haiku-writer/evals/topic-not-provided/checks.yaml"
 Sleep 1s
 Enter
 Sleep 6s
