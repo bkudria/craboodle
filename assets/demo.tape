@@ -27,21 +27,18 @@ Enter
 Ctrl+L
 Show
 
-Sleep 1s
-# Show the scenario so viewers know what's being asked of the model.
-Type "cat examples/haiku-writer/topic-provided/scenario.yaml"
-Sleep 1s
-Enter 3
-Sleep 6s
-
 # Show the checks so viewers know what's being graded.
 Type "cat examples/haiku-writer/topic-provided/checks.yaml"
 Sleep 1s
-Enter 3
-Sleep 10s
+Enter
+Sleep 6s
+Type "cat examples/haiku-writer/topic-not-provided/checks.yaml"
+Sleep 1s
+Enter
+Sleep 6s
 
-# Run the eval pipeline for a single scenario, one repetition.
-Type "craboodle run ./examples/haiku-writer --scenarios topic-provided --repeats 1 --concurrency 1 | highlight"
+# Run the eval pipeline
+Type "craboodle run ./examples/haiku-writer | highlight"
 Sleep 2s
 Enter
 Wait@120s
