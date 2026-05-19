@@ -1,0 +1,17 @@
+version: "1"
+# Example: a standalone skill at the repo root, with eval scenarios under evals/.
+# Run: craboodle run examples/haiku-writer
+
+scenarios:
+  base:
+    model: claude-sonnet-4-6
+    tools:
+      - Read
+      - Write
+      - Bash
+      - Glob
+      - Grep
+      - Edit
+    project:
+      skills:
+        - .                            # self-reference: this directory is the skill
