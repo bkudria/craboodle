@@ -1,12 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { tmpdir } from 'node:os';
 import { mkdtemp, writeFile, mkdir, rm } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { stringify } from 'yaml';
 
 const execFileAsync = promisify(execFile);
+
+const CLI_PATH = join(dirname(fileURLToPath(import.meta.url)), '..', 'dist', 'cli.js');
 
 describe('list', () => {
   let tmpDir: string;
@@ -37,7 +40,7 @@ describe('list', () => {
       }),
     );
 
-    const { stdout } = await execFileAsync('craboodle', ['list', tmpDir]);
+    const { stdout } = await execFileAsync(process.execPath, [CLI_PATH, 'list', tmpDir]);
 
     // Should report 3 checks, not 2 (number of top-level keys: context + checks)
     expect(stdout).toContain('checks: 3');
@@ -65,7 +68,13 @@ describe('list', () => {
       }),
     );
 
-    const { stdout } = await execFileAsync('craboodle', ['list', '--scenario', 'alpha', tmpDir]);
+    const { stdout } = await execFileAsync(process.execPath, [
+      CLI_PATH,
+      'list',
+      '--scenario',
+      'alpha',
+      tmpDir,
+    ]);
 
     expect(stdout).toContain('id: alpha');
     expect(stdout).not.toContain('id: beta');

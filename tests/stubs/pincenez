@@ -1,0 +1,4 @@
+#!/bin/sh
+# Test stub for pincenez. See tests/stubs/scuttlerun for the pattern.
+# Exits 0 unless CRABOODLE_STUB_PINCENEZ_EXIT is set.
+exit "${CRABOODLE_STUB_PINCENEZ_EXIT:-0}"

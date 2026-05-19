@@ -1,0 +1,6 @@
+#!/bin/sh
+# Test stub for scuttlerun. Used when the real binary is not installed
+# (CI, fresh checkouts). Wired in via tests/setup-stubs.ts.
+# Exits 0 unless CRABOODLE_STUB_SCUTTLERUN_EXIT is set, which lets a test
+# simulate scuttlerun failing for a specific scenario.
+exit "${CRABOODLE_STUB_SCUTTLERUN_EXIT:-0}"
