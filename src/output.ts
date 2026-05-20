@@ -1,6 +1,38 @@
 import { parse, stringify, Document, Scalar, visit, isSeq, YAMLMap, YAMLSeq } from 'yaml';
 import type { Node } from 'yaml';
+import wrap from 'word-wrap';
 import { z } from 'zod/v4';
+
+export const LINE_WIDTH = 80;
+const ENTRY_PREFIX_WIDTH = 4;
+export const DOC_LINE_WIDTH = LINE_WIDTH - ENTRY_PREFIX_WIDTH;
+const HARD_WRAP_WIDTH = 72;
+const FOLD_THRESHOLD = 64;
+
+function hardWrapLines(text: string): string {
+  return text
+    .split('\n')
+    .map((line) =>
+      line.length <= HARD_WRAP_WIDTH
+        ? line
+        : wrap(line, { width: HARD_WRAP_WIDTH, indent: '', trim: true, cut: false }),
+    )
+    .join('\n');
+}
+
+function applyWrapStyles(doc: Document): void {
+  visit(doc, {
+    Scalar(_key, node) {
+      if (typeof node.value !== 'string') return;
+      if (node.value.includes('\n')) {
+        node.value = hardWrapLines(node.value);
+        node.type = Scalar.BLOCK_LITERAL;
+      } else if (node.value.length > FOLD_THRESHOLD) {
+        node.type = Scalar.BLOCK_FOLDED;
+      }
+    },
+  });
+}
 
 const GradingCheckSchema = z.object({
   id: z.string(),
@@ -134,46 +166,16 @@ export function averageResults(
   return { checks, pass_rate: scenarioPassRate };
 }
 
-function wordWrap(text: string, width: number): string {
-  const words = text.split(' ');
-  const lines: string[] = [];
-  let cur = '';
-  for (const word of words) {
-    if (cur.length === 0) {
-      cur = word;
-    } else if (cur.length + 1 + word.length <= width) {
-      cur += ' ' + word;
-    } else {
-      lines.push(cur);
-      cur = word;
-    }
-  }
-  if (cur) lines.push(cur);
-  return lines.join('\n');
-}
-
-function wrapAndBlockify(_key: unknown, node: Scalar): void {
-  if (typeof node.value !== 'string') return;
-  let value: string = node.value;
-  if (!value.includes('\n') && value.length > 80) {
-    value = wordWrap(value, 80);
-    node.value = value;
-  }
-  if (value.includes('\n')) {
-    node.type = Scalar.BLOCK_LITERAL;
-  }
-}
-
 export function writeYamlArrayItem(item: Record<string, unknown>): string {
   const doc = new Document(item);
-  visit(doc, { Scalar: wrapAndBlockify });
-  const serialized = doc.toString({ lineWidth: 0 }).trimEnd();
+  applyWrapStyles(doc);
+  const serialized = doc.toString({ lineWidth: DOC_LINE_WIDTH }).trimEnd();
   const lines = serialized.split('\n');
   return lines.map((line, i) => (i === 0 ? `  - ${line}` : `    ${line}`)).join('\n');
 }
 
 export function streamHeader(artifactDir: string): void {
-  process.stdout.write(stringify({ artifact_dir: artifactDir }, { lineWidth: 0 }));
+  process.stdout.write(stringify({ artifact_dir: artifactDir }, { lineWidth: LINE_WIDTH }));
   process.stdout.write('scenarios:\n');
 }
 
@@ -202,7 +204,7 @@ export function streamScenarioYaml(scenario: ScenarioOutput): void {
   const item = { [scenario.id]: content };
 
   const doc = new Document(item);
-  visit(doc, { Scalar: wrapAndBlockify });
+  applyWrapStyles(doc);
 
   // Add blank lines between items in all sequences (checks, failures, errors)
   visit(doc, (_key, node) => {
@@ -223,7 +225,7 @@ export function streamScenarioYaml(scenario: ScenarioOutput): void {
     }
   }
 
-  const serialized = doc.toString({ lineWidth: 0 }).trimEnd();
+  const serialized = doc.toString({ lineWidth: DOC_LINE_WIDTH }).trimEnd();
   const lines = serialized.split('\n');
   const yamlItem = lines
     .map((line, i) => {
@@ -238,7 +240,10 @@ export function streamScenarioYaml(scenario: ScenarioOutput): void {
 
 export function streamTotalCost(totalCostUsd: number): void {
   process.stdout.write(
-    stringify({ total_cost_usd: Math.round(totalCostUsd * 10000) / 10000 }, { lineWidth: 0 }),
+    stringify(
+      { total_cost_usd: Math.round(totalCostUsd * 10000) / 10000 },
+      { lineWidth: LINE_WIDTH },
+    ),
   );
 }
 
@@ -300,7 +305,7 @@ export function streamLintScenarioYaml(scenario: LintScenarioOutput): void {
   };
 
   const doc = new Document(item);
-  visit(doc, { Scalar: wrapAndBlockify });
+  applyWrapStyles(doc);
 
   // Add blank lines between check items
   const checksNode = doc.getIn([scenario.id, 'checks'], true) as YAMLSeq;
@@ -308,7 +313,7 @@ export function streamLintScenarioYaml(scenario: LintScenarioOutput): void {
     (checksNode.items[i] as Node).spaceBefore = true;
   }
 
-  const serialized = doc.toString({ lineWidth: 0 }).trimEnd();
+  const serialized = doc.toString({ lineWidth: DOC_LINE_WIDTH }).trimEnd();
   const lines = serialized.split('\n');
   const yamlItem = lines
     .map((line, i) => {
@@ -328,7 +333,7 @@ export function streamLintTotals(totals: LintTotals): void {
         scenarios_total: totals.scenarios_total,
         scenarios_with_issues: totals.scenarios_with_issues,
       },
-      { lineWidth: 0 },
+      { lineWidth: LINE_WIDTH },
     ),
   );
   process.stdout.write('\n');
@@ -338,7 +343,7 @@ export function streamLintTotals(totals: LintTotals): void {
         checks_total: totals.checks_total,
         checks_with_issues: totals.checks_with_issues,
       },
-      { lineWidth: 0 },
+      { lineWidth: LINE_WIDTH },
     ),
   );
 }

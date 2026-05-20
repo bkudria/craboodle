@@ -763,16 +763,54 @@ checks_with_issues: 0
     it('wraps long string ending in trailing whitespace without emitting blank lines', async () => {
       const { writeYamlArrayItem } = await import('../src/output.js');
 
-      // 80 non-space chars + two trailing spaces. wordWrap splits on ' ',
-      // pushes the 80-char chunk, then loops over two empty trailing words
-      // leaving its accumulator empty at end-of-loop. The trailing-empty
-      // chunk must be skipped (no stray blank line in output).
       const value = 'a'.repeat(80) + '  ';
       const result = writeYamlArrayItem({ msg: value });
 
       expect(result).toContain('a'.repeat(80));
       // No internal blank line in the serialized item
       expect(result).not.toMatch(/\n[ \t]*\n/);
+    });
+
+    it('renders long single-line strings as block-folded (`>`), not block-literal', async () => {
+      const { writeYamlArrayItem } = await import('../src/output.js');
+
+      const text = 'a long single-line string '.repeat(8).trim();
+      const result = writeYamlArrayItem({ evidence: text });
+
+      expect(result).toMatch(/evidence: >-?\n/);
+      expect(result).not.toMatch(/evidence: \|-?\n/);
+    });
+
+    it('hard-wraps long lines inside multi-line strings before block-literal serialization', async () => {
+      const { parse } = await import('yaml');
+      const { writeYamlArrayItem } = await import('../src/output.js');
+
+      const longInternal =
+        'alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron pi rho sigma tau upsilon phi chi psi omega extra padding words here';
+      const result = writeYamlArrayItem({
+        evidence: `First line\n${longInternal}\nLast line`,
+      });
+
+      const longest = Math.max(...result.split('\n').map((l) => l.length));
+      expect(longest).toBeLessThanOrEqual(80);
+
+      const parsed = parse('items:\n' + result + '\n') as { items: Array<{ evidence: string }> };
+      expect(parsed.items[0].evidence).toContain('First line');
+      expect(parsed.items[0].evidence).toContain('Last line');
+      for (const line of parsed.items[0].evidence.split('\n')) {
+        expect(line.length).toBeLessThanOrEqual(72);
+      }
+    });
+
+    it('leaves unbreakable strings (no whitespace) verbatim', async () => {
+      const { parse } = await import('yaml');
+      const { writeYamlArrayItem } = await import('../src/output.js');
+
+      const blob = 'b'.repeat(200);
+      const result = writeYamlArrayItem({ evidence: blob });
+
+      const parsed = parse('items:\n' + result + '\n') as { items: Array<{ evidence: string }> };
+      expect(parsed.items[0].evidence).toBe(blob);
     });
   });
 
