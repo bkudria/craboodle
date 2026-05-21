@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/bkudria/craboodle/compare/v0.1.0...v0.2.0) (2026-05-21)
+
+
+### Features
+
+* single evals.yaml at skill/plugin root with staged view ([#12](https://github.com/bkudria/craboodle/issues/12)) ([6a86fd3](https://github.com/bkudria/craboodle/commit/6a86fd30c8acf79743154433c18c6ddf543361ed))
+
 ## [0.1.0](https://github.com/bkudria/craboodle/compare/v0.0.1...v0.1.0) (2026-05-19)
 
 
