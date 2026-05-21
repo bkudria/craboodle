@@ -27,7 +27,9 @@ describe('pool', () => {
 
       expect(results.get('s1')).toHaveLength(2);
       expect(results.get('s2')).toHaveLength(1);
-      expect(results.get('s1')![0]).toEqual({
+      const s1Initial = results.get('s1');
+      if (!s1Initial) throw new Error("results missing 's1'");
+      expect(s1Initial[0]).toEqual({
         type: 'success',
         rep: 1,
         data: { type: 'success', data: 's1r1' },
@@ -164,7 +166,8 @@ describe('pool', () => {
 
       // First two items cost 1.2 total, exceeding budget of 1.0
       // Third item should be skipped with budget error
-      const s2Results = results.get('s2')!;
+      const s2Results = results.get('s2');
+      if (!s2Results) throw new Error("results missing 's2'");
       expect(s2Results).toHaveLength(1);
       expect(s2Results[0].type).toBe('error');
       if (s2Results[0].type === 'error') {
@@ -186,7 +189,8 @@ describe('pool', () => {
         costOf: (data: { cost: number }) => data.cost,
       });
 
-      const s1Results = results.get('s1')!;
+      const s1Results = results.get('s1');
+      if (!s1Results) throw new Error("results missing 's1'");
       expect(s1Results).toHaveLength(2);
       expect(s1Results.every((r) => r.type === 'success')).toBe(true);
     });
@@ -268,7 +272,8 @@ describe('pool', () => {
 
       const results = await executePool(workItems, 10);
 
-      const s1Results = results.get('s1')!;
+      const s1Results = results.get('s1');
+      if (!s1Results) throw new Error("results missing 's1'");
       expect(s1Results).toHaveLength(1);
       expect(s1Results[0].type).toBe('error');
       if (s1Results[0].type === 'error') {
@@ -315,9 +320,13 @@ describe('pool', () => {
       });
 
       expect(completedCount).toBe(1);
-      expect(results.get('s2')![0].type).toBe('error');
-      expect(results.get('s3')![0].type).toBe('error');
-      const s2Error = results.get('s2')![0];
+      const s2Aborted = results.get('s2');
+      const s3Aborted = results.get('s3');
+      if (!s2Aborted) throw new Error("results missing 's2'");
+      if (!s3Aborted) throw new Error("results missing 's3'");
+      expect(s2Aborted[0].type).toBe('error');
+      expect(s3Aborted[0].type).toBe('error');
+      const s2Error = s2Aborted[0];
       if (s2Error.type === 'error') {
         expect(s2Error.reason).toBe('fail_fast');
       }
@@ -354,7 +363,9 @@ describe('pool', () => {
       });
 
       expect(completedCount).toBe(1);
-      const s2Error = results.get('s2')![0];
+      const s2Interrupted = results.get('s2');
+      if (!s2Interrupted) throw new Error("results missing 's2'");
+      const s2Error = s2Interrupted[0];
       expect(s2Error.type).toBe('error');
       if (s2Error.type === 'error') {
         expect(s2Error.reason).toBe('interrupted');
@@ -378,7 +389,9 @@ describe('pool', () => {
         isInterrupted: () => true,
       });
 
-      const s1Error = results.get('s1')![0];
+      const s1Both = results.get('s1');
+      if (!s1Both) throw new Error("results missing 's1'");
+      const s1Error = s1Both[0];
       expect(s1Error.type).toBe('error');
       if (s1Error.type === 'error') {
         expect(s1Error.reason).toBe('interrupted');
@@ -433,7 +446,8 @@ describe('pool', () => {
       const results = await executePool(workItems, 10);
 
       expect(results.get('s1')).toHaveLength(2);
-      const s1Results = results.get('s1')!;
+      const s1Results = results.get('s1');
+      if (!s1Results) throw new Error("results missing 's1'");
       expect(s1Results.some((r) => r.type === 'error')).toBe(true);
       expect(s1Results.some((r) => r.type === 'success')).toBe(true);
     });

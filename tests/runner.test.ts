@@ -144,8 +144,9 @@ describe('runner', () => {
       });
 
       const [, args] = mockExecFile.mock.calls[0];
+      if (!args) throw new Error('mockExecFile call missing args');
       // Should only have: <scenario.yaml>
-      expect(args!.filter((a: string) => a.endsWith('.yaml'))).toHaveLength(1);
+      expect(args.filter((a: string) => a.endsWith('.yaml'))).toHaveLength(1);
     });
 
     it('writes stdout to output file', async () => {
@@ -240,8 +241,9 @@ describe('runner', () => {
 
       expect(mockExecFile).toHaveBeenCalledOnce();
       const [cmd, args] = mockExecFile.mock.calls[0];
+      if (!args) throw new Error('mockExecFile call missing args');
       expect(cmd).toBe('pincenez');
-      expect(args![0]).toBe('lint');
+      expect(args[0]).toBe('lint');
       expect(args).toContain('/path/to/checks.yaml');
       expect(result.success).toBe(true);
     });
@@ -341,8 +343,9 @@ describe('runner', () => {
 
       expect(mockExecFile).toHaveBeenCalledOnce();
       const [cmd, args] = mockExecFile.mock.calls[0];
+      if (!args) throw new Error('mockExecFile call missing args');
       expect(cmd).toBe('scuttlerun');
-      expect(args![0]).toBe('--dry-run');
+      expect(args[0]).toBe('--dry-run');
       expect(args).toContain('/path/to/base.yaml');
       expect(args).toContain('/path/to/scenario.yaml');
       expect(result.success).toBe(true);
