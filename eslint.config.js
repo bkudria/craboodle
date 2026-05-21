@@ -10,7 +10,7 @@ export default [
     languageOptions: {
       parserOptions: {
         projectService: {
-          allowDefaultProject: ["tests/*.test.ts", "tests/setup-stubs.ts"],
+          allowDefaultProject: ["tests/*.test.ts", "tests/setup-stubs.ts", "tests/_fixtures.ts"],
           maximumDefaultProjectFileMatchCount_THIS_WILL_SLOW_DOWN_LINTING: 20,
         },
         tsconfigRootDir: import.meta.dirname,

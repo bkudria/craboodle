@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { tmpdir } from 'node:os';
-import { mkdtemp, writeFile, mkdir, rm } from 'node:fs/promises';
+import { writeFile, mkdir, rm } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
+import { makeTmpDir } from './_fixtures.js';
 import { fileURLToPath } from 'node:url';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -15,7 +15,7 @@ describe('list', () => {
   let tmpDir: string;
 
   beforeEach(async () => {
-    tmpDir = await mkdtemp(join(tmpdir(), 'craboodle-list-test-'));
+    tmpDir = await makeTmpDir('list');
   });
 
   afterEach(async () => {

@@ -1,14 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { tmpdir } from 'node:os';
-import { mkdtemp, mkdir, writeFile, readFile, readdir, lstat, rm, access } from 'node:fs/promises';
+import { mkdir, writeFile, readFile, readdir, lstat, rm, access } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
+import { makeTmpDir } from './_fixtures.js';
 
 describe('staged-view', () => {
   let sourceRoot: string;
   let stagedParents: string[];
 
   beforeEach(async () => {
-    sourceRoot = await mkdtemp(join(tmpdir(), 'craboodle-staged-view-test-source-'));
+    sourceRoot = await makeTmpDir('staged-view', 'source');
     stagedParents = [];
   });
 
@@ -28,7 +29,7 @@ describe('staged-view', () => {
   describe('stageEvalsRoot', () => {
     it('returns a staged dir under craboodle-staged-* with basename preserved', async () => {
       // Build a source root with a stable, non-temp-y basename
-      const sourceParent = await mkdtemp(join(tmpdir(), 'craboodle-staged-view-test-parent-'));
+      const sourceParent = await makeTmpDir('staged-view', 'parent');
       try {
         const namedRoot = join(sourceParent, 'my-cool-skill');
         await mkdir(namedRoot);
