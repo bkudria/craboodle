@@ -309,7 +309,7 @@ async function runCommandInner(
       }
 
       scenarioOutputs.push(scenarioOutput);
-      streamScenarioYaml(scenarioOutput);
+      streamScenarioYaml(scenarioOutput, { artifactDir });
 
       if (opts.verbose) {
         process.stderr.write(`[craboodle] ${scenarioId}: pass_rate=${scenarioOutput.pass_rate}\n`);

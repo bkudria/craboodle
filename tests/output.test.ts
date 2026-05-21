@@ -827,6 +827,78 @@ checks_with_issues: 0
 
       expect(written).toContain('error: |\n');
     });
+
+    it('keeps every line at or below 80 columns even at deepest nesting', async () => {
+      const { streamScenarioYaml } = await import('../src/output.js');
+
+      // Mirrors the haiku-writer output shape: scenario → checks → failures →
+      // evidence (multi-line) + transcript (single-line path).
+      streamScenarioYaml({
+        id: 'topic-not-provided',
+        checks: [
+          {
+            check: 'The haiku has exactly 3 lines following a 5-7-5 syllable pattern',
+            pass_rate: 1,
+          },
+          {
+            check: 'The agent asked the user what topic they wanted before composing the haiku',
+            pass_rate: 0,
+            failures: [
+              {
+                rep: 1,
+                evidence:
+                  'The agent did not ask the user for a topic before composing the haiku. It received the request "I want a haiku. Save it to a file when you\'re done." and immediately responded with a haiku about "Silent code compiles" without asking what topic the user wanted, violating the haiku-writer skill\'s requirement to ask for a topic first.',
+                transcript: 'topic-not-provided/rep-1/output.yaml',
+              },
+            ],
+          },
+        ],
+        pass_rate: 0.5,
+        cost_usd: 0.3904,
+      });
+
+      const lines = written.split('\n');
+      for (const line of lines) {
+        expect(line.length, `line over 80 cols: ${JSON.stringify(line)}`).toBeLessThanOrEqual(80);
+      }
+    });
+
+    it('renders transcript paths as relative when artifactDir provided', async () => {
+      const { streamScenarioYaml } = await import('../src/output.js');
+
+      streamScenarioYaml(
+        {
+          id: 'scenario-a',
+          checks: [
+            {
+              check: 'always fails',
+              pass_rate: 0,
+              failures: [
+                {
+                  rep: 1,
+                  evidence: 'failed',
+                  transcript: '/tmp/craboodle-run-abc/scenario-a/rep-1/output.yaml',
+                },
+              ],
+            },
+          ],
+          pass_rate: 0,
+          errors: [
+            {
+              rep: 1,
+              stage: 'pincenez',
+              error: 'boom',
+              transcript: '/tmp/craboodle-run-abc/scenario-a/rep-1/grading.yaml',
+            },
+          ],
+        },
+        { artifactDir: '/tmp/craboodle-run-abc' },
+      );
+
+      expect(written).toContain('transcript: scenario-a/rep-1/output.yaml');
+      expect(written).toContain('transcript: scenario-a/rep-1/grading.yaml');
+      expect(written).not.toContain('/tmp/craboodle-run-abc/scenario-a');
+    });
   });
 
   describe('full YAML integration', () => {

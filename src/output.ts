@@ -1,33 +1,87 @@
-import { parse, stringify, Document, Scalar, visit, isSeq, YAMLMap, YAMLSeq } from 'yaml';
-import type { Node } from 'yaml';
+import {
+  parse,
+  Document,
+  Scalar,
+  visit,
+  isSeq,
+  isMap,
+  isPair,
+  isDocument,
+  YAMLMap,
+  YAMLSeq,
+} from 'yaml';
+import type { Node, Pair } from 'yaml';
 import wrap from 'word-wrap';
+import { relative, isAbsolute } from 'node:path';
 import { z } from 'zod/v4';
 
 export const LINE_WIDTH = 80;
 const ENTRY_PREFIX_WIDTH = 4;
 export const DOC_LINE_WIDTH = LINE_WIDTH - ENTRY_PREFIX_WIDTH;
-const HARD_WRAP_WIDTH = 72;
-const FOLD_THRESHOLD = 64;
 
-function hardWrapLines(text: string): string {
+function hardWrapToWidth(text: string, width: number): string {
+  if (width <= 0) return text;
   return text
     .split('\n')
     .map((line) =>
-      line.length <= HARD_WRAP_WIDTH
-        ? line
-        : wrap(line, { width: HARD_WRAP_WIDTH, indent: '', trim: true, cut: false }),
+      line.length <= width ? line : wrap(line, { width, indent: '', trim: true, cut: false }),
     )
     .join('\n');
 }
 
-function applyWrapStyles(doc: Document): void {
+function getKeyDisplayLength(key: unknown): number {
+  if (key == null) return 0;
+  const value = typeof key === 'object' && 'value' in (key as object) ? (key as Scalar).value : key;
+  return String(value).length;
+}
+
+function getContainerIndent(path: readonly unknown[]): number {
+  // Indent (in chars) at which the immediate parent's keys/items appear.
+  // Skips the Document wrapper and the root container, which sit at col 0.
+  let count = 0;
+  for (let i = 0; i < path.length; i++) {
+    const a = path[i];
+    if (i === 0 && isDocument(a as Node | Document)) continue;
+    if (i === 1 && (isMap(a as Node) || isSeq(a as Node))) continue;
+    if (isMap(a as Node) || isSeq(a as Node)) count++;
+  }
+  return count * 2;
+}
+
+function applyDepthAwareWrap(doc: Document, outerPrefix: number, totalWidth: number): void {
   visit(doc, {
-    Scalar(_key, node) {
+    Scalar(key, node, path) {
       if (typeof node.value !== 'string') return;
-      if (node.value.includes('\n')) {
-        node.value = hardWrapLines(node.value);
+      // Skip pair-key scalars; we only wrap values and seq items.
+      if (key === 'key') return;
+
+      const parent = path[path.length - 1];
+      const containerIndent = getContainerIndent(path);
+
+      let inlinePrefix: number;
+      if (isPair(parent)) {
+        inlinePrefix = getKeyDisplayLength((parent as Pair).key) + 2; // "key: "
+      } else if (isSeq(parent)) {
+        inlinePrefix = 2; // "- "
+      } else {
+        inlinePrefix = 0;
+      }
+
+      const inlineCol = outerPrefix + containerIndent + inlinePrefix;
+      const inlineBudget = Math.max(0, totalWidth - inlineCol);
+      const contentCol = outerPrefix + containerIndent + 2;
+      const contentBudget = Math.max(0, totalWidth - contentCol);
+
+      const value = node.value;
+      if (value.includes('\n')) {
+        // Literal preserves text verbatim, so pre-wrap each internal line to
+        // the content budget — the lib won't re-wrap literal content.
+        node.value = hardWrapToWidth(value, contentBudget);
         node.type = Scalar.BLOCK_LITERAL;
-      } else if (node.value.length > FOLD_THRESHOLD) {
+      } else if (value.length > inlineBudget) {
+        // Folded lets the yaml lib wrap based on lineWidth, which accounts
+        // for indent automatically. No pre-wrap (it would inject paragraph
+        // breaks in the parsed value).
         node.type = Scalar.BLOCK_FOLDED;
       }
     },
@@ -168,20 +222,49 @@ export function averageResults(
 
 export function writeYamlArrayItem(item: Record<string, unknown>): string {
   const doc = new Document(item);
-  applyWrapStyles(doc);
+  applyDepthAwareWrap(doc, ENTRY_PREFIX_WIDTH, LINE_WIDTH);
   const serialized = doc.toString({ lineWidth: DOC_LINE_WIDTH }).trimEnd();
   const lines = serialized.split('\n');
   return lines.map((line, i) => (i === 0 ? `  - ${line}` : `    ${line}`)).join('\n');
 }
 
+function serializeTopLevel(item: Record<string, unknown>): string {
+  const doc = new Document(item);
+  applyDepthAwareWrap(doc, 0, LINE_WIDTH);
+  return doc.toString({ lineWidth: LINE_WIDTH });
+}
+
 export function streamHeader(artifactDir: string): void {
-  process.stdout.write(stringify({ artifact_dir: artifactDir }, { lineWidth: LINE_WIDTH }));
+  process.stdout.write(serializeTopLevel({ artifact_dir: artifactDir }));
   process.stdout.write('scenarios:\n');
 }
 
-export function streamScenarioYaml(scenario: ScenarioOutput): void {
+function relativizeTranscript(transcript: string, artifactDir?: string): string {
+  if (!artifactDir || !isAbsolute(transcript)) return transcript;
+  return relative(artifactDir, transcript);
+}
+
+export interface StreamScenarioOptions {
+  artifactDir?: string;
+}
+
+export function streamScenarioYaml(
+  scenario: ScenarioOutput,
+  options: StreamScenarioOptions = {},
+): void {
+  const { artifactDir } = options;
+  const checks = scenario.checks.map((c) => {
+    if (!c.failures) return c;
+    return {
+      ...c,
+      failures: c.failures.map((f) =>
+        f.transcript ? { ...f, transcript: relativizeTranscript(f.transcript, artifactDir) } : f,
+      ),
+    };
+  });
+
   const content: Record<string, unknown> = {
-    checks: scenario.checks,
+    checks,
     pass_rate: scenario.pass_rate,
   };
 
@@ -198,13 +281,15 @@ export function streamScenarioYaml(scenario: ScenarioOutput): void {
   }
 
   if (scenario.errors && scenario.errors.length > 0) {
-    content.errors = scenario.errors;
+    content.errors = scenario.errors.map((e) =>
+      e.transcript ? { ...e, transcript: relativizeTranscript(e.transcript, artifactDir) } : e,
+    );
   }
 
   const item = { [scenario.id]: content };
 
   const doc = new Document(item);
-  applyWrapStyles(doc);
+  applyDepthAwareWrap(doc, ENTRY_PREFIX_WIDTH, LINE_WIDTH);
 
   // Add blank lines between items in all sequences (checks, failures, errors)
   visit(doc, (_key, node) => {
@@ -240,10 +325,7 @@ export function streamScenarioYaml(scenario: ScenarioOutput): void {
 
 export function streamTotalCost(totalCostUsd: number): void {
   process.stdout.write(
-    stringify(
-      { total_cost_usd: Math.round(totalCostUsd * 10000) / 10000 },
-      { lineWidth: LINE_WIDTH },
-    ),
+    serializeTopLevel({ total_cost_usd: Math.round(totalCostUsd * 10000) / 10000 }),
   );
 }
 
@@ -305,7 +387,7 @@ export function streamLintScenarioYaml(scenario: LintScenarioOutput): void {
   };
 
   const doc = new Document(item);
-  applyWrapStyles(doc);
+  applyDepthAwareWrap(doc, ENTRY_PREFIX_WIDTH, LINE_WIDTH);
 
   // Add blank lines between check items
   const checksNode = doc.getIn([scenario.id, 'checks'], true) as YAMLSeq;
@@ -328,22 +410,16 @@ export function streamLintScenarioYaml(scenario: LintScenarioOutput): void {
 
 export function streamLintTotals(totals: LintTotals): void {
   process.stdout.write(
-    stringify(
-      {
-        scenarios_total: totals.scenarios_total,
-        scenarios_with_issues: totals.scenarios_with_issues,
-      },
-      { lineWidth: LINE_WIDTH },
-    ),
+    serializeTopLevel({
+      scenarios_total: totals.scenarios_total,
+      scenarios_with_issues: totals.scenarios_with_issues,
+    }),
   );
   process.stdout.write('\n');
   process.stdout.write(
-    stringify(
-      {
-        checks_total: totals.checks_total,
-        checks_with_issues: totals.checks_with_issues,
-      },
-      { lineWidth: LINE_WIDTH },
-    ),
+    serializeTopLevel({
+      checks_total: totals.checks_total,
+      checks_with_issues: totals.checks_with_issues,
+    }),
   );
 }
