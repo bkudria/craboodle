@@ -12,6 +12,7 @@ import { runCommand } from './commands/run.js';
 import { listCommand } from './commands/list.js';
 import { lintCommand } from './commands/lint.js';
 import { initCommand } from './commands/init.js';
+import { EXIT_RUNTIME_ERROR } from './exit-codes.js';
 
 const pkg = JSON.parse(
   readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'package.json'), 'utf8'),
@@ -63,7 +64,7 @@ program
           'craboodle --help',
         ),
       );
-      process.exit(2);
+      process.exit(EXIT_RUNTIME_ERROR);
     }
   });
 
@@ -86,7 +87,7 @@ program
           'craboodle --help',
         ),
       );
-      process.exit(2);
+      process.exit(EXIT_RUNTIME_ERROR);
     }
   });
 
@@ -116,7 +117,7 @@ program
           'craboodle --help',
         ),
       );
-      process.exit(2);
+      process.exit(EXIT_RUNTIME_ERROR);
     }
   });
 

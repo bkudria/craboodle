@@ -21,6 +21,12 @@ import {
   type GradingCheck,
   type ScenarioOutput,
 } from '../output.js';
+import {
+  EXIT_THRESHOLD_FAILURE,
+  EXIT_INFRA_ERROR,
+  EXIT_BUDGET_EXCEEDED,
+  EXIT_SIGINT,
+} from '../exit-codes.js';
 
 export interface RunOptions {
   repeats: string | undefined;
@@ -56,7 +62,7 @@ export async function runCommand(root: string, opts: RunOptions): Promise<void> 
   } finally {
     uninstallSignal();
     if (interrupted) {
-      process.exit(130);
+      process.exit(EXIT_SIGINT);
     }
   }
 }
@@ -73,7 +79,7 @@ async function runCommandInner(
   const missing = await findMissingBinaries(['scuttlerun', 'pincenez']);
   if (missing.length > 0) {
     process.stderr.write(formatMissingBinariesError(missing));
-    process.exit(4);
+    process.exit(EXIT_INFRA_ERROR);
   }
 
   // Load evals.yaml, stage filtered view, materialise scuttlerun base config,
@@ -90,7 +96,7 @@ async function runCommandInner(
         'craboodle --help',
       ),
     );
-    process.exit(4);
+    process.exit(EXIT_INFRA_ERROR);
   }
 
   // Apply scenario filter
@@ -104,7 +110,7 @@ async function runCommandInner(
           'craboodle --help',
         ),
       );
-      process.exit(4);
+      process.exit(EXIT_INFRA_ERROR);
     }
   }
 
@@ -331,11 +337,11 @@ async function runCommandInner(
         'craboodle --help',
       ),
     );
-    process.exit(5);
+    process.exit(EXIT_BUDGET_EXCEEDED);
   }
 
   if (!hasAnySuccess) {
-    process.exit(4);
+    process.exit(EXIT_INFRA_ERROR);
   }
 
   // Check ratchet threshold
@@ -351,7 +357,7 @@ async function runCommandInner(
       }
       process.stderr.write('  Try: re-run with -v for per-rep failure context\n');
       process.stderr.write('  See: craboodle --help\n');
-      process.exit(3);
+      process.exit(EXIT_THRESHOLD_FAILURE);
     }
   }
 }

@@ -1,6 +1,7 @@
 import { access, mkdir, readdir, stat, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { formatErrorWithHint } from '../messages.js';
+import { EXIT_CONFIG_ERROR } from '../exit-codes.js';
 
 async function detectInitMode(
   root: string,
@@ -83,7 +84,7 @@ export async function initCommand(dir: string): Promise<void> {
         'pick a different directory or remove the existing file(s)',
       ),
     );
-    process.exit(1);
+    process.exit(EXIT_CONFIG_ERROR);
   } catch {
     // evals.yaml doesn't exist, good
   }
@@ -100,7 +101,7 @@ export async function initCommand(dir: string): Promise<void> {
             'pick a different directory or remove the existing file(s)',
           ),
         );
-        process.exit(1);
+        process.exit(EXIT_CONFIG_ERROR);
       }
     }
   } catch {

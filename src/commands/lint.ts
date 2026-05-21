@@ -13,6 +13,7 @@ import {
   streamLintTotals,
   type LintTotals,
 } from '../output.js';
+import { EXIT_CONFIG_ERROR, EXIT_INFRA_ERROR, EXIT_SIGINT } from '../exit-codes.js';
 
 export interface LintOptions {
   concurrency: number;
@@ -36,7 +37,7 @@ export async function lintCommand(root: string, opts: LintOptions): Promise<void
   } finally {
     uninstallSignal();
     if (interrupted) {
-      process.exit(130);
+      process.exit(EXIT_SIGINT);
     }
   }
 }
@@ -53,7 +54,7 @@ async function lintCommandInner(
   const missing = await findMissingBinaries(['pincenez']);
   if (missing.length > 0) {
     process.stderr.write(formatMissingBinariesError(missing));
-    process.exit(4);
+    process.exit(EXIT_INFRA_ERROR);
   }
 
   // Load evals.yaml + discover. Lint doesn't itself need the staged base, but
@@ -68,7 +69,7 @@ async function lintCommandInner(
         'craboodle --help',
       ),
     );
-    process.exit(4);
+    process.exit(EXIT_INFRA_ERROR);
   }
 
   // Apply scenario filter
@@ -82,7 +83,7 @@ async function lintCommandInner(
           'craboodle --help',
         ),
       );
-      process.exit(4);
+      process.exit(EXIT_INFRA_ERROR);
     }
   }
 
@@ -175,10 +176,10 @@ async function lintCommandInner(
   }
 
   if (!hasAnySuccess) {
-    process.exit(4);
+    process.exit(EXIT_INFRA_ERROR);
   }
 
   if (totals.checks_with_issues > 0) {
-    process.exit(1);
+    process.exit(EXIT_CONFIG_ERROR);
   }
 }

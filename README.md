@@ -123,7 +123,7 @@ Only directories matching the `craboodle-run-` or `craboodle-staged-` prefixes a
 
 ## Exit Codes
 
-Shared taxonomy across scuttlerun/pincenez/craboodle. Codes 6–7 are reserved for scuttlerun-only concerns (timed_out, exhausted_turns); craboodle emits:
+Subset of the shared scuttlerun/pincenez/craboodle taxonomy — see [scuttlerun/README.md#exit-codes](https://github.com/bkudria/scuttlerun#exit-codes) for the canonical table. Source: [`src/exit-codes.ts`](src/exit-codes.ts).
 
 | Code | Meaning |
 |------|---------|

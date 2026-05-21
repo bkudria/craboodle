@@ -7,6 +7,7 @@ import { findMissingBinaries, formatMissingBinariesError } from '../preflight.js
 import { listScuttlerunConfig } from '../runner.js';
 import { prepareRun } from '../prepare-run.js';
 import { writeYamlArrayItem } from '../output.js';
+import { EXIT_CONFIG_ERROR, EXIT_INFRA_ERROR } from '../exit-codes.js';
 
 export interface ListOptions {
   scenarios?: string;
@@ -20,7 +21,7 @@ export async function listCommand(root: string, opts: ListOptions): Promise<void
   const missing = await findMissingBinaries(['scuttlerun']);
   if (missing.length > 0) {
     process.stderr.write(formatMissingBinariesError(missing));
-    process.exit(4);
+    process.exit(EXIT_INFRA_ERROR);
   }
 
   // Load evals.yaml, stage filtered view, materialise scuttlerun base, discover.
@@ -34,7 +35,7 @@ export async function listCommand(root: string, opts: ListOptions): Promise<void
         'craboodle --help',
       ),
     );
-    process.exit(4);
+    process.exit(EXIT_INFRA_ERROR);
   }
 
   if (opts.scenarios) {
@@ -47,7 +48,7 @@ export async function listCommand(root: string, opts: ListOptions): Promise<void
           'craboodle --help',
         ),
       );
-      process.exit(4);
+      process.exit(EXIT_INFRA_ERROR);
     }
   }
 
@@ -98,7 +99,7 @@ export async function listCommand(root: string, opts: ListOptions): Promise<void
       process.stderr.write(
         `[craboodle] Config error in ${scenario.id}: ${err instanceof Error ? err.message : String(err)}\n`,
       );
-      process.exit(1);
+      process.exit(EXIT_CONFIG_ERROR);
     }
   }
 
@@ -107,6 +108,6 @@ export async function listCommand(root: string, opts: ListOptions): Promise<void
   );
   if (invalidCount > 0) {
     process.stdout.write(stringify({ invalid: invalidCount }, { lineWidth: 0 }));
-    process.exit(1);
+    process.exit(EXIT_CONFIG_ERROR);
   }
 }
