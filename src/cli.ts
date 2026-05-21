@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-import { formatErrorWithHint } from './messages.js';
+import { formatErrorWithHint } from './errors.js';
 import { HELP_TEXT } from './help-text.js';
 import { parseConcurrency } from './cli-utils.js';
 import { runCommand } from './commands/run.js';

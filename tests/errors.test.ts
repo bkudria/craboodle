@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatErrorWithHint } from '../src/messages.js';
+import { formatErrorWithHint } from '../src/errors.js';
 
 describe('formatErrorWithHint', () => {
   it('emits three lines when reference is provided', () => {

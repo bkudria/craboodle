@@ -1,7 +1,7 @@
 import { dirname, join, resolve } from 'node:path';
 import { readFile } from 'node:fs/promises';
 import { stringify, parse } from 'yaml';
-import { formatErrorWithHint } from '../messages.js';
+import { formatErrorWithHint } from '../errors.js';
 import { filterScenarios } from '../discovery.js';
 import { findMissingBinaries, formatMissingBinariesError } from '../preflight.js';
 import { listScuttlerunConfig } from '../runner.js';
