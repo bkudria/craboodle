@@ -1,5 +1,8 @@
 # craboodle
 
+[![npm version](https://img.shields.io/npm/v/craboodle.svg)](https://www.npmjs.com/package/craboodle)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 > **0.x.** Craboodle is in active development; minor versions may include breaking changes until 1.0.
 
 Eval pipeline orchestrator for Claude Code.
