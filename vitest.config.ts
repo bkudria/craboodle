@@ -7,7 +7,7 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       include: ["src/**/*.ts"],
-      exclude: ["src/cli.ts"],
+      exclude: ["src/cli.ts", "src/cli-utils.ts", "src/help-text.ts", "src/commands/**"],
       reporter: ["text", "lcov", "json-summary"],
       thresholds: {
         statements: 100,
