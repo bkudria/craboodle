@@ -1,15 +1,16 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { tmpdir, homedir } from 'node:os';
-import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import { mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import { parse, stringify } from 'yaml';
+import { makeTmpDir } from './_fixtures.js';
 
 describe('prepareRun', () => {
   let sourceParent: string;
   let trackedParents: string[];
 
   beforeEach(async () => {
-    sourceParent = await mkdtemp(join(tmpdir(), 'craboodle-prepare-run-test-'));
+    sourceParent = await makeTmpDir('prepare-run');
     trackedParents = [];
   });
 
@@ -180,7 +181,7 @@ describe('prepareRun', () => {
       evalsYaml: { version: '1', scenarios: { base: {} } },
       scenarios: { only: { prompt: 'hi' } },
     });
-    const outside = await mkdtemp(join(tmpdir(), 'craboodle-prepare-run-outside-'));
+    const outside = await makeTmpDir('prepare-run', 'outside');
     try {
       await writeFile(
         join(root, 'evals.yaml'),

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { tmpdir } from 'node:os';
-import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { writeFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
+import { makeTmpDir } from './_fixtures.js';
 
 const VALID_GRADING = `checks:
   - id: a1
@@ -21,7 +21,7 @@ describe('loadStageBResult', () => {
   let outputPath: string;
 
   beforeEach(async () => {
-    tmpDir = await mkdtemp(join(tmpdir(), 'craboodle-stageb-'));
+    tmpDir = await makeTmpDir('stage-b-load');
     gradingPath = join(tmpDir, 'grading.yaml');
     outputPath = join(tmpDir, 'output.yaml');
   });

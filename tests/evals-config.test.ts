@@ -1,14 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { tmpdir } from 'node:os';
-import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { mkdir, writeFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { stringify } from 'yaml';
+import { makeTmpDir } from './_fixtures.js';
 
 describe('evals-config', () => {
   let tmpDir: string;
 
   beforeEach(async () => {
-    tmpDir = await mkdtemp(join(tmpdir(), 'craboodle-evals-config-test-'));
+    tmpDir = await makeTmpDir('evals-config');
   });
 
   afterEach(async () => {

@@ -1,14 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { tmpdir } from 'node:os';
-import { mkdtemp, writeFile, mkdir, rm } from 'node:fs/promises';
+import { writeFile, mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { filterScenarios, type ScenarioRef } from '../src/discovery.js';
+import { makeTmpDir } from './_fixtures.js';
 
 describe('discovery', () => {
   let tmpDir: string;
 
   beforeEach(async () => {
-    tmpDir = await mkdtemp(join(tmpdir(), 'craboodle-test-'));
+    tmpDir = await makeTmpDir('discovery');
   });
 
   afterEach(async () => {

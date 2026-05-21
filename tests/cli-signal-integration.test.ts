@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { tmpdir } from 'node:os';
-import { mkdtemp, mkdir, writeFile, readFile, chmod, rm } from 'node:fs/promises';
+import { mkdir, writeFile, readFile, chmod, rm } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
+import { makeTmpDir } from './_fixtures.js';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
 import { stringify } from 'yaml';
@@ -103,7 +103,7 @@ describe('cli signal handling (integration)', () => {
   let pidFile: string;
 
   beforeEach(async () => {
-    workDir = await mkdtemp(join(tmpdir(), 'craboodle-signal-test-'));
+    workDir = await makeTmpDir('cli-signal-integration');
     evalsDir = join(workDir, 'evals');
     stubDir = join(workDir, 'stubs');
     pidFile = join(workDir, 'pids.txt');

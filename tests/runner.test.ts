@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { tmpdir } from 'node:os';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
+import { makeTmpDir } from './_fixtures.js';
 import { EventEmitter } from 'node:events';
 import { Readable } from 'node:stream';
 import type { ChildProcess, ExecFileException } from 'node:child_process';
@@ -86,7 +86,7 @@ describe('runner', () => {
   let tmpDir: string;
 
   beforeEach(async () => {
-    tmpDir = await mkdtemp(join(tmpdir(), 'craboodle-test-'));
+    tmpDir = await makeTmpDir('runner');
     vi.clearAllMocks();
   });
 
