@@ -1,6 +1,6 @@
 import { access, mkdir, readdir, stat, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import { formatErrorWithHint } from '../messages.js';
+import { formatErrorWithHint } from '../errors.js';
 import { EXIT_CONFIG_ERROR } from '../exit-codes.js';
 
 async function detectInitMode(

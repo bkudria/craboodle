@@ -2,7 +2,7 @@ import { dirname, join, resolve } from 'node:path';
 import { mkdir, mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import pLimit from 'p-limit';
-import { formatErrorWithHint } from '../messages.js';
+import { formatErrorWithHint } from '../errors.js';
 import { installSignalHandler } from '../signals.js';
 import { resolveRepeatsFromRawFlag } from '../config.js';
 import { cleanOldArtifacts } from '../cleanup.js';
