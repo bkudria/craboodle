@@ -13,7 +13,7 @@ import {
 import type { Node, Pair } from 'yaml';
 import wrap from 'word-wrap';
 import { relative, isAbsolute } from 'node:path';
-import { z } from 'zod/v4';
+import { z } from 'zod';
 
 export const LINE_WIDTH = 80;
 const ENTRY_PREFIX_WIDTH = 4;
