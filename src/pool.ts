@@ -1,5 +1,13 @@
 import pLimit from 'p-limit';
 
+function requireGet<K, V>(map: Map<K, V>, key: K, label: string): V {
+  const v = map.get(key);
+  if (v === undefined) {
+    throw new Error(`${label}: map missing required key ${String(key)}`);
+  }
+  return v;
+}
+
 export interface WorkItem<T> {
   scenarioId: string;
   rep: number;
@@ -40,12 +48,13 @@ export async function executePool<T>(
     remaining.set(item.scenarioId, (remaining.get(item.scenarioId) ?? 0) + 1);
   }
 
-  const onItemDone = options?.onScenarioComplete
+  const onScenarioComplete = options?.onScenarioComplete;
+  const onItemDone = onScenarioComplete
     ? (scenarioId: string) => {
-        const left = remaining.get(scenarioId)! - 1;
+        const left = requireGet(remaining, scenarioId, 'onItemDone') - 1;
         remaining.set(scenarioId, left);
         if (left === 0) {
-          options.onScenarioComplete!(scenarioId, results.get(scenarioId)!);
+          onScenarioComplete(scenarioId, requireGet(results, scenarioId, 'onItemDone'));
         }
       }
     : undefined;
@@ -71,7 +80,7 @@ export async function executePool<T>(
           reason = 'fail_fast';
           error = 'Aborted (fail-fast)';
         }
-        results.get(item.scenarioId)!.push({
+        requireGet(results, item.scenarioId, 'executePool').push({
           type: 'error',
           rep: item.rep,
           error,
@@ -83,7 +92,7 @@ export async function executePool<T>(
 
       try {
         const data = await item.fn();
-        results.get(item.scenarioId)!.push({
+        requireGet(results, item.scenarioId, 'executePool').push({
           type: 'success',
           rep: item.rep,
           data,
@@ -101,7 +110,7 @@ export async function executePool<T>(
           }
         }
       } catch (err: unknown) {
-        results.get(item.scenarioId)!.push({
+        requireGet(results, item.scenarioId, 'executePool').push({
           type: 'error',
           rep: item.rep,
           error: err instanceof Error ? err.message : String(err),

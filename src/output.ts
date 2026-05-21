@@ -186,7 +186,10 @@ export function averageResults(
   const checks: CheckOutput[] = [];
 
   for (const id of idOrder) {
-    const check = idToCheck.get(id)!;
+    const check = idToCheck.get(id);
+    if (!check) {
+      throw new Error(`internal: idOrder includes id "${id}" missing from idToCheck`);
+    }
     let passSum = 0;
     const failures: Array<{ rep: number; evidence: string; transcript?: string }> = [];
 

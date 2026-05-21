@@ -339,16 +339,15 @@ async function runCommandInner(
   }
 
   // Check ratchet threshold
-  if (pipeline.minPassRate !== undefined) {
+  const minPassRate = pipeline.minPassRate;
+  if (minPassRate !== undefined) {
     const failures = scenarioOutputs.filter(
-      (s) => s.pass_rate === null || s.pass_rate < pipeline.minPassRate!,
+      (s) => s.pass_rate === null || s.pass_rate < minPassRate,
     );
     if (failures.length > 0) {
-      process.stderr.write(
-        `[craboodle] Threshold check failed (min_pass_rate: ${pipeline.minPassRate}):\n`,
-      );
+      process.stderr.write(`[craboodle] Threshold check failed (min_pass_rate: ${minPassRate}):\n`);
       for (const f of failures) {
-        process.stderr.write(`  ${f.id}: ${f.pass_rate ?? 'null'} < ${pipeline.minPassRate}\n`);
+        process.stderr.write(`  ${f.id}: ${f.pass_rate ?? 'null'} < ${minPassRate}\n`);
       }
       process.stderr.write('  Try: re-run with -v for per-rep failure context\n');
       process.stderr.write('  See: craboodle --help\n');
