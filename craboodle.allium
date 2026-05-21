@@ -1008,7 +1008,14 @@ surface RunCommand {
         -- stdout is valid YAML after each per-scenario block is written.
         -- The header (artifact_dir + scenarios:) is emitted before any
         -- scenario block; blocks arrive in completion order; ordering
-        -- between scenarios is not specified.
+        -- between scenarios is not specified. Long single-line strings
+        -- render in block-folded (`>`) style; multi-line strings render
+        -- in block-literal (`|`) style. Lines exceeding 80 columns in
+        -- the final output are wrapped — by the YAML serializer for
+        -- block-folded scalars and by hard-wrapping at word boundaries
+        -- for block-literal scalars. Strings without any whitespace
+        -- break point are preserved verbatim even when longer than 80
+        -- columns.
 
     @guarantee RawPassRates
         -- pass_rate fields are fractional (0.0 .. 1.0) and are never
