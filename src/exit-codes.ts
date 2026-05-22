@@ -1,5 +1,5 @@
 // Subset of the shared scuttlerun/pincenez/craboodle exit-code taxonomy.
-// See scuttlerun/README.md "Exit Codes" for the canonical reference.
+// Canonical reference: https://github.com/bkudria/scuttlerun#exit-codes
 export const EXIT_SUCCESS = 0;
 export const EXIT_CONFIG_ERROR = 1;
 export const EXIT_RUNTIME_ERROR = 2;
