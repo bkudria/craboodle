@@ -119,12 +119,13 @@ Examples:
   # CI quality gate with yq
   craboodle run ./my-skill | yq '.scenarios[].pass_rate'
 
-Exit Codes (shared scuttlerun/pincenez/craboodle taxonomy; codes 5-7 scuttlerun-only):
+Exit Codes (shared scuttlerun/pincenez/craboodle taxonomy; codes 6-7 scuttlerun-only):
   0   Pipeline completed successfully
-  1   Configuration/input error (invalid YAML, missing fields, unknown keys, lint found issues)
-  2   Runtime error (caught exception in run/lint action)
+  1   Refusal (init won't overwrite; list found invalid scenarios; lint reported issues)
+  2   Load failure (evals.yaml schema/version/range) or runtime error (caught exception in run/lint)
   3   Threshold failure (min_pass_rate ratchet violated)
   4   Infrastructure/dependency error (no scenarios, empty filter, zero successful reps)
+  5   Budget exhausted (max_budget_usd)
   130 Interrupted (SIGINT)
 
 Fail-fast:

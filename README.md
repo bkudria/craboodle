@@ -131,12 +131,14 @@ Subset of the shared scuttlerun/pincenez/craboodle taxonomy — see [scuttlerun/
 | Code | Meaning                                                                            |
 | ---- | ---------------------------------------------------------------------------------- |
 | 0    | Pipeline completed                                                                 |
-| 1    | Config/input error (also: lint found issues)                                       |
-| 2    | Runtime error (caught exception in run/lint action)                                |
+| 1    | Refusal (init won't overwrite; list found invalid scenarios; lint reported issues) |
+| 2    | Load failure (`evals.yaml` schema/version/range) or runtime error                  |
 | 3    | Threshold failure (`min_pass_rate` ratchet)                                        |
 | 4    | Infrastructure/dependency error (no scenarios, empty filter, zero successful reps) |
 | 5    | Budget exhausted (`max_budget_usd`)                                                |
 | 130  | Interrupted (SIGINT)                                                               |
+
+The 1-vs-2 split — refusal (1) vs load failure (2) — matches `craboodle.allium` rules `RejectUnknownConfigKeys`, `RejectUnsupportedVersion`, `RejectInvalidMinPassRate` (load → 2) and `ExitListInvalid`, `ExitLintIssuesFound`, `InitRefuseExistingEvals`, `InitRefuseExistingScenarios` (refuse → 1).
 
 ## Contributing
 
