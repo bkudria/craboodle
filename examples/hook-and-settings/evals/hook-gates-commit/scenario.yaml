@@ -9,7 +9,7 @@ tools:
 project:
   git_init: true
   files:
-    file.txt: "updated content"
+    file.txt: 'updated content'
   # NOTE: PreToolUse hooks may not fire in all Agent SDK modes.
   # Verify this scenario works in your scuttlerun environment before
   # relying on hook-dependent checks.

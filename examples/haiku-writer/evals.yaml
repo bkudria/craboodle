@@ -1,4 +1,4 @@
-version: "1"
+version: '1'
 # Example: a standalone skill at the repo root, with eval scenarios under evals/.
 # Run: craboodle run examples/haiku-writer
 
@@ -14,4 +14,4 @@ scenarios:
       - Edit
     project:
       skills:
-        - .                            # self-reference: this directory is the skill
+        - . # self-reference: this directory is the skill

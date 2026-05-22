@@ -11,10 +11,10 @@ checks:
         The haiku-writer skill mandates asking for a topic first if one was not
         provided
   - file-created:
-      check: "A file was created or written to containing the haiku"
-      note: "Look for Write tool usage targeting a .txt file"
+      check: 'A file was created or written to containing the haiku'
+      note: 'Look for Write tool usage targeting a .txt file'
   - valid-haiku:
-      check: "The haiku has exactly 3 lines following a 5-7-5 syllable pattern"
+      check: 'The haiku has exactly 3 lines following a 5-7-5 syllable pattern'
       note: |
         Count syllables carefully; common errors include diphthongs and silent
         vowels

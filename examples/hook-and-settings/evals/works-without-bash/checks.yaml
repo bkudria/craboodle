@@ -5,9 +5,9 @@ context: |
 checks:
   - creates-package-json:
       check: "A package.json file was created with name 'my-app' and version '1.0.0'"
-      note: "Must use Write tool since Bash is unavailable"
+      note: 'Must use Write tool since Bash is unavailable'
   - creates-index-js:
-      check: "An index.js file was created that exports a function"
+      check: 'An index.js file was created that exports a function'
   - no-bash-used:
-      check: "The agent did not attempt to use Bash or shell commands"
-      note: "Bash is not in the tools list — agent should use Write for file creation"
+      check: 'The agent did not attempt to use Bash or shell commands'
+      note: 'Bash is not in the tools list — agent should use Write for file creation'
