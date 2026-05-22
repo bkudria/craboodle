@@ -2,6 +2,15 @@
 
 Eval pipeline orchestrator for Claude Code. Runs scenarios through scuttlerun, grades with pincenez, streams YAML results.
 
+## Where craboodle fits
+
+craboodle is the orchestrator end of a three-tool pipeline. The two tools it drives:
+
+- **[scuttlerun](https://github.com/bkudria/scuttlerun)** runs a headless Claude session with a synthetic user, producing a transcript.
+- **[pincenez](https://github.com/bkudria/pincenez)** grades that transcript against a checks file using an LLM judge.
+
+craboodle is a thin orchestrator — it does not duplicate scuttlerun or pincenez logic; both must be installed and on `PATH`.
+
 ## Build commands
 
 ```bash
