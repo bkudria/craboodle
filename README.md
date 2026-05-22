@@ -28,7 +28,7 @@ For each scenario, craboodle runs scuttlerun N times, grades each run with pince
 
 ### Prerequisites
 
-- **Node.js ≥ 24** (see [`.nvmrc`](.nvmrc) and `engines.node` in [package.json](package.json)).
+- **Node.js 20 or later** (see `engines.node` in [package.json](package.json); CI tests on 20, 22, 24; [`.nvmrc`](.nvmrc) pins 24 for development).
 - **[scuttlerun](https://github.com/bkudria/scuttlerun)** and **[pincenez](https://github.com/bkudria/pincenez)** installed and on `PATH`. craboodle invokes them as subprocesses.
 - **`ANTHROPIC_API_KEY`** exported in your environment. craboodle never reads or logs it; scuttlerun and pincenez do (see [SECURITY.md](SECURITY.md)).
 
@@ -118,7 +118,7 @@ Only directories matching the `craboodle-run-` or `craboodle-staged-` prefixes a
 
 **`scuttlerun is not found on PATH` (or `pincenez …`)** — craboodle requires both companion CLIs on `PATH`. Install them ([scuttlerun](https://github.com/bkudria/scuttlerun), [pincenez](https://github.com/bkudria/pincenez)) and confirm with `which scuttlerun pincenez`. If installed but not found, your shell rc may not be exporting their install directory.
 
-**`The engine "node" is incompatible with this module`** during `npm install -g craboodle` — craboodle requires Node ≥ 24 (`engines.node` in package.json). Use a version manager: `nvm install 24 && nvm use 24`, or `fnm use 24`, then retry.
+**`The engine "node" is incompatible with this module`** during `npm install -g craboodle` — craboodle requires Node ≥ 20 (`engines.node` in package.json). Use a version manager: `nvm install 24 && nvm use 24`, or `fnm use 24`, then retry.
 
 **Scuttlerun or pincenez fails with an auth error** — both subprocesses call the Anthropic API and need `ANTHROPIC_API_KEY` in the environment. craboodle doesn't read or forward the key itself; export it in your shell (`export ANTHROPIC_API_KEY=…`) before running.
 
