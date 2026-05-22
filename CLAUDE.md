@@ -33,7 +33,7 @@ See [GOALS.md](GOALS.md) for design philosophy and [craboodle.allium](craboodle.
 - `src/pool.ts` — Flat (scenario, rep) work pool with concurrency control
 - `src/runner.ts` — scuttlerun/pincenez subprocess invocation
 - `src/output.ts` — Results averaging and streaming YAML output
-- `src/cleanup.ts` — Old artifact directory cleanup (craboodle-run-* and craboodle-staged-*)
+- `src/cleanup.ts` — Old artifact directory cleanup (craboodle-run-_ and craboodle-staged-_)
 
 ## Key decisions
 

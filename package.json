@@ -47,8 +47,8 @@
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "lint": "eslint .",
-    "format": "prettier --write src/ tests/",
-    "format:check": "prettier --check src/ tests/",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "dev": "tsx src/cli.ts",
     "prepare": "husky",
     "prepublishOnly": "npm run build && npm test"

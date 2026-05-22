@@ -107,8 +107,8 @@ Each `craboodle run` creates a per-run artifact directory and a staged filtered 
 The default window is 7 days. Override (or disable) it via `evals.yaml`:
 
 ```yaml
-version: "1"
-artifact_retention_days: 30   # keep prior runs for 30 days
+version: '1'
+artifact_retention_days: 30 # keep prior runs for 30 days
 # artifact_retention_days: 0  # disable cleanup entirely
 ```
 
@@ -128,15 +128,15 @@ Only directories matching the `craboodle-run-` or `craboodle-staged-` prefixes a
 
 Subset of the shared scuttlerun/pincenez/craboodle taxonomy — see [scuttlerun/README.md#exit-codes](https://github.com/bkudria/scuttlerun#exit-codes) for the canonical table. Source: [`src/exit-codes.ts`](src/exit-codes.ts).
 
-| Code | Meaning |
-|------|---------|
-| 0 | Pipeline completed |
-| 1 | Config/input error (also: lint found issues) |
-| 2 | Runtime error (caught exception in run/lint action) |
-| 3 | Threshold failure (`min_pass_rate` ratchet) |
-| 4 | Infrastructure/dependency error (no scenarios, empty filter, zero successful reps) |
-| 5 | Budget exhausted (`max_budget_usd`) |
-| 130 | Interrupted (SIGINT) |
+| Code | Meaning                                                                            |
+| ---- | ---------------------------------------------------------------------------------- |
+| 0    | Pipeline completed                                                                 |
+| 1    | Config/input error (also: lint found issues)                                       |
+| 2    | Runtime error (caught exception in run/lint action)                                |
+| 3    | Threshold failure (`min_pass_rate` ratchet)                                        |
+| 4    | Infrastructure/dependency error (no scenarios, empty filter, zero successful reps) |
+| 5    | Budget exhausted (`max_budget_usd`)                                                |
+| 130  | Interrupted (SIGINT)                                                               |
 
 ## Contributing
 
