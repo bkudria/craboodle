@@ -1,8 +1,19 @@
 import { readFile, access } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parse } from 'yaml';
+import {
+  enumeratePluginComponents,
+  loadPluginManifest,
+  type PluginComponents,
+  type PluginManifest,
+} from './plugin.js';
 
 export type EvalsRootMode = 'skill' | 'plugin' | 'generic';
+
+export interface PluginInfo {
+  manifest: PluginManifest;
+  components: PluginComponents;
+}
 
 export interface EvalsConfig {
   version: string;
@@ -13,6 +24,7 @@ export interface EvalsConfig {
   scenariosPath: string;
   scenariosBase: Record<string, unknown>;
   mode: EvalsRootMode;
+  plugin?: PluginInfo;
 }
 
 const SUPPORTED_VERSIONS = ['1'];
@@ -168,6 +180,15 @@ export async function loadEvalsConfig(root: string): Promise<EvalsConfig> {
 
   const mode = await detectMode(root);
 
+  let plugin: PluginInfo | undefined;
+  if (mode === 'plugin') {
+    const [manifest, components] = await Promise.all([
+      loadPluginManifest(root),
+      enumeratePluginComponents(root),
+    ]);
+    plugin = { manifest, components };
+  }
+
   return {
     version,
     minPassRate,
@@ -177,6 +198,7 @@ export async function loadEvalsConfig(root: string): Promise<EvalsConfig> {
     scenariosPath,
     scenariosBase,
     mode,
+    plugin,
   };
 }
 

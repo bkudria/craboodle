@@ -1,7 +1,8 @@
-import { access, mkdir, readdir, stat, writeFile } from 'node:fs/promises';
+import { access, mkdir, stat, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { formatErrorWithHint } from '../errors.js';
 import { EXIT_CONFIG_ERROR } from '../exit-codes.js';
+import { enumeratePluginComponents, loadPluginManifest, type PluginManifest } from '../plugin.js';
 
 async function detectInitMode(
   root: string,
@@ -11,19 +12,9 @@ async function detectInitMode(
     () => false,
   );
   if (hasPluginMarker) {
-    try {
-      const skillsDir = join(root, 'skills');
-      const entries = await readdir(skillsDir, { withFileTypes: true });
-      for (const e of entries.sort((a, b) => a.name.localeCompare(b.name))) {
-        if (!e.isDirectory()) continue;
-        const hasSkillMd = await access(join(skillsDir, e.name, 'SKILL.md')).then(
-          () => true,
-          () => false,
-        );
-        if (hasSkillMd) return { mode: 'plugin', firstPluginSkill: e.name };
-      }
-    } catch {
-      // skills/ dir doesn't exist
+    const components = await enumeratePluginComponents(root);
+    if (components.skills.length > 0) {
+      return { mode: 'plugin', firstPluginSkill: components.skills[0] };
     }
     return { mode: 'plugin' };
   }
@@ -33,6 +24,14 @@ async function detectInitMode(
   );
   if (hasSkillMd) return { mode: 'skill' };
   return { mode: 'generic' };
+}
+
+async function tryLoadPluginManifest(root: string): Promise<PluginManifest | undefined> {
+  try {
+    return await loadPluginManifest(root);
+  } catch {
+    return undefined;
+  }
 }
 
 function renderEvalsYaml(mode: 'skill' | 'plugin' | 'generic', firstPluginSkill?: string): string {
@@ -115,6 +114,15 @@ export async function initCommand(dir: string): Promise<void> {
 
   process.stdout.write(`Created ${resolvedDir}/\n`);
   process.stdout.write(`  evals.yaml\n`);
+
+  if (mode === 'plugin') {
+    const manifest = await tryLoadPluginManifest(resolvedDir);
+    if (manifest) {
+      const versionSuffix = manifest.version ? ` (${manifest.version})` : '';
+      process.stdout.write(`\nDetected plugin: ${manifest.name}${versionSuffix}\n`);
+    }
+  }
+
   process.stdout.write(`\nNext steps:\n`);
   process.stdout.write(`  Create evals/<scenario-id>/scenario.yaml and checks.yaml\n`);
   process.stdout.write(`  craboodle list ${dir}     # validate scenarios\n`);

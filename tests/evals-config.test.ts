@@ -282,6 +282,45 @@ describe('evals-config', () => {
       expect(config.mode).toBe('generic');
     });
 
+    it('exposes the parsed manifest and enumerated components in plugin mode', async () => {
+      const { loadEvalsConfig } = await import('../src/config.js');
+      await writeEvals({ version: '1', scenarios: { base: {} } });
+      await mkdir(join(tmpDir, '.claude-plugin'));
+      await writeFile(
+        join(tmpDir, '.claude-plugin', 'plugin.json'),
+        JSON.stringify({ name: 'sample-plugin', version: '1.2.3' }),
+      );
+      await mkdir(join(tmpDir, 'skills', 'alpha'), { recursive: true });
+      await writeFile(join(tmpDir, 'skills', 'alpha', 'SKILL.md'), '---\nname: alpha\n---');
+      const config = await loadEvalsConfig(tmpDir);
+      expect(config.plugin?.manifest.name).toBe('sample-plugin');
+      expect(config.plugin?.manifest.version).toBe('1.2.3');
+      expect(config.plugin?.components.skills).toEqual(['alpha']);
+    });
+
+    it('leaves config.plugin undefined in skill mode', async () => {
+      const { loadEvalsConfig } = await import('../src/config.js');
+      await writeEvals({ version: '1', scenarios: { base: {} } });
+      await writeFile(join(tmpDir, 'SKILL.md'), '---\nname: x\n---\n');
+      const config = await loadEvalsConfig(tmpDir);
+      expect(config.plugin).toBeUndefined();
+    });
+
+    it('leaves config.plugin undefined in generic mode', async () => {
+      const { loadEvalsConfig } = await import('../src/config.js');
+      await writeEvals({ version: '1', scenarios: { base: {} } });
+      const config = await loadEvalsConfig(tmpDir);
+      expect(config.plugin).toBeUndefined();
+    });
+
+    it('surfaces malformed plugin.json as a load error', async () => {
+      const { loadEvalsConfig } = await import('../src/config.js');
+      await writeEvals({ version: '1', scenarios: { base: {} } });
+      await mkdir(join(tmpDir, '.claude-plugin'));
+      await writeFile(join(tmpDir, '.claude-plugin', 'plugin.json'), '{ not json');
+      await expect(loadEvalsConfig(tmpDir)).rejects.toThrow(/plugin\.json/);
+    });
+
     it('keeps scenarios.base opaque (does not validate scuttlerun fields)', async () => {
       const { loadEvalsConfig } = await import('../src/config.js');
       // Arbitrary nested structure that scuttlerun would interpret; craboodle must

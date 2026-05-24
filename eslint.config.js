@@ -11,7 +11,7 @@ export default [
       parserOptions: {
         projectService: {
           allowDefaultProject: ['tests/*.test.ts', 'tests/setup-stubs.ts', 'tests/_fixtures.ts'],
-          maximumDefaultProjectFileMatchCount_THIS_WILL_SLOW_DOWN_LINTING: 20,
+          maximumDefaultProjectFileMatchCount_THIS_WILL_SLOW_DOWN_LINTING: 25,
         },
         tsconfigRootDir: import.meta.dirname,
       },

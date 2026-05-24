@@ -116,12 +116,16 @@ actor Operator {
 -- The directory containing evals.yaml. The same directory typically also
 -- contains SKILL.md (skill mode) or .claude-plugin/plugin.json (plugin mode);
 -- mode = generic when neither marker is present and skill paths in
--- scenarios.base.project.skills must be absolute or ~-prefixed.
+-- scenarios.base.project.skills must be absolute or ~-prefixed. In plugin
+-- mode, the manifest contents (plugin.json) are parsed and the plugin's
+-- component layout is enumerated by filesystem convention.
 entity EvalRoot {
     path: String
     mode: skill | plugin | generic
     evals_config: EvalsConfig with eval_root = this
     scenarios: Set<Scenario> with eval_root = this
+    plugin_manifest: PluginManifest? with eval_root = this
+    plugin_components: PluginComponents? with eval_root = this
 }
 
 entity Scenario {
@@ -144,6 +148,37 @@ entity EvalsConfig {
     artifact_retention_days_override: Integer?
     scenarios_path: String                  -- defaults to config.default_scenarios_path
     scenarios_base: ScuttlerunConfig        -- opaque to craboodle; passed to scuttlerun
+}
+
+-- The parsed .claude-plugin/plugin.json manifest, present only when
+-- eval_root.mode = plugin. Only the metadata documented by the upstream
+-- Claude Code plugin schema is modelled here; unknown fields are
+-- preserved through the manifest reader for forward compatibility but
+-- are not promoted to entity attributes.
+entity PluginManifest {
+    eval_root: EvalRoot
+    name: String
+    description: String?
+    version: String?
+    license: String?
+    repository: String?
+    homepage: String?
+    keywords: List<String>?
+    author: String?
+}
+
+-- The plugin's component layout, enumerated by filesystem convention
+-- under eval_root.path. plugin.json itself does not declare components;
+-- they are discovered by scanning skills/<id>/SKILL.md, agents/<id>.md,
+-- commands/<id>.md, hooks/hooks.json, and the root-level .mcp.json.
+-- Present only when eval_root.mode = plugin.
+entity PluginComponents {
+    eval_root: EvalRoot
+    skills: List<String>                    -- sorted ids of skills/<id>/SKILL.md
+    agents: List<String>                    -- sorted ids of agents/<id>.md
+    commands: List<String>                  -- sorted ids of commands/<id>.md
+    has_hooks: Boolean                      -- true iff hooks/hooks.json present
+    has_mcp_servers: Boolean                -- true iff .mcp.json present at plugin root
 }
 
 -- A per-invocation tempdir that mirrors eval_root, symlinking every child
