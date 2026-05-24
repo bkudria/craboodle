@@ -2,7 +2,164 @@ import { access, mkdir, stat, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { formatErrorWithHint } from '../errors.js';
 import { EXIT_CONFIG_ERROR } from '../exit-codes.js';
-import { enumeratePluginComponents, loadPluginManifest, type PluginManifest } from '../plugin.js';
+import {
+  enumeratePluginComponents,
+  loadPluginManifest,
+  type PluginComponents,
+  type PluginManifest,
+} from '../plugin.js';
+
+type PlaceholderComponentType = 'skill' | 'agent' | 'command' | 'hooks' | 'mcp_servers';
+
+function renderPlaceholderScenario(
+  componentType: PlaceholderComponentType,
+  componentId: string,
+): { scenarioYaml: string; checksYaml: string } {
+  if (componentType === 'skill') {
+    return {
+      scenarioYaml:
+        `# TODO: replace with a prompt that should trigger the \`${componentId}\` skill.\n` +
+        `# The prompt should NOT name the skill — let the agent decide whether to load it.\n` +
+        `prompt: |\n` +
+        `  TODO: describe the user's request here.\n` +
+        `\n` +
+        `# user:\n` +
+        `#   max_turns: 4\n`,
+      checksYaml:
+        `# Placeholder checks for the \`${componentId}\` skill. Uncomment and edit.\n` +
+        `# Skill calls surface in the transcript as \`tool: Skill\` entries with \`skill: <id>\`.\n` +
+        `checks: []\n` +
+        `# checks:\n` +
+        `#   - ${componentId}-skill-triggered:\n` +
+        `#       check: 'A \`tool: Skill\` entry with \`skill: ${componentId}\` appears in the transcript'\n` +
+        `#       note: 'Plugin-component check: verifies the skill loaded for this prompt'\n`,
+    };
+  }
+  if (componentType === 'mcp_servers') {
+    return {
+      scenarioYaml:
+        `# TODO: replace with a prompt that should cause the agent to call one of the plugin's\n` +
+        `# MCP-server tools. The plugin's .mcp.json declares the server(s); each exposed tool\n` +
+        `# is callable as \`mcp__<server>__<tool>\`.\n` +
+        `prompt: |\n` +
+        `  TODO: describe a user request that requires the MCP server's capability.\n` +
+        `\n` +
+        `# user:\n` +
+        `#   max_turns: 4\n`,
+      checksYaml:
+        `# Placeholder checks for MCP-server tools. Uncomment and edit.\n` +
+        `# MCP-tool calls surface in the transcript as \`tool: mcp__<server>__<tool>\` entries.\n` +
+        `checks: []\n` +
+        `# checks:\n` +
+        `#   - mcp-tool-called:\n` +
+        `#       check: 'A \`tool: mcp__<server>__<tool>\` entry appears in the transcript (replace <server> and <tool> with the specific id)'\n` +
+        `#       note: 'Plugin-component check: verifies an MCP-server tool was invoked'\n`,
+    };
+  }
+  if (componentType === 'hooks') {
+    return {
+      scenarioYaml:
+        `# TODO: replace with a prompt that exercises the plugin's hooks/hooks.json behaviour.\n` +
+        `# Hooks have no per-id enumeration today; use this single placeholder regardless of\n` +
+        `# how many hooks the plugin declares.\n` +
+        `prompt: |\n` +
+        `  TODO: describe a user request whose handling the hooks should observe or alter.\n` +
+        `\n` +
+        `# user:\n` +
+        `#   max_turns: 4\n`,
+      checksYaml:
+        `# Placeholder checks for hooks. Uncomment and edit.\n` +
+        `# Hooks are observed via their side effects on the transcript and the project tree:\n` +
+        `#   - a tool call that would otherwise have happened is blocked (PreToolUse deny)\n` +
+        `#   - a tool call's input was mutated before execution\n` +
+        `#   - a file the hook owns was written / updated\n` +
+        `# There is no direct \`tool: hook\` entry — assert against the observable result.\n` +
+        `checks: []\n` +
+        `# checks:\n` +
+        `#   - hook-side-effect-observed:\n` +
+        `#       check: 'TODO: describe the observable side effect the hook should produce'\n` +
+        `#       note: 'Plugin-component check: hooks are observed by their side effects, not direct tool calls'\n`,
+    };
+  }
+  if (componentType === 'command') {
+    return {
+      scenarioYaml:
+        `# TODO: replace with a prompt that invokes the \`/${componentId}\` slash command.\n` +
+        `# Slash commands surface in the prompt stream as a user message starting with /<id>;\n` +
+        `# they are not tool: entries.\n` +
+        `prompt: |\n` +
+        `  /${componentId} TODO: arguments here, if any.\n` +
+        `\n` +
+        `# user:\n` +
+        `#   max_turns: 4\n`,
+      checksYaml:
+        `# Placeholder checks for the \`/${componentId}\` slash command. Uncomment and edit.\n` +
+        `# Commands are observed via their effects (the agent's response, files written, tools called).\n` +
+        `checks: []\n` +
+        `# checks:\n` +
+        `#   - ${componentId}-command-invoked:\n` +
+        `#       check: 'The transcript contains a user message that begins with \`/${componentId}\`'\n` +
+        `#       note: 'Plugin-component check: verifies the slash command was sent through the prompt stream'\n`,
+    };
+  }
+  if (componentType === 'agent') {
+    return {
+      scenarioYaml:
+        `# TODO: replace with a prompt that should cause the agent to dispatch the \`${componentId}\` sub-agent.\n` +
+        `# The prompt should NOT name the sub-agent — let the agent decide.\n` +
+        `prompt: |\n` +
+        `  TODO: describe the user's request here.\n` +
+        `\n` +
+        `# user:\n` +
+        `#   max_turns: 4\n`,
+      checksYaml:
+        `# Placeholder checks for the \`${componentId}\` sub-agent. Uncomment and edit.\n` +
+        `# Sub-agent dispatches surface in the transcript as \`tool: Agent\` entries with \`subagent_type: <id>\`.\n` +
+        `# Tools used inside the sub-agent's sub-session are NOT visible in the outer transcript.\n` +
+        `checks: []\n` +
+        `# checks:\n` +
+        `#   - ${componentId}-dispatched:\n` +
+        `#       check: 'A \`tool: Agent\` entry with \`subagent_type: ${componentId}\` appears in the transcript'\n` +
+        `#       note: 'Plugin-component check: verifies the sub-agent was dispatched for this prompt'\n`,
+    };
+  }
+  // Other component types are added in later changes.
+  throw new Error(`Unsupported placeholder component type: ${componentType}`);
+}
+
+async function writePlaceholderScenarios(
+  rootDir: string,
+  components: PluginComponents,
+): Promise<string[]> {
+  const written: string[] = [];
+
+  async function writeOne(componentType: PlaceholderComponentType, id: string): Promise<void> {
+    const dir = join(rootDir, 'evals', `${id}-placeholder`);
+    await mkdir(dir, { recursive: true });
+    const rendered = renderPlaceholderScenario(componentType, id);
+    await writeFile(join(dir, 'scenario.yaml'), rendered.scenarioYaml);
+    await writeFile(join(dir, 'checks.yaml'), rendered.checksYaml);
+    written.push(`evals/${id}-placeholder/scenario.yaml`);
+    written.push(`evals/${id}-placeholder/checks.yaml`);
+  }
+
+  for (const skillId of components.skills) {
+    await writeOne('skill', skillId);
+  }
+  for (const agentId of components.agents) {
+    await writeOne('agent', agentId);
+  }
+  for (const commandId of components.commands) {
+    await writeOne('command', commandId);
+  }
+  if (components.hasHooks) {
+    await writeOne('hooks', 'hooks');
+  }
+  if (components.hasMcpServers) {
+    await writeOne('mcp_servers', 'mcp-servers');
+  }
+  return written;
+}
 
 async function detectInitMode(
   root: string,
@@ -112,8 +269,17 @@ export async function initCommand(dir: string): Promise<void> {
   const { mode, firstPluginSkill } = await detectInitMode(resolvedDir);
   await writeFile(join(resolvedDir, 'evals.yaml'), renderEvalsYaml(mode, firstPluginSkill));
 
+  let placeholderPaths: string[] = [];
+  if (mode === 'plugin') {
+    const components = await enumeratePluginComponents(resolvedDir);
+    placeholderPaths = await writePlaceholderScenarios(resolvedDir, components);
+  }
+
   process.stdout.write(`Created ${resolvedDir}/\n`);
   process.stdout.write(`  evals.yaml\n`);
+  for (const relPath of placeholderPaths) {
+    process.stdout.write(`  ${relPath}\n`);
+  }
 
   if (mode === 'plugin') {
     const manifest = await tryLoadPluginManifest(resolvedDir);
