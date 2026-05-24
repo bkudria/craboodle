@@ -35,6 +35,27 @@ function renderPlaceholderScenario(
         `#       note: 'Plugin-component check: verifies the skill loaded for this prompt'\n`,
     };
   }
+  if (componentType === 'command') {
+    return {
+      scenarioYaml:
+        `# TODO: replace with a prompt that invokes the \`/${componentId}\` slash command.\n` +
+        `# Slash commands surface in the prompt stream as a user message starting with /<id>;\n` +
+        `# they are not tool: entries.\n` +
+        `prompt: |\n` +
+        `  /${componentId} TODO: arguments here, if any.\n` +
+        `\n` +
+        `# user:\n` +
+        `#   max_turns: 4\n`,
+      checksYaml:
+        `# Placeholder checks for the \`/${componentId}\` slash command. Uncomment and edit.\n` +
+        `# Commands are observed via their effects (the agent's response, files written, tools called).\n` +
+        `checks: []\n` +
+        `# checks:\n` +
+        `#   - ${componentId}-command-invoked:\n` +
+        `#       check: 'The transcript contains a user message that begins with \`/${componentId}\`'\n` +
+        `#       note: 'Plugin-component check: verifies the slash command was sent through the prompt stream'\n`,
+    };
+  }
   if (componentType === 'agent') {
     return {
       scenarioYaml:
@@ -81,6 +102,9 @@ async function writePlaceholderScenarios(
   }
   for (const agentId of components.agents) {
     await writeOne('agent', agentId);
+  }
+  for (const commandId of components.commands) {
+    await writeOne('command', commandId);
   }
   return written;
 }
