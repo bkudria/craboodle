@@ -1,0 +1,11 @@
+prompt: |
+  I just got out of a long 1:1 and need to remember what we covered. Can
+  you help me make sense of it? Here's roughly what was said:
+
+  We decided to ship the new caching layer behind a feature flag for the first
+  two weeks. Bob will own the rollout. There's still an open question about
+  whether the eviction policy should be LRU or LFU — Anna is going to benchmark
+  both and report back next Friday. Carl agreed to write the runbook for
+  disabling the flag if cache hit rate drops below 60%.
+user:
+  max_turns: 2

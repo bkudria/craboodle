@@ -1,0 +1,34 @@
+prompt: |
+  My manager just asked me what's in notes.md. Can you give me a quick
+  rundown so I can pass it on?
+user:
+  max_turns: 2
+project:
+  files:
+    notes.md: |
+      ## Decisions
+
+      - Ship the new caching layer behind a feature flag for the first two weeks.
+      - Bob owns the rollout.
+      - Sprint 24 capacity reduced to 28 points to absorb the rollout overhead.
+      - All cache-related PRs require a second reviewer until the flag is off.
+      - The team will hold a retro on the rollout 4 weeks post-launch.
+
+      ## Open questions
+
+      - LRU vs LFU eviction policy — Anna will benchmark both and report back
+        next Friday.
+      - Do we need a separate cache for the analytics service, or can it share
+        the main one?
+      - Should the feature flag be per-user, per-org, or global rollout-percent?
+      - How do we surface cache hit rate to oncall without paging them?
+      - What's the rollback path if hit rate drops below 60% during the first week?
+
+      ## Action items
+
+      - Carl: write the runbook for disabling the flag if cache hit rate drops
+        below 60%.
+      - Bob: file the rollout ticket and assign DRIs for each region.
+      - Anna: post benchmark results to #infra by next Friday EOD.
+      - Dana: update the on-call playbook with the new cache-related alerts.
+      - Eve: schedule the post-launch retro and circulate the agenda.

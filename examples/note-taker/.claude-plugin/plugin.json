@@ -1,0 +1,10 @@
+{
+  "name": "note-taker",
+  "description": "Throwaway fixture plugin demonstrating plugin-level evals: take-notes skill captures structured notes, then the note-summarizer sub-agent produces a 2-3 sentence summary.",
+  "version": "0.1.0",
+  "license": "MIT",
+  "keywords": ["example", "fixture", "plugin-level-eval"],
+  "author": {
+    "name": "craboodle examples"
+  }
+}

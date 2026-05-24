@@ -1,0 +1,21 @@
+context: |
+  The user wants both "remember what we covered" (capture) and "a quick
+  rundown" (summary) in one turn, without naming either component. The plugin
+  should compose: the take-notes skill captures into notes.md, then the
+  note-summarizer sub-agent summarises that file. Order matters — summarising
+  before the capture would mean the sub-agent has only the raw input to work
+  with, defeating the composition.
+
+checks:
+  - skill-precedes-sub-agent-dispatch:
+      check: 'The first `tool: Skill` entry with `skill: take-notes` has an earlier transcript line number than the first `tool: Agent` entry with `subagent_type: note-summarizer`'
+      note: 'skills/take-notes + agents/note-summarizer — composition; the ordering is the cross-component invariant. A skill-after-sub-agent or skill-only or sub-agent-only run all fail this check'
+  - sub-agent-dispatched-with-notes-file:
+      check: 'A `tool: Agent` entry with `subagent_type: note-summarizer` has its `input.prompt` field referencing `notes.md` by name'
+      note: 'skills/take-notes + agents/note-summarizer — composition; verifies the agent passed the captured file to the sub-agent rather than the raw user prompt'
+  - summary-includes-skill-output-detail:
+      check: 'The final agent reply contains at least one specific detail that appears in notes.md as written by the skill (e.g., a named person such as Bob/Anna/Carl/Dana, or a specific term like "feature flag", "eviction policy", or "runbook")'
+      note: "Grounding signal: the summary should reflect captured structure, not the user's raw words alone"
+  - summary-stays-within-cap:
+      check: 'The final agent reply (excluding any verbatim quotation of notes.md) contains at most 3 sentences'
+      note: "The sub-agent's 3-sentence cap applies to its summary output — a long reply suggests the cap was bypassed or the summary was produced inline by the main agent"
