@@ -55,6 +55,55 @@ describe('prepareRun', () => {
     return result;
   }
 
+  it('exposes EvalsConfig.plugin on PreparedRun in plugin mode', async () => {
+    const root = await makeRoot('my-plugin', {
+      evalsYaml: { version: '1', scenarios: { base: {} } },
+      scenarios: { only: { prompt: 'hi' } },
+    });
+    await mkdir(join(root, '.claude-plugin'));
+    await writeFile(
+      join(root, '.claude-plugin', 'plugin.json'),
+      JSON.stringify({ name: 'my-plugin', version: '0.1.0' }),
+    );
+    await mkdir(join(root, 'skills', 'one'), { recursive: true });
+    await writeFile(join(root, 'skills', 'one', 'SKILL.md'), '---\nname: one\n---\n');
+
+    const { prepareRun } = await import('../src/prepare-run.js');
+    const prepared = await prepareRun(root);
+    trackedParents.push(prepared.parent);
+
+    expect(prepared.plugin).toBeDefined();
+    expect(prepared.plugin?.manifest.name).toBe('my-plugin');
+    expect(prepared.plugin?.components.skills).toEqual(['one']);
+  });
+
+  it('leaves PreparedRun.plugin undefined in skill mode', async () => {
+    const root = await makeRoot('plain-skill', {
+      evalsYaml: { version: '1', scenarios: { base: {} } },
+      scenarios: { only: { prompt: 'hi' } },
+    });
+    await writeFile(join(root, 'SKILL.md'), '---\nname: plain-skill\n---\n');
+
+    const { prepareRun } = await import('../src/prepare-run.js');
+    const prepared = await prepareRun(root);
+    trackedParents.push(prepared.parent);
+
+    expect(prepared.plugin).toBeUndefined();
+  });
+
+  it('leaves PreparedRun.plugin undefined in generic mode', async () => {
+    const root = await makeRoot('generic-root', {
+      evalsYaml: { version: '1', scenarios: { base: {} } },
+      scenarios: { only: { prompt: 'hi' } },
+    });
+
+    const { prepareRun } = await import('../src/prepare-run.js');
+    const prepared = await prepareRun(root);
+    trackedParents.push(prepared.parent);
+
+    expect(prepared.plugin).toBeUndefined();
+  });
+
   it('returns the discovered scenarios from the original root', async () => {
     const root = await makeRoot('my-skill', {
       evalsYaml: { version: '1', scenarios: { base: {} } },

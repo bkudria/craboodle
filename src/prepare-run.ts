@@ -1,7 +1,7 @@
 import { writeFile } from 'node:fs/promises';
 import { isAbsolute, join, resolve, sep } from 'node:path';
 import { stringify } from 'yaml';
-import { loadEvalsConfig } from './config.js';
+import { loadEvalsConfig, type PluginInfo } from './config.js';
 import { discoverScenarios, type ScenarioRef } from './discovery.js';
 import { stageEvalsRoot } from './staged-view.js';
 
@@ -20,6 +20,8 @@ export interface PreparedRun {
     repeats?: number;
     artifactRetentionDays?: number;
   };
+  /** Parsed manifest + enumerated components; present iff plugin mode. */
+  plugin?: PluginInfo;
 }
 
 /**
@@ -55,6 +57,7 @@ export async function prepareRun(root: string): Promise<PreparedRun> {
       repeats: config.repeats,
       artifactRetentionDays: config.artifactRetentionDays,
     },
+    ...(config.plugin ? { plugin: config.plugin } : {}),
   };
 }
 

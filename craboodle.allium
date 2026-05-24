@@ -304,6 +304,7 @@ entity LintInvocation {
 
     lint_results: Set<LintScenarioResult> with invocation = this
     results_with_issues: lint_results where checks_with_issues > 0
+    plugin_coverage: PluginCoverage? with invocation = this
 
     selected_scenarios:
         if scenario_filter != null:
@@ -425,6 +426,22 @@ entity LintScenarioResult {
     checks: List<LintedCheck>
     checks_total: Integer
     checks_with_issues: Integer
+}
+
+-- Per-component scenario counts for plugin-mode lint. Populated only when
+-- eval_root.mode = plugin. List-typed counts (skills, agents, commands) carry
+-- one entry per declared component (zero-filled when no scenarios match).
+-- Mapping rule: a scenario id covers a component <type>/<id> iff the id
+-- equals "<type>-<id>" or starts with "<type>-<id>-"; longest component id
+-- wins on overlapping prefixes. Singleton counts (hooks, mcp_servers) are
+-- scenario counts whose id equals "<singleton>" or starts with "<singleton>-".
+entity PluginCoverage {
+    invocation: LintInvocation
+    skills: Map<String, Integer>
+    agents: Map<String, Integer>
+    commands: Map<String, Integer>
+    hooks: Integer
+    mcp_servers: Integer
 }
 
 -- ============================================================================
@@ -1124,6 +1141,7 @@ surface LintCommand {
         invocation.scenarios_with_issues
         invocation.checks_total
         invocation.checks_with_issues
+        invocation.plugin_coverage
         invocation.exit_code
 
     contracts:
@@ -1146,6 +1164,17 @@ surface LintCommand {
         -- {checks_total, checks_with_issues}. Both reflect every linted
         -- scenario and check, including those without issues that were
         -- omitted from the per-scenario blocks.
+
+    @guarantee PluginCoverageBlock
+        -- When eval_root.mode = plugin, after the two lint-totals mappings,
+        -- a `plugin_coverage:` mapping is emitted with sub-keys
+        -- {skills, agents, commands, hooks, mcp_servers}. List-typed
+        -- sub-keys map every declared component id to the count of
+        -- selected scenarios whose id matches `<type>-<id>` or
+        -- `<type>-<id>-<suffix>` (longest component id first); singleton
+        -- sub-keys count scenarios whose id equals `<singleton>` or starts
+        -- with `<singleton>-`. The block is omitted in skill and generic
+        -- modes. Exit codes are unchanged by this block.
 
     @guarantee LintExitCodes
         -- 0 clean; 1 issues found; 4 no scenarios, empty filter, or zero

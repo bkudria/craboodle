@@ -704,6 +704,27 @@ checks_with_issues: 0
     });
   });
 
+  describe('streamPluginCoverage', () => {
+    it('writes a plugin_coverage block with skills, agents, commands and singletons', async () => {
+      const { streamPluginCoverage } = await import('../src/output.js');
+
+      streamPluginCoverage({
+        skills: { bar: 0, foo: 2 },
+        agents: { reviewer: 1 },
+        commands: {},
+        hooks: 0,
+        mcp_servers: 3,
+      });
+
+      expect(written).toContain('plugin_coverage:');
+      expect(written).toMatch(/skills:\n {4}bar: 0\n {4}foo: 2/);
+      expect(written).toMatch(/agents:\n {4}reviewer: 1/);
+      expect(written).toMatch(/commands: \{\}/);
+      expect(written).toMatch(/^ {2}hooks: 0/m);
+      expect(written).toMatch(/^ {2}mcp_servers: 3/m);
+    });
+  });
+
   describe('writeYamlArrayItem', () => {
     it('serializes an object as a YAML list item with proper indentation', async () => {
       const { writeYamlArrayItem } = await import('../src/output.js');
