@@ -322,6 +322,17 @@ describe('init', () => {
     expect(content).toMatch(/#\s*skills:/);
   });
 
+  it('plugin mode without discoverable components: creates no evals/ directory', async () => {
+    const initDir = join(tmpDir, 'my-plugin');
+    await mkdir(join(initDir, '.claude-plugin'), { recursive: true });
+    await writeFile(join(initDir, '.claude-plugin', 'plugin.json'), '{}');
+
+    await execFileAsync(process.execPath, [CLI_PATH, 'init', initDir]);
+
+    const entries = await readdir(initDir);
+    expect(entries).not.toContain('evals');
+  });
+
   it('generic mode (no marker): emits a commented placeholder for skills', async () => {
     const initDir = join(tmpDir, 'just-a-dir');
     await execFileAsync(process.execPath, [CLI_PATH, 'init', initDir]);
