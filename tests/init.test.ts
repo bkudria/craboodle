@@ -262,6 +262,32 @@ describe('init', () => {
     expect(checksRaw).toMatch(/side effect|blocked|mutated/i);
   });
 
+  it('plugin mode: scaffolds an mcp-servers-placeholder when .mcp.json exists', async () => {
+    const initDir = join(tmpDir, 'my-plugin');
+    await mkdir(join(initDir, '.claude-plugin'), { recursive: true });
+    await writeFile(
+      join(initDir, '.claude-plugin', 'plugin.json'),
+      JSON.stringify({ name: 'my-plugin' }),
+    );
+    await writeFile(join(initDir, '.mcp.json'), '{}');
+
+    await execFileAsync(process.execPath, [CLI_PATH, 'init', initDir]);
+
+    const scenarioRaw = await readFile(
+      join(initDir, 'evals', 'mcp-servers-placeholder', 'scenario.yaml'),
+      'utf8',
+    );
+    const scenario = parse(scenarioRaw);
+    expect(typeof scenario.prompt).toBe('string');
+    expect((scenario.prompt as string).length).toBeGreaterThan(0);
+
+    const checksRaw = await readFile(
+      join(initDir, 'evals', 'mcp-servers-placeholder', 'checks.yaml'),
+      'utf8',
+    );
+    expect(checksRaw).toMatch(/tool:\s*mcp__/);
+  });
+
   it('plugin mode without discoverable skills: emits a placeholder hint', async () => {
     const initDir = join(tmpDir, 'my-plugin');
     await mkdir(join(initDir, '.claude-plugin'), { recursive: true });

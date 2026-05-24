@@ -35,6 +35,27 @@ function renderPlaceholderScenario(
         `#       note: 'Plugin-component check: verifies the skill loaded for this prompt'\n`,
     };
   }
+  if (componentType === 'mcp_servers') {
+    return {
+      scenarioYaml:
+        `# TODO: replace with a prompt that should cause the agent to call one of the plugin's\n` +
+        `# MCP-server tools. The plugin's .mcp.json declares the server(s); each exposed tool\n` +
+        `# is callable as \`mcp__<server>__<tool>\`.\n` +
+        `prompt: |\n` +
+        `  TODO: describe a user request that requires the MCP server's capability.\n` +
+        `\n` +
+        `# user:\n` +
+        `#   max_turns: 4\n`,
+      checksYaml:
+        `# Placeholder checks for MCP-server tools. Uncomment and edit.\n` +
+        `# MCP-tool calls surface in the transcript as \`tool: mcp__<server>__<tool>\` entries.\n` +
+        `checks: []\n` +
+        `# checks:\n` +
+        `#   - mcp-tool-called:\n` +
+        `#       check: 'A \`tool: mcp__<server>__<tool>\` entry appears in the transcript (replace <server> and <tool> with the specific id)'\n` +
+        `#       note: 'Plugin-component check: verifies an MCP-server tool was invoked'\n`,
+    };
+  }
   if (componentType === 'hooks') {
     return {
       scenarioYaml:
@@ -133,6 +154,9 @@ async function writePlaceholderScenarios(
   }
   if (components.hasHooks) {
     await writeOne('hooks', 'hooks');
+  }
+  if (components.hasMcpServers) {
+    await writeOne('mcp_servers', 'mcp-servers');
   }
   return written;
 }
