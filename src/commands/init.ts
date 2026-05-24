@@ -35,6 +35,27 @@ function renderPlaceholderScenario(
         `#       note: 'Plugin-component check: verifies the skill loaded for this prompt'\n`,
     };
   }
+  if (componentType === 'agent') {
+    return {
+      scenarioYaml:
+        `# TODO: replace with a prompt that should cause the agent to dispatch the \`${componentId}\` sub-agent.\n` +
+        `# The prompt should NOT name the sub-agent — let the agent decide.\n` +
+        `prompt: |\n` +
+        `  TODO: describe the user's request here.\n` +
+        `\n` +
+        `# user:\n` +
+        `#   max_turns: 4\n`,
+      checksYaml:
+        `# Placeholder checks for the \`${componentId}\` sub-agent. Uncomment and edit.\n` +
+        `# Sub-agent dispatches surface in the transcript as \`tool: Agent\` entries with \`subagent_type: <id>\`.\n` +
+        `# Tools used inside the sub-agent's sub-session are NOT visible in the outer transcript.\n` +
+        `checks: []\n` +
+        `# checks:\n` +
+        `#   - ${componentId}-dispatched:\n` +
+        `#       check: 'A \`tool: Agent\` entry with \`subagent_type: ${componentId}\` appears in the transcript'\n` +
+        `#       note: 'Plugin-component check: verifies the sub-agent was dispatched for this prompt'\n`,
+    };
+  }
   // Other component types are added in later changes.
   throw new Error(`Unsupported placeholder component type: ${componentType}`);
 }
@@ -44,14 +65,22 @@ async function writePlaceholderScenarios(
   components: PluginComponents,
 ): Promise<string[]> {
   const written: string[] = [];
-  for (const skillId of components.skills) {
-    const dir = join(rootDir, 'evals', `${skillId}-placeholder`);
+
+  async function writeOne(componentType: PlaceholderComponentType, id: string): Promise<void> {
+    const dir = join(rootDir, 'evals', `${id}-placeholder`);
     await mkdir(dir, { recursive: true });
-    const rendered = renderPlaceholderScenario('skill', skillId);
+    const rendered = renderPlaceholderScenario(componentType, id);
     await writeFile(join(dir, 'scenario.yaml'), rendered.scenarioYaml);
     await writeFile(join(dir, 'checks.yaml'), rendered.checksYaml);
-    written.push(`evals/${skillId}-placeholder/scenario.yaml`);
-    written.push(`evals/${skillId}-placeholder/checks.yaml`);
+    written.push(`evals/${id}-placeholder/scenario.yaml`);
+    written.push(`evals/${id}-placeholder/checks.yaml`);
+  }
+
+  for (const skillId of components.skills) {
+    await writeOne('skill', skillId);
+  }
+  for (const agentId of components.agents) {
+    await writeOne('agent', agentId);
   }
   return written;
 }

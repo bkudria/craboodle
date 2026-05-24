@@ -177,6 +177,37 @@ describe('init', () => {
     }
   });
 
+  it('plugin mode: scaffolds an agent-placeholder for each agents/<id>.md', async () => {
+    const initDir = join(tmpDir, 'my-plugin');
+    await mkdir(join(initDir, '.claude-plugin'), { recursive: true });
+    await writeFile(
+      join(initDir, '.claude-plugin', 'plugin.json'),
+      JSON.stringify({ name: 'my-plugin' }),
+    );
+    await mkdir(join(initDir, 'agents'), { recursive: true });
+    await writeFile(
+      join(initDir, 'agents', 'note-summarizer.md'),
+      '---\nname: note-summarizer\n---\n',
+    );
+
+    await execFileAsync(process.execPath, [CLI_PATH, 'init', initDir]);
+
+    const scenarioRaw = await readFile(
+      join(initDir, 'evals', 'note-summarizer-placeholder', 'scenario.yaml'),
+      'utf8',
+    );
+    const scenario = parse(scenarioRaw);
+    expect(typeof scenario.prompt).toBe('string');
+    expect((scenario.prompt as string).length).toBeGreaterThan(0);
+
+    const checksRaw = await readFile(
+      join(initDir, 'evals', 'note-summarizer-placeholder', 'checks.yaml'),
+      'utf8',
+    );
+    expect(checksRaw).toMatch(/tool:\s*Agent/);
+    expect(checksRaw).toMatch(/subagent_type:\s*note-summarizer/);
+  });
+
   it('plugin mode without discoverable skills: emits a placeholder hint', async () => {
     const initDir = join(tmpDir, 'my-plugin');
     await mkdir(join(initDir, '.claude-plugin'), { recursive: true });
