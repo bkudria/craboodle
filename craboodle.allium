@@ -986,11 +986,21 @@ rule InitRefuseExistingScenarios {
     ensures: emit_stderr("already contains scenario files")
 }
 
--- The scaffold writes a single evals.yaml. Its body is mode-flavoured:
--- when SKILL.md is present the commented project.skills hint is `.`;
--- when .claude-plugin/plugin.json is present, `skills/<first-skill>`;
--- otherwise a generic placeholder. Detection is by filesystem probe of
--- target_dir; the spec abstracts over which template variant is rendered.
+-- The scaffold always writes evals.yaml at the target dir. Its body is
+-- mode-flavoured: skill mode emits a `.` self-reference hint; plugin mode
+-- emits a `skills/<first-skill>` hint when at least one skill is present;
+-- generic mode emits a placeholder. Detection is by filesystem probe.
+--
+-- In plugin mode the scaffold additionally fans out one informative
+-- placeholder scenario per discovered component, under
+-- evals/<id>-placeholder/{scenario,checks}.yaml. The <id> is the skill,
+-- agent, or command id (sorted), or the literal `hooks` and
+-- `mcp-servers` for the boolean components. Each placeholder carries a
+-- TODO prompt and a commented example check keyed to the component
+-- type's transcript observability surface (`tool: Skill`, `tool: Agent`,
+-- a user-message slash-command prefix, an observable hook side effect,
+-- or `tool: mcp__<server>__<tool>`). Skill mode and generic mode write
+-- only evals.yaml.
 rule InitCreateScaffold {
     when: init: InitInvocation.created
     requires: init.status = starting
@@ -998,6 +1008,8 @@ rule InitCreateScaffold {
     requires: not scenario_files_present(init.target_dir)
     ensures: write_scaffold(init.target_dir, "evals.yaml",
                             evals_template_for(init.target_dir))
+    ensures: write_plugin_placeholders_if_plugin_mode(init.target_dir,
+                                                     plugin_components_of(init.target_dir))
     ensures: init.status = created
     ensures: init.exit_code = 0
 }
