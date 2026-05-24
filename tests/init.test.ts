@@ -288,6 +288,29 @@ describe('init', () => {
     expect(checksRaw).toMatch(/tool:\s*mcp__/);
   });
 
+  it('plugin mode: stdout enumerates every created scaffold file under evals/', async () => {
+    const initDir = join(tmpDir, 'my-plugin');
+    await mkdir(join(initDir, '.claude-plugin'), { recursive: true });
+    await writeFile(
+      join(initDir, '.claude-plugin', 'plugin.json'),
+      JSON.stringify({ name: 'my-plugin' }),
+    );
+    await mkdir(join(initDir, 'skills', 'alpha'), { recursive: true });
+    await writeFile(join(initDir, 'skills', 'alpha', 'SKILL.md'), '---\nname: alpha\n---');
+    await mkdir(join(initDir, 'agents'), { recursive: true });
+    await writeFile(
+      join(initDir, 'agents', 'note-summarizer.md'),
+      '---\nname: note-summarizer\n---\n',
+    );
+
+    const { stdout } = await execFileAsync(process.execPath, [CLI_PATH, 'init', initDir]);
+    expect(stdout).toContain('evals.yaml');
+    expect(stdout).toContain('evals/alpha-placeholder/scenario.yaml');
+    expect(stdout).toContain('evals/alpha-placeholder/checks.yaml');
+    expect(stdout).toContain('evals/note-summarizer-placeholder/scenario.yaml');
+    expect(stdout).toContain('evals/note-summarizer-placeholder/checks.yaml');
+  });
+
   it('plugin mode without discoverable skills: emits a placeholder hint', async () => {
     const initDir = join(tmpDir, 'my-plugin');
     await mkdir(join(initDir, '.claude-plugin'), { recursive: true });
