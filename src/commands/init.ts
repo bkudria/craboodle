@@ -35,6 +35,31 @@ function renderPlaceholderScenario(
         `#       note: 'Plugin-component check: verifies the skill loaded for this prompt'\n`,
     };
   }
+  if (componentType === 'hooks') {
+    return {
+      scenarioYaml:
+        `# TODO: replace with a prompt that exercises the plugin's hooks/hooks.json behaviour.\n` +
+        `# Hooks have no per-id enumeration today; use this single placeholder regardless of\n` +
+        `# how many hooks the plugin declares.\n` +
+        `prompt: |\n` +
+        `  TODO: describe a user request whose handling the hooks should observe or alter.\n` +
+        `\n` +
+        `# user:\n` +
+        `#   max_turns: 4\n`,
+      checksYaml:
+        `# Placeholder checks for hooks. Uncomment and edit.\n` +
+        `# Hooks are observed via their side effects on the transcript and the project tree:\n` +
+        `#   - a tool call that would otherwise have happened is blocked (PreToolUse deny)\n` +
+        `#   - a tool call's input was mutated before execution\n` +
+        `#   - a file the hook owns was written / updated\n` +
+        `# There is no direct \`tool: hook\` entry — assert against the observable result.\n` +
+        `checks: []\n` +
+        `# checks:\n` +
+        `#   - hook-side-effect-observed:\n` +
+        `#       check: 'TODO: describe the observable side effect the hook should produce'\n` +
+        `#       note: 'Plugin-component check: hooks are observed by their side effects, not direct tool calls'\n`,
+    };
+  }
   if (componentType === 'command') {
     return {
       scenarioYaml:
@@ -105,6 +130,9 @@ async function writePlaceholderScenarios(
   }
   for (const commandId of components.commands) {
     await writeOne('command', commandId);
+  }
+  if (components.hasHooks) {
+    await writeOne('hooks', 'hooks');
   }
   return written;
 }

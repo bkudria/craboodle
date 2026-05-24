@@ -235,6 +235,33 @@ describe('init', () => {
     expect(checksRaw).toMatch(/\/triage\b/);
   });
 
+  it('plugin mode: scaffolds a hooks-placeholder when hooks/hooks.json exists', async () => {
+    const initDir = join(tmpDir, 'my-plugin');
+    await mkdir(join(initDir, '.claude-plugin'), { recursive: true });
+    await writeFile(
+      join(initDir, '.claude-plugin', 'plugin.json'),
+      JSON.stringify({ name: 'my-plugin' }),
+    );
+    await mkdir(join(initDir, 'hooks'), { recursive: true });
+    await writeFile(join(initDir, 'hooks', 'hooks.json'), '{}');
+
+    await execFileAsync(process.execPath, [CLI_PATH, 'init', initDir]);
+
+    const scenarioRaw = await readFile(
+      join(initDir, 'evals', 'hooks-placeholder', 'scenario.yaml'),
+      'utf8',
+    );
+    const scenario = parse(scenarioRaw);
+    expect(typeof scenario.prompt).toBe('string');
+    expect((scenario.prompt as string).length).toBeGreaterThan(0);
+
+    const checksRaw = await readFile(
+      join(initDir, 'evals', 'hooks-placeholder', 'checks.yaml'),
+      'utf8',
+    );
+    expect(checksRaw).toMatch(/side effect|blocked|mutated/i);
+  });
+
   it('plugin mode without discoverable skills: emits a placeholder hint', async () => {
     const initDir = join(tmpDir, 'my-plugin');
     await mkdir(join(initDir, '.claude-plugin'), { recursive: true });
