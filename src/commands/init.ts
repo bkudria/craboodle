@@ -2,7 +2,59 @@ import { access, mkdir, stat, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { formatErrorWithHint } from '../errors.js';
 import { EXIT_CONFIG_ERROR } from '../exit-codes.js';
-import { enumeratePluginComponents, loadPluginManifest, type PluginManifest } from '../plugin.js';
+import {
+  enumeratePluginComponents,
+  loadPluginManifest,
+  type PluginComponents,
+  type PluginManifest,
+} from '../plugin.js';
+
+type PlaceholderComponentType = 'skill' | 'agent' | 'command' | 'hooks' | 'mcp_servers';
+
+function renderPlaceholderScenario(
+  componentType: PlaceholderComponentType,
+  componentId: string,
+): { scenarioYaml: string; checksYaml: string } {
+  if (componentType === 'skill') {
+    return {
+      scenarioYaml:
+        `# TODO: replace with a prompt that should trigger the \`${componentId}\` skill.\n` +
+        `# The prompt should NOT name the skill — let the agent decide whether to load it.\n` +
+        `prompt: |\n` +
+        `  TODO: describe the user's request here.\n` +
+        `\n` +
+        `# user:\n` +
+        `#   max_turns: 4\n`,
+      checksYaml:
+        `# Placeholder checks for the \`${componentId}\` skill. Uncomment and edit.\n` +
+        `# Skill calls surface in the transcript as \`tool: Skill\` entries with \`skill: <id>\`.\n` +
+        `checks: []\n` +
+        `# checks:\n` +
+        `#   - ${componentId}-skill-triggered:\n` +
+        `#       check: 'A \`tool: Skill\` entry with \`skill: ${componentId}\` appears in the transcript'\n` +
+        `#       note: 'Plugin-component check: verifies the skill loaded for this prompt'\n`,
+    };
+  }
+  // Other component types are added in later changes.
+  throw new Error(`Unsupported placeholder component type: ${componentType}`);
+}
+
+async function writePlaceholderScenarios(
+  rootDir: string,
+  components: PluginComponents,
+): Promise<string[]> {
+  const written: string[] = [];
+  for (const skillId of components.skills) {
+    const dir = join(rootDir, 'evals', `${skillId}-placeholder`);
+    await mkdir(dir, { recursive: true });
+    const rendered = renderPlaceholderScenario('skill', skillId);
+    await writeFile(join(dir, 'scenario.yaml'), rendered.scenarioYaml);
+    await writeFile(join(dir, 'checks.yaml'), rendered.checksYaml);
+    written.push(`evals/${skillId}-placeholder/scenario.yaml`);
+    written.push(`evals/${skillId}-placeholder/checks.yaml`);
+  }
+  return written;
+}
 
 async function detectInitMode(
   root: string,
@@ -112,8 +164,17 @@ export async function initCommand(dir: string): Promise<void> {
   const { mode, firstPluginSkill } = await detectInitMode(resolvedDir);
   await writeFile(join(resolvedDir, 'evals.yaml'), renderEvalsYaml(mode, firstPluginSkill));
 
+  let placeholderPaths: string[] = [];
+  if (mode === 'plugin') {
+    const components = await enumeratePluginComponents(resolvedDir);
+    placeholderPaths = await writePlaceholderScenarios(resolvedDir, components);
+  }
+
   process.stdout.write(`Created ${resolvedDir}/\n`);
   process.stdout.write(`  evals.yaml\n`);
+  for (const relPath of placeholderPaths) {
+    process.stdout.write(`  ${relPath}\n`);
+  }
 
   if (mode === 'plugin') {
     const manifest = await tryLoadPluginManifest(resolvedDir);

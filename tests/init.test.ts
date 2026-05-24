@@ -144,7 +144,7 @@ describe('init', () => {
     expect(stdout).not.toMatch(/Detected plugin/);
   });
 
-  it('plugin mode: enumerates all skills via the shared enumerator (regression: first-by-alpha is preserved)', async () => {
+  it('plugin mode: scaffolds one placeholder scenario per declared skill (regression: no skill is dropped past index 0)', async () => {
     const initDir = join(tmpDir, 'my-plugin');
     await mkdir(join(initDir, '.claude-plugin'), { recursive: true });
     await writeFile(
@@ -156,9 +156,25 @@ describe('init', () => {
     await mkdir(join(initDir, 'skills', 'alpha'), { recursive: true });
     await writeFile(join(initDir, 'skills', 'alpha', 'SKILL.md'), '---\nname: alpha\n---');
     await execFileAsync(process.execPath, [CLI_PATH, 'init', initDir]);
-    const content = await readFile(join(initDir, 'evals.yaml'), 'utf8');
-    expect(content).toMatch(/skills\/alpha/);
-    expect(content).not.toMatch(/skills\/zebra/);
+
+    for (const id of ['alpha', 'zebra']) {
+      const scenarioRaw = await readFile(
+        join(initDir, 'evals', `${id}-placeholder`, 'scenario.yaml'),
+        'utf8',
+      );
+      const scenario = parse(scenarioRaw);
+      expect(scenario).toBeTypeOf('object');
+      expect(typeof scenario.prompt).toBe('string');
+      expect((scenario.prompt as string).length).toBeGreaterThan(0);
+
+      const checksRaw = await readFile(
+        join(initDir, 'evals', `${id}-placeholder`, 'checks.yaml'),
+        'utf8',
+      );
+      const checks = parse(checksRaw);
+      expect(checks).toBeTypeOf('object');
+      expect(checks).toHaveProperty('checks');
+    }
   });
 
   it('plugin mode without discoverable skills: emits a placeholder hint', async () => {
