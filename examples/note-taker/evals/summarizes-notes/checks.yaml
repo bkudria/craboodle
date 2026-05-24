@@ -1,0 +1,17 @@
+context: |
+  A pre-written notes.md is fixtured into the project with rich content (5 items
+  per section — enough to create verbosity pressure that a plain summary
+  request would expand on). The user asks for "a quick rundown" without any
+  length constraint; the note-summarizer sub-agent's hard 3-sentence cap is
+  what keeps the reply concise.
+
+checks:
+  - note-summarizer-dispatched:
+      check: 'A `tool: Agent` entry with `subagent_type: note-summarizer` appears in the transcript'
+      note: 'The user did not name the sub-agent; this verifies the agent dispatched it rather than summarising inline'
+  - summary-is-three-sentences-or-fewer:
+      check: 'The final agent reply contains at most 3 sentences, counting any sentence terminated by `.`, `!`, or `?` as one sentence'
+      note: "With 15 items in notes.md and no length constraint in the prompt, a plain LLM reply would typically be longer than 3 sentences — this check verifies the sub-agent's hard 3-sentence cap fired"
+  - summary-mentions-named-person:
+      check: 'The summary names at least one of the five people from notes.md (Bob, Anna, Carl, Dana, or Eve)'
+      note: 'Verifies the sub-agent read the structured notes rather than producing a generic acknowledgement; the named-person bar avoids accepting a summary that paraphrases section headings without content'

@@ -1,0 +1,19 @@
+context: |
+  The user dumped unstructured 1:1 content and asked for help making sense of
+  it — without naming the take-notes skill. The take-notes skill should
+  auto-trigger on the meeting/discussion framing and write notes.md with
+  three labelled sections (Decisions / Open questions / Action items).
+
+checks:
+  - take-notes-skill-triggered:
+      check: 'A `tool: Skill` entry with `skill: take-notes` appears in the transcript'
+      note: 'The user did not name the skill; this verifies auto-trigger on the meeting/notes framing rather than an explicit invocation'
+  - decisions-section-present:
+      check: 'The written notes.md contains the heading `## Decisions` followed by at least one bulleted item'
+      note: 'Verifies the Decisions section the take-notes skill specifies'
+  - open-questions-section-present:
+      check: 'The written notes.md contains the heading `## Open questions` followed by at least one bulleted item'
+      note: 'Verifies the Open questions section the take-notes skill specifies'
+  - action-items-section-present:
+      check: 'The written notes.md contains the heading `## Action items` followed by at least one bulleted item'
+      note: 'Verifies the Action items section the take-notes skill specifies'

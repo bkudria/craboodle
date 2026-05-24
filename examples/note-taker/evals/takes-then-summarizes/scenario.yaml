@@ -1,0 +1,13 @@
+prompt: |
+  Just wrapped up a productive 1:1 — I want to remember what we covered AND
+  get a quick rundown I can forward to my manager. Here's what was said:
+
+  We decided to ship the new caching layer behind a feature flag for the first
+  two weeks. Bob will own the rollout. There's still an open question about
+  whether the eviction policy should be LRU or LFU — Anna is going to benchmark
+  both and report back next Friday. Carl agreed to write the runbook for
+  disabling the flag if cache hit rate drops below 60%. We also agreed to
+  reduce Sprint 24 capacity to absorb the rollout overhead, and Dana will
+  update the on-call playbook with the new cache-related alerts.
+user:
+  max_turns: 4

@@ -1,0 +1,29 @@
+version: '1'
+# Example: plugin-level eval suite.
+#
+# This directory is itself a Claude Code plugin (note its .claude-plugin/plugin.json).
+# `project.plugins: ['.']` below loads the plugin — both its take-notes skill and
+# its note-summarizer sub-agent — into every scenario, so checks can assert on
+# `tool: Skill` and `tool: Agent` transcript entries.
+#
+# Run: craboodle run examples/note-taker
+# Workflow reference: cc-plugins/.../plugincraft/workflows/bootstrap-evals.md
+
+min_pass_rate: 0.8
+
+scenarios:
+  base:
+    model: claude-sonnet-4-6
+    tools:
+      - Read
+      - Write
+      - Edit
+      - Bash
+      - Glob
+      - Grep
+      - AskUserQuestion
+      - Skill
+      - Agent
+    project:
+      plugins:
+        - .
