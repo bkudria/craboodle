@@ -987,9 +987,11 @@ rule InitRefuseExistingScenarios {
 }
 
 -- The scaffold always writes evals.yaml at the target dir. Its body is
--- mode-flavoured: skill mode emits a `.` self-reference hint; plugin mode
--- emits a `skills/<first-skill>` hint when at least one skill is present;
--- generic mode emits a placeholder. Detection is by filesystem probe.
+-- mode-flavoured: skill mode emits a `project.skills: ['.']`
+-- self-reference hint; plugin mode emits a `project.plugins: ['.']`
+-- self-reference hint that loads the plugin bundle cohesively (skills +
+-- hooks + sub-agents + MCP servers + commands); generic mode emits a
+-- placeholder. Detection is by filesystem probe.
 --
 -- In plugin mode the scaffold additionally fans out one informative
 -- placeholder scenario per discovered component, under

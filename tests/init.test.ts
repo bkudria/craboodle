@@ -96,7 +96,7 @@ describe('init', () => {
     expect(content).toMatch(/#\s*skills:[\s\S]*?#\s*-\s*\./);
   });
 
-  it('plugin mode: when .claude-plugin/plugin.json exists, comments suggest skills: skills/<id>', async () => {
+  it('plugin mode: when .claude-plugin/plugin.json exists, comments suggest plugins: [.]', async () => {
     const initDir = join(tmpDir, 'my-plugin');
     await mkdir(join(initDir, '.claude-plugin'), { recursive: true });
     await writeFile(
@@ -111,7 +111,9 @@ describe('init', () => {
 
     await execFileAsync(process.execPath, [CLI_PATH, 'init', initDir]);
     const content = await readFile(join(initDir, 'evals.yaml'), 'utf8');
-    expect(content).toMatch(/skills\/first-skill/);
+    expect(content).toMatch(/#\s*plugins:[\s\S]*?#\s*-\s*\./);
+    expect(content).not.toMatch(/skills\/first-skill/);
+    expect(content).not.toMatch(/#\s*skills:/);
   });
 
   it('plugin mode: stdout reports the parsed plugin name and version', async () => {
@@ -311,15 +313,15 @@ describe('init', () => {
     expect(stdout).toContain('evals/note-summarizer-placeholder/checks.yaml');
   });
 
-  it('plugin mode without discoverable skills: emits a placeholder hint', async () => {
+  it('plugin mode without discoverable skills: still emits plugins: [.]', async () => {
     const initDir = join(tmpDir, 'my-plugin');
     await mkdir(join(initDir, '.claude-plugin'), { recursive: true });
     await writeFile(join(initDir, '.claude-plugin', 'plugin.json'), '{}');
 
     await execFileAsync(process.execPath, [CLI_PATH, 'init', initDir]);
     const content = await readFile(join(initDir, 'evals.yaml'), 'utf8');
-    // Some kind of commented placeholder for skills
-    expect(content).toMatch(/#\s*skills:/);
+    expect(content).toMatch(/#\s*plugins:[\s\S]*?#\s*-\s*\./);
+    expect(content).not.toMatch(/#\s*skills:/);
   });
 
   it('plugin mode without discoverable components: creates no evals/ directory', async () => {
