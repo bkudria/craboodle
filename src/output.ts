@@ -411,28 +411,6 @@ export function streamLintScenarioYaml(scenario: LintScenarioOutput): void {
   process.stdout.write(yamlItem + '\n\n');
 }
 
-export function streamPluginCoverage(coverage: import('./coverage.js').PluginCoverage): void {
-  process.stdout.write(
-    serializeTopLevel({
-      plugin_coverage: {
-        skills: sortedRecord(coverage.skills),
-        agents: sortedRecord(coverage.agents),
-        commands: sortedRecord(coverage.commands),
-        hooks: coverage.hooks,
-        mcp_servers: coverage.mcp_servers,
-      },
-    }),
-  );
-}
-
-function sortedRecord(record: Record<string, number>): Record<string, number> {
-  const out: Record<string, number> = {};
-  for (const key of Object.keys(record).sort()) {
-    out[key] = record[key];
-  }
-  return out;
-}
-
 export function streamLintTotals(totals: LintTotals): void {
   process.stdout.write(
     serializeTopLevel({

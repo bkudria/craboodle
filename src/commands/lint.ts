@@ -7,12 +7,10 @@ import { filterScenarios } from '../discovery.js';
 import { findMissingBinaries, formatMissingBinariesError } from '../preflight.js';
 import { runPincenezLint } from '../runner.js';
 import { prepareRun } from '../prepare-run.js';
-import { computePluginCoverage } from '../coverage.js';
 import {
   parseLintResult,
   streamLintScenarioYaml,
   streamLintTotals,
-  streamPluginCoverage,
   type LintTotals,
 } from '../output.js';
 import { EXIT_CONFIG_ERROR, EXIT_INFRA_ERROR, EXIT_SIGINT } from '../exit-codes.js';
@@ -172,16 +170,6 @@ async function lintCommandInner(
 
   // Stream totals
   streamLintTotals(totals);
-
-  // Plugin-mode coverage diagnostic
-  if (prepared.plugin) {
-    process.stdout.write('\n');
-    const coverage = computePluginCoverage(
-      scenarios.map((s) => s.id),
-      prepared.plugin.components,
-    );
-    streamPluginCoverage(coverage);
-  }
 
   if (isInterrupted()) {
     return;
