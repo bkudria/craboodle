@@ -161,20 +161,12 @@ async function writePlaceholderScenarios(
   return written;
 }
 
-async function detectInitMode(
-  root: string,
-): Promise<{ mode: 'skill' | 'plugin' | 'generic'; firstPluginSkill?: string }> {
+async function detectInitMode(root: string): Promise<{ mode: 'skill' | 'plugin' | 'generic' }> {
   const hasPluginMarker = await access(join(root, '.claude-plugin', 'plugin.json')).then(
     () => true,
     () => false,
   );
-  if (hasPluginMarker) {
-    const components = await enumeratePluginComponents(root);
-    if (components.skills.length > 0) {
-      return { mode: 'plugin', firstPluginSkill: components.skills[0] };
-    }
-    return { mode: 'plugin' };
-  }
+  if (hasPluginMarker) return { mode: 'plugin' };
   const hasSkillMd = await access(join(root, 'SKILL.md')).then(
     () => true,
     () => false,
@@ -191,16 +183,14 @@ async function tryLoadPluginManifest(root: string): Promise<PluginManifest | und
   }
 }
 
-function renderEvalsYaml(mode: 'skill' | 'plugin' | 'generic', firstPluginSkill?: string): string {
-  let skillsBlock: string;
+function renderEvalsYaml(mode: 'skill' | 'plugin' | 'generic'): string {
+  let projectBlock: string;
   if (mode === 'skill') {
-    skillsBlock = `#   skills:\n#     - .                            # self-reference: this skill\n`;
-  } else if (mode === 'plugin' && firstPluginSkill) {
-    skillsBlock = `#   skills:\n#     - skills/${firstPluginSkill}\n`;
+    projectBlock = `#   skills:\n#     - .                            # self-reference: this skill\n`;
   } else if (mode === 'plugin') {
-    skillsBlock = `#   skills:\n#     - skills/<your-skill-id>       # path relative to this evals.yaml\n`;
+    projectBlock = `#   plugins:\n#     - .                            # self-reference: this plugin\n`;
   } else {
-    skillsBlock = `#   skills:\n#     - /absolute/path/to/skill\n`;
+    projectBlock = `#   skills:\n#     - /absolute/path/to/skill\n`;
   }
 
   return (
@@ -223,7 +213,7 @@ function renderEvalsYaml(mode: 'skill' | 'plugin' | 'generic', firstPluginSkill?
     `    # project:\n` +
     `    #   claude_md: |\n` +
     `    #     # Project-level instructions here\n` +
-    skillsBlock +
+    projectBlock +
     `    # user:\n` +
     `    #   max_turns: 30\n`
   );
@@ -266,8 +256,8 @@ export async function initCommand(dir: string): Promise<void> {
 
   await mkdir(resolvedDir, { recursive: true });
 
-  const { mode, firstPluginSkill } = await detectInitMode(resolvedDir);
-  await writeFile(join(resolvedDir, 'evals.yaml'), renderEvalsYaml(mode, firstPluginSkill));
+  const { mode } = await detectInitMode(resolvedDir);
+  await writeFile(join(resolvedDir, 'evals.yaml'), renderEvalsYaml(mode));
 
   let placeholderPaths: string[] = [];
   if (mode === 'plugin') {
