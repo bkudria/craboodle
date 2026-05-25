@@ -127,6 +127,18 @@ function renderPlaceholderScenario(
   throw new Error(`Unsupported placeholder component type: ${componentType}`);
 }
 
+export function placeholderDirName(componentType: PlaceholderComponentType, id: string): string {
+  // Named components get a `<type>-` prefix so the coverage matcher (which
+  // requires `<type>-<id>` or `<type>-<id>-*` for skills/agents/commands)
+  // accepts the freshly scaffolded scenario. Hooks and mcp-servers use the
+  // singleton matcher form (`<type>-*`) where id is already the literal
+  // type name, so the existing `<id>-placeholder` already matches.
+  if (componentType === 'skill' || componentType === 'agent' || componentType === 'command') {
+    return `${componentType}-${id}-placeholder`;
+  }
+  return `${id}-placeholder`;
+}
+
 async function writePlaceholderScenarios(
   rootDir: string,
   components: PluginComponents,
@@ -134,13 +146,14 @@ async function writePlaceholderScenarios(
   const written: string[] = [];
 
   async function writeOne(componentType: PlaceholderComponentType, id: string): Promise<void> {
-    const dir = join(rootDir, 'evals', `${id}-placeholder`);
+    const dirName = placeholderDirName(componentType, id);
+    const dir = join(rootDir, 'evals', dirName);
     await mkdir(dir, { recursive: true });
     const rendered = renderPlaceholderScenario(componentType, id);
     await writeFile(join(dir, 'scenario.yaml'), rendered.scenarioYaml);
     await writeFile(join(dir, 'checks.yaml'), rendered.checksYaml);
-    written.push(`evals/${id}-placeholder/scenario.yaml`);
-    written.push(`evals/${id}-placeholder/checks.yaml`);
+    written.push(`evals/${dirName}/scenario.yaml`);
+    written.push(`evals/${dirName}/checks.yaml`);
   }
 
   for (const skillId of components.skills) {

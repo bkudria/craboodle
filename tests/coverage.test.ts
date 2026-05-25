@@ -153,4 +153,32 @@ describe('computePluginCoverage', () => {
     });
     expect(coverage.mcp_servers).toBe(0);
   });
+
+  it('placeholder names from `craboodle init` cover every declared component', async () => {
+    // Contract: the scenario directory names that init scaffolds must be
+    // counted by the coverage matcher. If init renames placeholders without
+    // updating the matcher (or vice versa), this test catches the drift.
+    const { computePluginCoverage } = await import('../src/coverage.js');
+    const { placeholderDirName } = await import('../src/commands/init.js');
+    const components = {
+      skills: ['take-notes'],
+      agents: ['note-summarizer'],
+      commands: ['triage'],
+      hasHooks: true,
+      hasMcpServers: true,
+    };
+    const initScenarioIds = [
+      placeholderDirName('skill', 'take-notes'),
+      placeholderDirName('agent', 'note-summarizer'),
+      placeholderDirName('command', 'triage'),
+      placeholderDirName('hooks', 'hooks'),
+      placeholderDirName('mcp_servers', 'mcp-servers'),
+    ];
+    const coverage = computePluginCoverage(initScenarioIds, components);
+    expect(coverage.skills).toEqual({ 'take-notes': 1 });
+    expect(coverage.agents).toEqual({ 'note-summarizer': 1 });
+    expect(coverage.commands).toEqual({ triage: 1 });
+    expect(coverage.hooks).toBe(1);
+    expect(coverage.mcp_servers).toBe(1);
+  });
 });
