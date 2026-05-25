@@ -161,7 +161,7 @@ describe('init', () => {
 
     for (const id of ['alpha', 'zebra']) {
       const scenarioRaw = await readFile(
-        join(initDir, 'evals', `${id}-placeholder`, 'scenario.yaml'),
+        join(initDir, 'evals', `skill-${id}-placeholder`, 'scenario.yaml'),
         'utf8',
       );
       const scenario = parse(scenarioRaw);
@@ -170,7 +170,7 @@ describe('init', () => {
       expect((scenario.prompt as string).length).toBeGreaterThan(0);
 
       const checksRaw = await readFile(
-        join(initDir, 'evals', `${id}-placeholder`, 'checks.yaml'),
+        join(initDir, 'evals', `skill-${id}-placeholder`, 'checks.yaml'),
         'utf8',
       );
       const checks = parse(checksRaw);
@@ -195,7 +195,7 @@ describe('init', () => {
     await execFileAsync(process.execPath, [CLI_PATH, 'init', initDir]);
 
     const scenarioRaw = await readFile(
-      join(initDir, 'evals', 'note-summarizer-placeholder', 'scenario.yaml'),
+      join(initDir, 'evals', 'agent-note-summarizer-placeholder', 'scenario.yaml'),
       'utf8',
     );
     const scenario = parse(scenarioRaw);
@@ -203,7 +203,7 @@ describe('init', () => {
     expect((scenario.prompt as string).length).toBeGreaterThan(0);
 
     const checksRaw = await readFile(
-      join(initDir, 'evals', 'note-summarizer-placeholder', 'checks.yaml'),
+      join(initDir, 'evals', 'agent-note-summarizer-placeholder', 'checks.yaml'),
       'utf8',
     );
     expect(checksRaw).toMatch(/tool:\s*Agent/);
@@ -223,7 +223,7 @@ describe('init', () => {
     await execFileAsync(process.execPath, [CLI_PATH, 'init', initDir]);
 
     const scenarioRaw = await readFile(
-      join(initDir, 'evals', 'triage-placeholder', 'scenario.yaml'),
+      join(initDir, 'evals', 'command-triage-placeholder', 'scenario.yaml'),
       'utf8',
     );
     const scenario = parse(scenarioRaw);
@@ -231,7 +231,7 @@ describe('init', () => {
     expect((scenario.prompt as string).length).toBeGreaterThan(0);
 
     const checksRaw = await readFile(
-      join(initDir, 'evals', 'triage-placeholder', 'checks.yaml'),
+      join(initDir, 'evals', 'command-triage-placeholder', 'checks.yaml'),
       'utf8',
     );
     expect(checksRaw).toMatch(/\/triage\b/);
@@ -307,10 +307,10 @@ describe('init', () => {
 
     const { stdout } = await execFileAsync(process.execPath, [CLI_PATH, 'init', initDir]);
     expect(stdout).toContain('evals.yaml');
-    expect(stdout).toContain('evals/alpha-placeholder/scenario.yaml');
-    expect(stdout).toContain('evals/alpha-placeholder/checks.yaml');
-    expect(stdout).toContain('evals/note-summarizer-placeholder/scenario.yaml');
-    expect(stdout).toContain('evals/note-summarizer-placeholder/checks.yaml');
+    expect(stdout).toContain('evals/skill-alpha-placeholder/scenario.yaml');
+    expect(stdout).toContain('evals/skill-alpha-placeholder/checks.yaml');
+    expect(stdout).toContain('evals/agent-note-summarizer-placeholder/scenario.yaml');
+    expect(stdout).toContain('evals/agent-note-summarizer-placeholder/checks.yaml');
   });
 
   it('plugin mode without discoverable skills: still emits plugins: [.]', async () => {

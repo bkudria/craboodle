@@ -995,9 +995,14 @@ rule InitRefuseExistingScenarios {
 --
 -- In plugin mode the scaffold additionally fans out one informative
 -- placeholder scenario per discovered component, under
--- evals/<id>-placeholder/{scenario,checks}.yaml. The <id> is the skill,
--- agent, or command id (sorted), or the literal `hooks` and
--- `mcp-servers` for the boolean components. Each placeholder carries a
+-- evals/<scenario-id>/{scenario,checks}.yaml. The <scenario-id> is
+-- `<type>-<id>-placeholder` for named components (where <type> is
+-- `skill`, `agent`, or `command` and <id> is the component id, sorted)
+-- and `<id>-placeholder` for singleton components (where <id> is the
+-- literal `hooks` or `mcp-servers`). These prefixes match the coverage
+-- diagnostic's named-component (`<type>-<id>` / `<type>-<id>-*`) and
+-- singleton (`<type>` / `<type>-*`) patterns, so a freshly scaffolded
+-- plugin reports full per-component coverage out of the box. Each placeholder carries a
 -- TODO prompt and a commented example check keyed to the component
 -- type's transcript observability surface (`tool: Skill`, `tool: Agent`,
 -- a user-message slash-command prefix, an observable hook side effect,
