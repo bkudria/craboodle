@@ -37,7 +37,6 @@ See [GOALS.md](GOALS.md) for design philosophy and [craboodle.allium](craboodle.
 - `src/cli.ts` — Commander CLI entry point
 - `src/config.ts` — evals.yaml parsing and mode detection (skill/plugin/generic)
 - `src/plugin.ts` — plugin.json schema (Zod) + plugin component enumerator (filesystem)
-- `src/coverage.ts` — scenario-to-plugin-component mapping (lint coverage diagnostic)
 - `src/staged-view.ts` — Filtered tempdir view of `<root>` (excludes scenarios dir)
 - `src/prepare-run.ts` — Stages the view, rewrites skill paths, materialises base config
 - `src/discovery.ts` — Scenario directory discovery (glob)
