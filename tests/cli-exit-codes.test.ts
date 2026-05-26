@@ -273,6 +273,30 @@ describe('cli exit codes (unified taxonomy)', () => {
       expect(code).toBe(2);
       expect(stderr).toContain('unknown key');
     });
+
+    it('lint: exits 2 with a path-specific hint when evals.yaml is missing', async () => {
+      const { code, stderr } = await runAndCapture(['lint', tmpDir]);
+      expect(code).toBe(2);
+      expect(stderr).toContain('evals.yaml not found');
+      expect(stderr).toContain('pass the skill/plugin root');
+      expect(stderr).not.toContain('scuttlerun --version');
+    });
+
+    it('run: exits 2 with a path-specific hint when evals.yaml is missing', async () => {
+      const { code, stderr } = await runAndCapture(['run', tmpDir]);
+      expect(code).toBe(2);
+      expect(stderr).toContain('evals.yaml not found');
+      expect(stderr).toContain('pass the skill/plugin root');
+      expect(stderr).not.toContain('scuttlerun --version');
+    });
+
+    it('list: exits 2 with a path-specific hint when evals.yaml is missing', async () => {
+      const { code, stderr } = await runAndCapture(['list', tmpDir]);
+      expect(code).toBe(2);
+      expect(stderr).toContain('evals.yaml not found');
+      expect(stderr).toContain('pass the skill/plugin root');
+      expect(stderr).not.toContain('scuttlerun --version');
+    });
   });
 
   describe('lint missing-prompt warning', () => {

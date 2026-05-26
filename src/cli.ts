@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-import { formatErrorWithHint } from './errors.js';
+import { formatCommandError } from './errors.js';
 import { HELP_TEXT } from './help-text.js';
 import { parseConcurrency } from './cli-utils.js';
 import { runCommand } from './commands/run.js';
@@ -57,13 +57,7 @@ program
         verbose: !!cmdOpts.verbose,
       });
     } catch (err: unknown) {
-      process.stderr.write(
-        formatErrorWithHint(
-          `Error: ${err instanceof Error ? err.message : String(err)}`,
-          'verify scuttlerun and pincenez are installed (scuttlerun --version, pincenez --version) if a subprocess failed',
-          'craboodle --help',
-        ),
-      );
+      process.stderr.write(formatCommandError(err));
       process.exit(EXIT_RUNTIME_ERROR);
     }
   });
@@ -80,13 +74,7 @@ program
     try {
       await listCommand(root, cmdOpts);
     } catch (err: unknown) {
-      process.stderr.write(
-        formatErrorWithHint(
-          `Error: ${err instanceof Error ? err.message : String(err)}`,
-          'verify scuttlerun and pincenez are installed (scuttlerun --version, pincenez --version) if a subprocess failed',
-          'craboodle --help',
-        ),
-      );
+      process.stderr.write(formatCommandError(err));
       process.exit(EXIT_RUNTIME_ERROR);
     }
   });
@@ -110,13 +98,7 @@ program
         verbose: !!cmdOpts.verbose,
       });
     } catch (err: unknown) {
-      process.stderr.write(
-        formatErrorWithHint(
-          `Error: ${err instanceof Error ? err.message : String(err)}`,
-          'verify scuttlerun and pincenez are installed (scuttlerun --version, pincenez --version) if a subprocess failed',
-          'craboodle --help',
-        ),
-      );
+      process.stderr.write(formatCommandError(err));
       process.exit(EXIT_RUNTIME_ERROR);
     }
   });
