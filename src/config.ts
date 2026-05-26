@@ -119,7 +119,11 @@ export async function loadEvalsConfig(root: string): Promise<EvalsConfig> {
     raw = (parsed as Record<string, unknown> | null) ?? {};
   } catch (err: unknown) {
     if (err instanceof Error && 'code' in err && (err as NodeJS.ErrnoException).code === 'ENOENT') {
-      throw new Error(`evals.yaml not found at ${configPath}`, { cause: err });
+      const wrapped = new Error(`evals.yaml not found at ${configPath}`, {
+        cause: err,
+      }) as Error & { code?: string };
+      wrapped.code = 'EVALS_CONFIG_NOT_FOUND';
+      throw wrapped;
     }
     throw err;
   }

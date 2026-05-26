@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatErrorWithHint } from '../src/errors.js';
+import { formatErrorWithHint, formatCommandError } from '../src/errors.js';
 
 describe('formatErrorWithHint', () => {
   it('emits three lines when reference is provided', () => {
@@ -31,5 +31,34 @@ describe('formatErrorWithHint', () => {
     );
     expect(out).toContain('scuttlerun --version');
     expect(out).toContain('pincenez --version');
+  });
+});
+
+describe('formatCommandError', () => {
+  it('emits a path-specific hint when err.code is EVALS_CONFIG_NOT_FOUND', () => {
+    const err = new Error('evals.yaml not found at /tmp/foo/evals.yaml') as Error & {
+      code?: string;
+    };
+    err.code = 'EVALS_CONFIG_NOT_FOUND';
+    const out = formatCommandError(err);
+    expect(out).toContain('evals.yaml not found');
+    expect(out).toContain('pass the skill/plugin root');
+    expect(out).not.toContain('scuttlerun --version');
+    expect(out).toContain('craboodle --help');
+  });
+
+  it('falls back to the dependency hint for errors without that code', () => {
+    const err = new Error('boom');
+    const out = formatCommandError(err);
+    expect(out).toContain('boom');
+    expect(out).toContain('scuttlerun --version');
+    expect(out).toContain('pincenez --version');
+    expect(out).toContain('craboodle --help');
+  });
+
+  it('handles non-Error throwables by stringifying them', () => {
+    const out = formatCommandError('a bare string');
+    expect(out).toContain('a bare string');
+    expect(out).toContain('scuttlerun --version');
   });
 });
