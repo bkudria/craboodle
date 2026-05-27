@@ -389,6 +389,32 @@ cost_usd: 0.0042
       expect(written).toContain('stage: scuttlerun');
     });
 
+    it('renders exit_code in errors when present', async () => {
+      const { streamScenarioYaml } = await import('../src/output.js');
+
+      streamScenarioYaml({
+        id: 'test',
+        checks: [{ check: 'test', pass_rate: 1.0 }],
+        pass_rate: 1.0,
+        errors: [{ rep: 3, stage: 'scuttlerun', error: 'timeout after 120s', exit_code: 6 }],
+      });
+
+      expect(written).toContain('exit_code: 6');
+    });
+
+    it('omits exit_code from errors when undefined', async () => {
+      const { streamScenarioYaml } = await import('../src/output.js');
+
+      streamScenarioYaml({
+        id: 'test',
+        checks: [{ check: 'test', pass_rate: 1.0 }],
+        pass_rate: 1.0,
+        errors: [{ rep: 1, stage: 'scuttlerun', error: 'ENOENT: not found' }],
+      });
+
+      expect(written).not.toContain('exit_code');
+    });
+
     it('includes cost fields when present', async () => {
       const { streamScenarioYaml } = await import('../src/output.js');
 

@@ -116,7 +116,13 @@ export interface ScenarioOutput {
   cost_usd?: number;
   agent_cost_usd?: number;
   grading_cost_usd?: number;
-  errors?: Array<{ rep: number; stage: string; error: string; transcript?: string }>;
+  errors?: Array<{
+    rep: number;
+    stage: string;
+    error: string;
+    exit_code?: number;
+    transcript?: string;
+  }>;
 }
 
 /**

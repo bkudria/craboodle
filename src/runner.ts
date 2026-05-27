@@ -7,6 +7,7 @@ const MAX_BUFFER = 10 * 1024 * 1024;
 export interface RepError {
   stage: 'scuttlerun' | 'pincenez';
   message: string;
+  exitCode?: number;
 }
 
 export type SubprocessResult = { success: true } | { success: false; error: RepError };
@@ -86,11 +87,14 @@ function execFilePromise(
         return;
       }
       if (code !== 0 || killSignal !== null) {
-        const err = new Error(`Command failed: ${cmd} ${args.join(' ')}`) as Error & {
+        const reason = code !== null ? `exit ${code}` : `signal ${killSignal}`;
+        const err = new Error(`Command failed (${reason}): ${cmd} ${args.join(' ')}`) as Error & {
           code?: number | string;
+          signal?: NodeJS.Signals;
           stderr?: string;
         };
         if (code !== null) err.code = code;
+        if (killSignal !== null) err.signal = killSignal;
         err.stderr = stderr;
         reject(err);
         return;
@@ -137,7 +141,7 @@ function execFilePromise(
   });
 }
 
-function isAbortError(err: Error & { code?: string }): boolean {
+function isAbortError(err: Error & { code?: string | number }): boolean {
   return err.code === 'ABORT_ERR';
 }
 
@@ -159,12 +163,14 @@ export async function runScuttlerun(options: RunScuttlerunOptions): Promise<Subp
     await writeFile(outputPath, stdout);
     return { success: true };
   } catch (err: unknown) {
-    const error = err as Error & { stderr?: string; code?: string };
+    const error = err as Error & { stderr?: string; code?: string | number };
+    const exitCode = typeof error.code === 'number' ? error.code : undefined;
     return {
       success: false,
       error: {
         stage: 'scuttlerun',
         message: isAbortError(error) ? 'Interrupted (SIGINT)' : error.stderr || error.message,
+        ...(exitCode !== undefined ? { exitCode } : {}),
       },
     };
   }
@@ -191,12 +197,14 @@ export async function listScuttlerunConfig(
     const { stdout } = await execFilePromise('scuttlerun', args, signal);
     return { success: true, stdout };
   } catch (err: unknown) {
-    const error = err as Error & { stderr?: string; code?: string };
+    const error = err as Error & { stderr?: string; code?: string | number };
+    const exitCode = typeof error.code === 'number' ? error.code : undefined;
     return {
       success: false,
       error: {
         stage: 'scuttlerun',
         message: isAbortError(error) ? 'Interrupted (SIGINT)' : error.stderr || error.message,
+        ...(exitCode !== undefined ? { exitCode } : {}),
       },
     };
   }
@@ -231,12 +239,14 @@ export async function runPincenezLint(
     const { stdout } = await execFilePromise('pincenez', args, signal);
     return { success: true, stdout };
   } catch (err: unknown) {
-    const error = err as Error & { stderr?: string; code?: string };
+    const error = err as Error & { stderr?: string; code?: string | number };
+    const exitCode = typeof error.code === 'number' ? error.code : undefined;
     return {
       success: false,
       error: {
         stage: 'pincenez',
         message: isAbortError(error) ? 'Interrupted (SIGINT)' : error.stderr || error.message,
+        ...(exitCode !== undefined ? { exitCode } : {}),
       },
     };
   }
@@ -256,12 +266,14 @@ export async function runPincenez(options: RunPincenezOptions): Promise<Subproce
     await writeFile(gradingPath, stdout);
     return { success: true };
   } catch (err: unknown) {
-    const error = err as Error & { stderr?: string; code?: string };
+    const error = err as Error & { stderr?: string; code?: string | number };
+    const exitCode = typeof error.code === 'number' ? error.code : undefined;
     return {
       success: false,
       error: {
         stage: 'pincenez',
         message: isAbortError(error) ? 'Interrupted (SIGINT)' : error.stderr || error.message,
+        ...(exitCode !== undefined ? { exitCode } : {}),
       },
     };
   }
