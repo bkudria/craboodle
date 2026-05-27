@@ -40,6 +40,10 @@ program
     10,
   )
   .option(
+    '--timeout <seconds>',
+    'Per-scenario scuttlerun session timeout in seconds (positive integer; overrides evals.yaml timeout)',
+  )
+  .option(
     '--scenario, --scenarios <pattern>',
     'Filter scenarios by ID (exact, glob, or comma-separated)',
   )
@@ -51,6 +55,7 @@ program
       await runCommand(root, {
         repeats: cmdOpts.repeats,
         concurrency: parseInt(cmdOpts.concurrency, 10),
+        timeout: cmdOpts.timeout,
         agentModel: cmdOpts.agentModel,
         graderModel: cmdOpts.graderModel,
         scenarios: cmdOpts.scenarios,

@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import pLimit from 'p-limit';
 import { formatErrorWithHint } from '../errors.js';
 import { installSignalHandler } from '../signals.js';
-import { resolveRepeatsFromRawFlag } from '../config.js';
+import { parseTimeoutFlag, resolveRepeatsFromRawFlag } from '../config.js';
 import { cleanOldArtifacts } from '../cleanup.js';
 import { filterScenarios } from '../discovery.js';
 import { runScuttlerun, runPincenez } from '../runner.js';
@@ -31,6 +31,7 @@ import {
 export interface RunOptions {
   repeats: string | undefined;
   concurrency: number;
+  timeout?: string;
   agentModel?: string;
   graderModel?: string;
   scenarios?: string;
@@ -82,9 +83,14 @@ async function runCommandInner(
     process.exit(EXIT_INFRA_ERROR);
   }
 
+  // Parse the timeout flag early so validation errors surface before staging.
+  const cliTimeout = parseTimeoutFlag(opts.timeout);
+
   // Load evals.yaml, stage filtered view, materialise scuttlerun base config,
-  // and discover scenarios.
-  const prepared = await prepareRun(resolvedRoot);
+  // and discover scenarios. The CLI timeout (if any) is injected into the
+  // materialised base config so scuttlerun receives it via its top-level
+  // `timeout:` field; evals.yaml's top-level `timeout:` is the fallback.
+  const prepared = await prepareRun(resolvedRoot, { cliTimeout });
   const { basePath, pipeline } = prepared;
   let scenarios = prepared.scenarios;
 

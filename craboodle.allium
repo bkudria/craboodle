@@ -146,6 +146,7 @@ entity EvalsConfig {
     max_budget_usd: Decimal?
     repeats_override: Integer?
     artifact_retention_days_override: Integer?
+    timeout_override: Integer?              -- per-scenario scuttlerun session timeout (seconds)
     scenarios_path: String                  -- defaults to config.default_scenarios_path
     scenarios_base: ScuttlerunConfig        -- opaque to craboodle; passed to scuttlerun
 }
@@ -203,6 +204,7 @@ entity RunInvocation {
     eval_root: EvalRoot
     repeats: Integer
     concurrency: Integer
+    timeout: Integer?                       -- null = let scuttlerun apply its own default
     scenario_filter: String?
     agent_model_override: String?
     grader_model_override: String?
@@ -433,22 +435,32 @@ entity LintScenarioResult {
 
 rule StartRun {
     when: RunInvoked(operator, evals_dir, raw_repeats?, raw_concurrency?,
-                     scenario_filter?, agent_model?, grader_model?)
+                     raw_timeout?, scenario_filter?, agent_model?, grader_model?)
     let dir = eval_root_at(evals_dir)
     let effective_repeats =
         raw_repeats
         ?? dir.evals_config.repeats_override
         ?? config.default_repeats
+    let effective_timeout =
+        raw_timeout
+        ?? dir.evals_config.timeout_override
     ensures: RunInvocation.created(
         operator: operator,
         eval_root: dir,
         repeats: effective_repeats,
         concurrency: raw_concurrency ?? config.default_concurrency,
+        timeout: effective_timeout,
         scenario_filter: scenario_filter,
         agent_model_override: agent_model,
         grader_model_override: grader_model,
         status: starting
     )
+    @guidance
+        -- effective_timeout is null when neither the CLI flag nor
+        -- evals.yaml sets a timeout; in that case scuttlerun's own
+        -- default applies. When non-null, the value is materialised into
+        -- the staged base config (see BeginRunStreaming guidance) so
+        -- scuttlerun receives it via its top-level `timeout:` field.
 }
 
 rule BeginRunDiscovery {
@@ -505,6 +517,7 @@ rule BeginRunStreaming {
         eval_root: inv.eval_root,
         scenarios_base: inv.eval_root.evals_config.scenarios_base,
         excluded_path: inv.eval_root.evals_config.scenarios_path,
+        timeout_override: inv.timeout,
         prefix: config.staged_view_prefix)
     ensures: inv.status = streaming
     @guidance
@@ -516,6 +529,12 @@ rule BeginRunStreaming {
         -- directory rule means the staged root becomes its working project
         -- root. Self-referential project.skills: [.] resolves to the staged
         -- root, whose basename is preserved from eval_root.path.
+        --
+        -- When inv.timeout is non-null it is overlaid as a top-level
+        -- `timeout:` field on the materialised .craboodle-base.yaml,
+        -- overriding any scenarios_base.timeout the user may have set.
+        -- Scuttlerun reads it from there; craboodle never enforces the
+        -- timeout itself (timeout handling is scuttlerun's domain).
 }
 
 rule StreamRunHeader {
@@ -1015,8 +1034,9 @@ rule RejectUnknownConfigKeys {
         -- Load fails with exit 2; the rejecting invocation never reaches
         -- the state machine above. Recognised top-level keys are: version,
         -- min_pass_rate, max_budget_usd, repeats, artifact_retention_days,
-        -- scenarios. Inside scenarios: path, base. The base block itself
-        -- is not validated by craboodle; that contract belongs to scuttlerun.
+        -- timeout, scenarios. Inside scenarios: path, base. The base block
+        -- itself is not validated by craboodle; that contract belongs to
+        -- scuttlerun.
 }
 
 rule RejectUnsupportedVersion {
@@ -1046,7 +1066,7 @@ surface RunCommand {
 
     provides:
         RunInvoked(operator, evals_dir, raw_repeats?, raw_concurrency?,
-                   scenario_filter?, agent_model?, grader_model?)
+                   raw_timeout?, scenario_filter?, agent_model?, grader_model?)
 
     exposes:
         invocation.artifact_dir
