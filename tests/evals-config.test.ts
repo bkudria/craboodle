@@ -192,6 +192,38 @@ describe('evals-config', () => {
       await expect(loadEvalsConfig(tmpDir)).rejects.toThrow('repeats must be a positive integer');
     });
 
+    it('parses top-level timeout into EvalsConfig.timeout', async () => {
+      const { loadEvalsConfig } = await import('../src/config.js');
+      await writeEvals({ version: '1', timeout: 600, scenarios: { base: {} } });
+      const config = await loadEvalsConfig(tmpDir);
+      expect(config.timeout).toBe(600);
+    });
+
+    it('leaves config.timeout undefined when absent', async () => {
+      const { loadEvalsConfig } = await import('../src/config.js');
+      await writeEvals({ version: '1', scenarios: { base: {} } });
+      const config = await loadEvalsConfig(tmpDir);
+      expect(config.timeout).toBeUndefined();
+    });
+
+    it('throws on non-numeric timeout', async () => {
+      const { loadEvalsConfig } = await import('../src/config.js');
+      await writeEvals({ version: '1', timeout: 'forever', scenarios: { base: {} } });
+      await expect(loadEvalsConfig(tmpDir)).rejects.toThrow('timeout must be a positive integer');
+    });
+
+    it('throws on non-integer timeout', async () => {
+      const { loadEvalsConfig } = await import('../src/config.js');
+      await writeEvals({ version: '1', timeout: 1.5, scenarios: { base: {} } });
+      await expect(loadEvalsConfig(tmpDir)).rejects.toThrow('timeout must be a positive integer');
+    });
+
+    it('throws on non-positive timeout', async () => {
+      const { loadEvalsConfig } = await import('../src/config.js');
+      await writeEvals({ version: '1', timeout: 0, scenarios: { base: {} } });
+      await expect(loadEvalsConfig(tmpDir)).rejects.toThrow('timeout must be a positive integer');
+    });
+
     it('accepts artifact_retention_days: 0 to disable cleanup', async () => {
       const { loadEvalsConfig } = await import('../src/config.js');
       await writeEvals({ version: '1', artifact_retention_days: 0, scenarios: { base: {} } });
@@ -369,6 +401,52 @@ describe('evals-config', () => {
     it('prefers the CLI value when both are provided', async () => {
       const { resolveRepeats } = await import('../src/config.js');
       expect(resolveRepeats(5, 7)).toBe(5);
+    });
+  });
+
+  describe('resolveTimeout', () => {
+    it('returns undefined when neither is provided (lets scuttlerun apply its own default)', async () => {
+      const { resolveTimeout } = await import('../src/config.js');
+      expect(resolveTimeout(undefined, undefined)).toBeUndefined();
+    });
+    it('uses the CLI value when only CLI is provided', async () => {
+      const { resolveTimeout } = await import('../src/config.js');
+      expect(resolveTimeout(900, undefined)).toBe(900);
+    });
+    it('uses the yaml value when only yaml is provided', async () => {
+      const { resolveTimeout } = await import('../src/config.js');
+      expect(resolveTimeout(undefined, 600)).toBe(600);
+    });
+    it('prefers the CLI value when both are provided', async () => {
+      const { resolveTimeout } = await import('../src/config.js');
+      expect(resolveTimeout(900, 600)).toBe(900);
+    });
+  });
+
+  describe('parseTimeoutFlag', () => {
+    it('returns undefined when the raw flag is undefined', async () => {
+      const { parseTimeoutFlag } = await import('../src/config.js');
+      expect(parseTimeoutFlag(undefined)).toBeUndefined();
+    });
+    it('parses a positive integer string to a number', async () => {
+      const { parseTimeoutFlag } = await import('../src/config.js');
+      expect(parseTimeoutFlag('120')).toBe(120);
+    });
+    it('throws on non-numeric flag', async () => {
+      const { parseTimeoutFlag } = await import('../src/config.js');
+      expect(() => parseTimeoutFlag('abc')).toThrow('--timeout must be a positive integer');
+    });
+    it('throws on non-positive flag', async () => {
+      const { parseTimeoutFlag } = await import('../src/config.js');
+      expect(() => parseTimeoutFlag('0')).toThrow('--timeout must be a positive integer');
+    });
+    it('throws on non-integer flag (e.g., decimal)', async () => {
+      const { parseTimeoutFlag } = await import('../src/config.js');
+      expect(() => parseTimeoutFlag('1.5')).toThrow('--timeout must be a positive integer');
+    });
+    it('throws on negative flag', async () => {
+      const { parseTimeoutFlag } = await import('../src/config.js');
+      expect(() => parseTimeoutFlag('-5')).toThrow('--timeout must be a positive integer');
     });
   });
 

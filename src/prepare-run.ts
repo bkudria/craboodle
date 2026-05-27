@@ -1,9 +1,14 @@
 import { writeFile } from 'node:fs/promises';
 import { isAbsolute, join, resolve, sep } from 'node:path';
 import { stringify } from 'yaml';
-import { loadEvalsConfig, type PluginInfo } from './config.js';
+import { loadEvalsConfig, resolveTimeout, type PluginInfo } from './config.js';
 import { discoverScenarios, type ScenarioRef } from './discovery.js';
 import { stageEvalsRoot } from './staged-view.js';
+
+export interface PrepareRunOptions {
+  /** Per-invocation timeout override (seconds). Wins over evals.yaml's top-level timeout. */
+  cliTimeout?: number;
+}
 
 export interface PreparedRun {
   scenarios: ScenarioRef[];
@@ -19,6 +24,7 @@ export interface PreparedRun {
     maxBudgetUsd?: number;
     repeats?: number;
     artifactRetentionDays?: number;
+    timeout?: number;
   };
   /** Parsed manifest + enumerated components; present iff plugin mode. */
   plugin?: PluginInfo;
@@ -33,15 +39,21 @@ export interface PreparedRun {
  * The staged dir is kept on disk so the user can inspect it; cleanup is by
  * `cleanupStagedView(parent)` or by the eventual `cleanOldArtifacts` sweep.
  */
-export async function prepareRun(root: string): Promise<PreparedRun> {
+export async function prepareRun(root: string, options?: PrepareRunOptions): Promise<PreparedRun> {
   const resolvedRoot = resolve(root);
   const config = await loadEvalsConfig(resolvedRoot);
 
   const { stagedRoot, parent } = await stageEvalsRoot(resolvedRoot, config.scenariosPath);
 
+  // Orchestrator-level timeout (CLI > evals.yaml top-level) overrides any
+  // scenarios.base.timeout. When neither is set, scenarios.base.timeout (or
+  // scuttlerun's own default) applies.
+  const resolvedTimeout = resolveTimeout(options?.cliTimeout, config.timeout);
   const rewrittenBase = rewriteSkillPaths(config.scenariosBase, resolvedRoot, stagedRoot);
+  const finalBase =
+    resolvedTimeout !== undefined ? { ...rewrittenBase, timeout: resolvedTimeout } : rewrittenBase;
   const basePath = join(stagedRoot, '.craboodle-base.yaml');
-  await writeFile(basePath, stringify(rewrittenBase));
+  await writeFile(basePath, stringify(finalBase));
 
   const scenarios = await discoverScenarios(resolvedRoot, config.scenariosPath);
 
@@ -56,6 +68,7 @@ export async function prepareRun(root: string): Promise<PreparedRun> {
       maxBudgetUsd: config.maxBudgetUsd,
       repeats: config.repeats,
       artifactRetentionDays: config.artifactRetentionDays,
+      ...(resolvedTimeout !== undefined ? { timeout: resolvedTimeout } : {}),
     },
     ...(config.plugin ? { plugin: config.plugin } : {}),
   };

@@ -21,6 +21,7 @@ export interface EvalsConfig {
   maxBudgetUsd?: number;
   repeats?: number;
   artifactRetentionDays?: number;
+  timeout?: number;
   scenariosPath: string;
   scenariosBase: Record<string, unknown>;
   mode: EvalsRootMode;
@@ -34,6 +35,7 @@ const KNOWN_TOP_LEVEL_KEYS = [
   'max_budget_usd',
   'repeats',
   'artifact_retention_days',
+  'timeout',
   'scenarios',
 ];
 const KNOWN_SCENARIOS_KEYS = ['path', 'base'];
@@ -77,6 +79,14 @@ function validateRepeats(raw: unknown): number | undefined {
   if (raw === undefined) return undefined;
   if (typeof raw !== 'number' || !Number.isInteger(raw) || raw < 1) {
     throw new Error('repeats must be a positive integer');
+  }
+  return raw;
+}
+
+function validateTimeout(raw: unknown): number | undefined {
+  if (raw === undefined) return undefined;
+  if (typeof raw !== 'number' || !Number.isInteger(raw) || raw < 1) {
+    throw new Error('timeout must be a positive integer');
   }
   return raw;
 }
@@ -140,6 +150,7 @@ export async function loadEvalsConfig(root: string): Promise<EvalsConfig> {
   const maxBudgetUsd = validateMaxBudgetUsd(raw.max_budget_usd);
   const repeats = validateRepeats(raw.repeats);
   const artifactRetentionDays = validateArtifactRetentionDays(raw.artifact_retention_days);
+  const timeout = validateTimeout(raw.timeout);
 
   if (raw.scenarios === undefined) {
     throw new Error('evals.yaml missing required "scenarios" block');
@@ -199,6 +210,7 @@ export async function loadEvalsConfig(root: string): Promise<EvalsConfig> {
     maxBudgetUsd,
     repeats,
     artifactRetentionDays,
+    timeout,
     scenariosPath,
     scenariosBase,
     mode,
@@ -222,4 +234,20 @@ export function resolveRepeatsFromRawFlag(
     throw new Error(`--repeats must be a positive integer, got: ${rawFlag}`);
   }
   return resolveRepeats(parsed, yaml);
+}
+
+export function resolveTimeout(
+  cli: number | undefined,
+  yaml: number | undefined,
+): number | undefined {
+  return cli ?? yaml;
+}
+
+export function parseTimeoutFlag(rawFlag: string | undefined): number | undefined {
+  if (rawFlag === undefined) return undefined;
+  const parsed = parseInt(rawFlag, 10);
+  if (!Number.isInteger(parsed) || parsed < 1 || String(parsed) !== rawFlag) {
+    throw new Error(`--timeout must be a positive integer, got: ${rawFlag}`);
+  }
+  return parsed;
 }

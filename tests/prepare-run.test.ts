@@ -315,6 +315,68 @@ describe('prepareRun', () => {
     await expect(access(join(stagedRoot, 'my-evals'))).rejects.toThrow();
   });
 
+  it('omits timeout from materialised base when neither CLI nor YAML sets it', async () => {
+    const root = await makeRoot('rooty', {
+      evalsYaml: { version: '1', scenarios: { base: { model: 'claude-haiku-4-5' } } },
+      scenarios: { only: { prompt: 'hi' } },
+    });
+
+    const { basePath } = await call(root);
+    const written = parse(await readFile(basePath, 'utf8')) as Record<string, unknown>;
+    expect(written).not.toHaveProperty('timeout');
+  });
+
+  it('injects top-level evals.yaml timeout into materialised base', async () => {
+    const root = await makeRoot('rooty', {
+      evalsYaml: { version: '1', timeout: 600, scenarios: { base: {} } },
+      scenarios: { only: { prompt: 'hi' } },
+    });
+
+    const { basePath } = await call(root);
+    const written = parse(await readFile(basePath, 'utf8')) as Record<string, unknown>;
+    expect(written.timeout).toBe(600);
+  });
+
+  it('prefers CLI cliTimeout option over top-level evals.yaml timeout', async () => {
+    const root = await makeRoot('rooty', {
+      evalsYaml: { version: '1', timeout: 600, scenarios: { base: {} } },
+      scenarios: { only: { prompt: 'hi' } },
+    });
+
+    const { prepareRun } = await import('../src/prepare-run.js');
+    const result = await prepareRun(root, { cliTimeout: 900 });
+    trackedParents.push(result.parent);
+    const written = parse(await readFile(result.basePath, 'utf8')) as Record<string, unknown>;
+    expect(written.timeout).toBe(900);
+  });
+
+  it('preserves scenarios.base.timeout when no top-level / CLI timeout is set', async () => {
+    const root = await makeRoot('rooty', {
+      evalsYaml: { version: '1', scenarios: { base: { timeout: 450 } } },
+      scenarios: { only: { prompt: 'hi' } },
+    });
+
+    const { basePath } = await call(root);
+    const written = parse(await readFile(basePath, 'utf8')) as Record<string, unknown>;
+    expect(written.timeout).toBe(450);
+  });
+
+  it('top-level / CLI timeout overrides scenarios.base.timeout in materialised base', async () => {
+    const root = await makeRoot('rooty', {
+      evalsYaml: {
+        version: '1',
+        timeout: 1200,
+        scenarios: { base: { timeout: 450, model: 'claude-haiku-4-5' } },
+      },
+      scenarios: { only: { prompt: 'hi' } },
+    });
+
+    const { basePath } = await call(root);
+    const written = parse(await readFile(basePath, 'utf8')) as Record<string, unknown>;
+    expect(written.timeout).toBe(1200);
+    expect(written.model).toBe('claude-haiku-4-5');
+  });
+
   it('does not error when ~ expansion is needed but the path is left literal', async () => {
     // Sanity: the helper should not crash trying to expand ~; that's scuttlerun's job.
     const root = await makeRoot('rooty', {
