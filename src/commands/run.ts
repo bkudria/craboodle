@@ -186,7 +186,9 @@ async function runCommandInner(
                   ...(scuttlerunResult.error.exitCode !== undefined
                     ? { exitCode: scuttlerunResult.error.exitCode }
                     : {}),
-                  transcriptPath: outputPath,
+                  ...(scuttlerunResult.error.transcriptPath !== undefined
+                    ? { transcriptPath: scuttlerunResult.error.transcriptPath }
+                    : {}),
                 },
               };
             }
