@@ -45,7 +45,14 @@ type RepOutcome =
       gradingCostUsd: number | null;
       transcriptPath: string;
     }
-  | { type: 'error'; rep: number; stage: string; message: string; transcriptPath?: string };
+  | {
+      type: 'error';
+      rep: number;
+      stage: string;
+      message: string;
+      exitCode?: number;
+      transcriptPath?: string;
+    };
 
 export async function runCommand(root: string, opts: RunOptions): Promise<void> {
   const controller = new AbortController();
@@ -170,6 +177,9 @@ async function runCommandInner(
                   rep,
                   stage: scuttlerunResult.error.stage,
                   message: scuttlerunResult.error.message,
+                  ...(scuttlerunResult.error.exitCode !== undefined
+                    ? { exitCode: scuttlerunResult.error.exitCode }
+                    : {}),
                   transcriptPath: outputPath,
                 },
               };
@@ -194,6 +204,9 @@ async function runCommandInner(
                 rep,
                 stage: pincenezResult.error.stage,
                 message: pincenezResult.error.message,
+                ...(pincenezResult.error.exitCode !== undefined
+                  ? { exitCode: pincenezResult.error.exitCode }
+                  : {}),
                 transcriptPath: outputPath,
               };
             }
@@ -255,6 +268,7 @@ async function runCommandInner(
               rep: outcome.rep,
               stage: outcome.stage,
               error: outcome.message,
+              ...(outcome.exitCode !== undefined ? { exit_code: outcome.exitCode } : {}),
               ...(outcome.transcriptPath ? { transcript: outcome.transcriptPath } : {}),
             });
           }

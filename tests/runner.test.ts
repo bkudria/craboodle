@@ -190,7 +190,7 @@ describe('runner', () => {
         code: number;
         stderr: string;
       };
-      error.code = 1;
+      error.code = 6;
       error.stderr = 'scuttlerun: timeout after 120s';
       mockExecFileCall((cb) => cb(error, '', 'scuttlerun: timeout after 120s'));
 
@@ -204,6 +204,27 @@ describe('runner', () => {
       if (!result.success) {
         expect(result.error.stage).toBe('scuttlerun');
         expect(result.error.message).toContain('timeout after 120s');
+        expect(result.error.exitCode).toBe(6);
+      }
+    });
+
+    it('embeds "(exit N)" in fallback message when stderr is empty', async () => {
+      const { runScuttlerun } = await import('../src/runner.js');
+
+      const error = new Error('Command failed') as Error & { code: number };
+      error.code = 6;
+      mockExecFileCall((cb) => cb(error, '', ''));
+
+      const result = await runScuttlerun({
+        scenarioPath: '/path/to/scenario.yaml',
+        basePath: null,
+        outputPath: join(tmpDir, 'output.yaml'),
+      });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.message).toContain('(exit 6)');
+        expect(result.error.exitCode).toBe(6);
       }
     });
 
@@ -223,6 +244,7 @@ describe('runner', () => {
       expect(result.success).toBe(false);
       if (!result.success) {
         expect(result.error.message).toContain('ENOENT: scuttlerun not found');
+        expect(result.error.exitCode).toBeUndefined();
       }
     });
   });
@@ -309,6 +331,7 @@ describe('runner', () => {
       if (!result.success) {
         expect(result.error.stage).toBe('pincenez');
         expect(result.error.message).toContain('API error');
+        expect(result.error.exitCode).toBe(2);
       }
     });
 
@@ -384,6 +407,7 @@ describe('runner', () => {
       if (!result.success) {
         expect(result.error.stage).toBe('scuttlerun');
         expect(result.error.message).toContain('invalid config');
+        expect(result.error.exitCode).toBe(1);
       }
     });
 
@@ -462,6 +486,7 @@ describe('runner', () => {
       if (!result.success) {
         expect(result.error.stage).toBe('pincenez');
         expect(result.error.message).toContain('API error');
+        expect(result.error.exitCode).toBe(2);
       }
     });
 

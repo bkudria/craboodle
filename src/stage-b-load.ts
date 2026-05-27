@@ -9,7 +9,14 @@ export type RepOutcome =
       gradingCostUsd: number | null;
       transcriptPath: string;
     }
-  | { type: 'error'; rep: number; stage: string; message: string; transcriptPath?: string };
+  | {
+      type: 'error';
+      rep: number;
+      stage: string;
+      message: string;
+      exitCode?: number;
+      transcriptPath?: string;
+    };
 
 export interface LoadStageBInput {
   gradingPath: string;

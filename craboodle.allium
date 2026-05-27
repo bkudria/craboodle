@@ -97,6 +97,7 @@ value RepError {
     rep: Integer
     stage: scuttlerun | pincenez | fail_fast | budget
     error: String
+    exit_code: Integer?
     transcript: String?
 }
 
