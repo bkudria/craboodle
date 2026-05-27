@@ -199,11 +199,11 @@ async function tryLoadPluginManifest(root: string): Promise<PluginManifest | und
 function renderEvalsYaml(mode: 'skill' | 'plugin' | 'generic'): string {
   let projectBlock: string;
   if (mode === 'skill') {
-    projectBlock = `#   skills:\n#     - .                            # self-reference: this skill\n`;
+    projectBlock = `    #   skills:\n    #     - .                            # self-reference: this skill\n`;
   } else if (mode === 'plugin') {
-    projectBlock = `#   plugins:\n#     - .                            # self-reference: this plugin\n`;
+    projectBlock = `    #   plugins:\n    #     - .                            # self-reference: this plugin\n`;
   } else {
-    projectBlock = `#   skills:\n#     - /absolute/path/to/skill\n`;
+    projectBlock = `    #   skills:\n    #     - /absolute/path/to/skill\n`;
   }
 
   return (

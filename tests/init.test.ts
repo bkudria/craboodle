@@ -11,6 +11,23 @@ const execFileAsync = promisify(execFile);
 
 const CLI_PATH = join(dirname(fileURLToPath(import.meta.url)), '..', 'dist', 'cli.js');
 
+// Simulates the operator following bootstrap-evals.md Step 6.1: strip the
+// leading `# ` from every line in the `project:` region (preserving indent),
+// leaving documentation comments elsewhere intact.
+function uncommentProjectBlock(content: string): string {
+  const lines = content.split('\n');
+  const startIdx = lines.findIndex((l) => /^\s*#\s*project:\s*$/.test(l));
+  const endIdx = lines.findIndex((l) => /^\s*#\s*user:\s*$/.test(l));
+  if (startIdx < 0 || endIdx < 0) {
+    throw new Error('Could not locate project block in scaffolded evals.yaml');
+  }
+  return [
+    ...lines.slice(0, startIdx),
+    ...lines.slice(startIdx, endIdx).map((l) => l.replace(/^(\s*)#\s?/, '$1')),
+    ...lines.slice(endIdx),
+  ].join('\n');
+}
+
 async function runAndCapture(args: string[]): Promise<{ code: number; stderr: string }> {
   try {
     const { stderr } = await execFileAsync(process.execPath, [CLI_PATH, ...args]);
@@ -355,6 +372,48 @@ describe('init', () => {
     const { stdout } = await execFileAsync(process.execPath, [CLI_PATH, 'run', '--help']);
     expect(stdout).toContain('--repeats');
     expect(stdout).toMatch(/overrides\s+evals\.yaml|takes precedence/i);
+  });
+
+  describe('scaffold YAML indentation', () => {
+    it('skill mode: uncommented project.skills nests correctly under scenarios.base.project', async () => {
+      const initDir = join(tmpDir, 'my-skill');
+      await mkdir(initDir, { recursive: true });
+      await writeFile(join(initDir, 'SKILL.md'), '---\nname: my-skill\n---\n# My Skill\n');
+
+      await execFileAsync(process.execPath, [CLI_PATH, 'init', initDir]);
+      const content = await readFile(join(initDir, 'evals.yaml'), 'utf8');
+      const parsed = parse(uncommentProjectBlock(content)) as {
+        scenarios?: { base?: { project?: { skills?: unknown } } };
+      };
+      expect(parsed?.scenarios?.base?.project?.skills).toEqual(['.']);
+    });
+
+    it('plugin mode: uncommented project.plugins nests correctly under scenarios.base.project', async () => {
+      const initDir = join(tmpDir, 'my-plugin');
+      await mkdir(join(initDir, '.claude-plugin'), { recursive: true });
+      await writeFile(
+        join(initDir, '.claude-plugin', 'plugin.json'),
+        JSON.stringify({ name: 'my-plugin' }),
+      );
+
+      await execFileAsync(process.execPath, [CLI_PATH, 'init', initDir]);
+      const content = await readFile(join(initDir, 'evals.yaml'), 'utf8');
+      const parsed = parse(uncommentProjectBlock(content)) as {
+        scenarios?: { base?: { project?: { plugins?: unknown } } };
+      };
+      expect(parsed?.scenarios?.base?.project?.plugins).toEqual(['.']);
+    });
+
+    it('generic mode: uncommented project.skills nests correctly under scenarios.base.project', async () => {
+      const initDir = join(tmpDir, 'just-a-dir');
+
+      await execFileAsync(process.execPath, [CLI_PATH, 'init', initDir]);
+      const content = await readFile(join(initDir, 'evals.yaml'), 'utf8');
+      const parsed = parse(uncommentProjectBlock(content)) as {
+        scenarios?: { base?: { project?: { skills?: unknown } } };
+      };
+      expect(parsed?.scenarios?.base?.project?.skills).toEqual(['/absolute/path/to/skill']);
+    });
   });
 
   describe('conflict guidance', () => {
