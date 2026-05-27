@@ -247,6 +247,75 @@ describe('runner', () => {
         expect(result.error.exitCode).toBeUndefined();
       }
     });
+
+    it('persists partial output.yaml when scuttlerun exits non-zero with stdout', async () => {
+      const { runScuttlerun } = await import('../src/runner.js');
+
+      const partial = 'session: abc\nconversation:\n  - user: hi\n';
+      const error = new Error('Command failed') as Error & { code: number };
+      error.code = 6;
+      mockExecFileCall((cb) => cb(error, partial, ''));
+
+      const outputPath = join(tmpDir, 'output.yaml');
+      const result = await runScuttlerun({
+        scenarioPath: '/path/to/scenario.yaml',
+        basePath: null,
+        outputPath,
+      });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.transcriptPath).toBe(outputPath);
+      }
+      const content = await readFile(outputPath, 'utf8');
+      expect(content).toBe(partial);
+    });
+
+    it('omits transcriptPath when scuttlerun exits non-zero with empty stdout', async () => {
+      const { runScuttlerun } = await import('../src/runner.js');
+
+      const error = new Error('Command failed') as Error & { code: number };
+      error.code = 1;
+      mockExecFileCall((cb) => cb(error, '', ''));
+
+      const outputPath = join(tmpDir, 'output.yaml');
+      const result = await runScuttlerun({
+        scenarioPath: '/path/to/scenario.yaml',
+        basePath: null,
+        outputPath,
+      });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.transcriptPath).toBeUndefined();
+      }
+      await expect(readFile(outputPath, 'utf8')).rejects.toThrow(/ENOENT/);
+    });
+
+    it('persists partial output.yaml when scuttlerun is aborted mid-stream', async () => {
+      const { runScuttlerun } = await import('../src/runner.js');
+
+      const partial = 'session: abc\nconversation:\n  - user: hi\n';
+      const controller = new AbortController();
+      controller.abort();
+      mockExecFileCall((cb) => cb(null, partial, ''));
+
+      const outputPath = join(tmpDir, 'output.yaml');
+      const result = await runScuttlerun({
+        scenarioPath: '/path/to/scenario.yaml',
+        basePath: null,
+        outputPath,
+        signal: controller.signal,
+      });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.message).toBe('Interrupted (SIGINT)');
+        expect(result.error.transcriptPath).toBe(outputPath);
+      }
+      const content = await readFile(outputPath, 'utf8');
+      expect(content).toBe(partial);
+    });
   });
 
   describe('runPincenezLint', () => {

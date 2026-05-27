@@ -612,6 +612,14 @@ rule RepFails {
     ensures: item.failure_message = rep_failure_message(item)
     ensures: item.transcript_path = rep_transcript_path_if_any(item)
     ensures: item.agent_cost_usd = rep_agent_cost_if_any(item)
+    @guidance
+        -- transcript_path is populated when scuttlerun emitted any stdout
+        -- before exiting, even on the failure path: craboodle writes that
+        -- partial transcript to <rep_dir>/output.yaml so operators can
+        -- inspect what the agent did before the failure. It is absent only
+        -- when scuttlerun produced no output (e.g., immediate config-error
+        -- exit) — in which case the YAML errors block omits the transcript
+        -- field rather than referencing a missing file.
 }
 
 -- A running rep observes invocation.interrupt_requested (set when the

@@ -8,6 +8,7 @@ export interface RepError {
   stage: 'scuttlerun' | 'pincenez';
   message: string;
   exitCode?: number;
+  transcriptPath?: string;
 }
 
 export type SubprocessResult = { success: true } | { success: false; error: RepError };
@@ -70,9 +71,11 @@ function execFilePromise(
         const err = new Error('The operation was aborted') as Error & {
           code?: string;
           stderr?: string;
+          stdout?: string;
         };
         err.code = 'ABORT_ERR';
         err.stderr = stderr;
+        err.stdout = stdout;
         reject(err);
         return;
       }
@@ -80,9 +83,11 @@ function execFilePromise(
         const err = new Error('stdout maxBuffer length exceeded') as Error & {
           code?: string;
           stderr?: string;
+          stdout?: string;
         };
         err.code = 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER';
         err.stderr = stderr;
+        err.stdout = stdout;
         reject(err);
         return;
       }
@@ -92,10 +97,12 @@ function execFilePromise(
           code?: number | string;
           signal?: NodeJS.Signals;
           stderr?: string;
+          stdout?: string;
         };
         if (code !== null) err.code = code;
         if (killSignal !== null) err.signal = killSignal;
         err.stderr = stderr;
+        err.stdout = stdout;
         reject(err);
         return;
       }
@@ -163,14 +170,24 @@ export async function runScuttlerun(options: RunScuttlerunOptions): Promise<Subp
     await writeFile(outputPath, stdout);
     return { success: true };
   } catch (err: unknown) {
-    const error = err as Error & { stderr?: string; code?: string | number };
+    const error = err as Error & {
+      stderr?: string;
+      stdout?: string;
+      code?: string | number;
+    };
     const exitCode = typeof error.code === 'number' ? error.code : undefined;
+    let transcriptPath: string | undefined;
+    if (error.stdout && error.stdout.length > 0) {
+      await writeFile(outputPath, error.stdout);
+      transcriptPath = outputPath;
+    }
     return {
       success: false,
       error: {
         stage: 'scuttlerun',
         message: isAbortError(error) ? 'Interrupted (SIGINT)' : error.stderr || error.message,
         ...(exitCode !== undefined ? { exitCode } : {}),
+        ...(transcriptPath !== undefined ? { transcriptPath } : {}),
       },
     };
   }
