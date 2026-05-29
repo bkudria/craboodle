@@ -19,6 +19,7 @@ export interface EvalsConfig {
   version: string;
   minPassRate?: number;
   maxBudgetUsd?: number;
+  maxErrorRate?: number;
   repeats?: number;
   artifactRetentionDays?: number;
   timeout?: number;
@@ -33,6 +34,7 @@ const KNOWN_TOP_LEVEL_KEYS = [
   'version',
   'min_pass_rate',
   'max_budget_usd',
+  'max_error_rate',
   'repeats',
   'artifact_retention_days',
   'timeout',
@@ -71,6 +73,14 @@ function validateMaxBudgetUsd(raw: unknown): number | undefined {
   if (raw === undefined) return undefined;
   if (typeof raw !== 'number' || raw <= 0) {
     throw new Error('max_budget_usd must be a positive number');
+  }
+  return raw;
+}
+
+function validateMaxErrorRate(raw: unknown): number | undefined {
+  if (raw === undefined) return undefined;
+  if (typeof raw !== 'number' || raw < 0 || raw > 1) {
+    throw new Error('max_error_rate must be a number between 0 and 1');
   }
   return raw;
 }
@@ -148,6 +158,13 @@ export async function loadEvalsConfig(root: string): Promise<EvalsConfig> {
   const version = validateVersion(raw.version);
   const minPassRate = validateMinPassRate(raw.min_pass_rate);
   const maxBudgetUsd = validateMaxBudgetUsd(raw.max_budget_usd);
+  const maxErrorRate = validateMaxErrorRate(raw.max_error_rate);
+  if (maxErrorRate !== undefined && minPassRate === undefined) {
+    process.stderr.write(
+      '[craboodle] WARNING: max_error_rate is set but min_pass_rate is not. The error-rate ' +
+        'gate only applies when min_pass_rate gates the run, so max_error_rate has no effect.\n',
+    );
+  }
   const repeats = validateRepeats(raw.repeats);
   const artifactRetentionDays = validateArtifactRetentionDays(raw.artifact_retention_days);
   const timeout = validateTimeout(raw.timeout);
@@ -208,6 +225,7 @@ export async function loadEvalsConfig(root: string): Promise<EvalsConfig> {
     version,
     minPassRate,
     maxBudgetUsd,
+    maxErrorRate,
     repeats,
     artifactRetentionDays,
     timeout,

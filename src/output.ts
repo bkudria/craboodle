@@ -113,6 +113,7 @@ export interface ScenarioOutput {
   id: string;
   checks: CheckOutput[];
   pass_rate: number | null;
+  error_rate?: number;
   cost_usd?: number;
   agent_cost_usd?: number;
   grading_cost_usd?: number;
@@ -229,6 +230,62 @@ export function averageResults(
   return { checks, pass_rate: scenarioPassRate };
 }
 
+// Intentional skips, not harness crashes: a fail_fast/budget rep never ran, so
+// it must not count toward the reliability metric (otherwise a quality-driven
+// fail-fast cascade would masquerade as an infrastructure failure).
+const NON_INFRA_ERROR_STAGES = new Set(['fail_fast', 'budget']);
+
+/**
+ * Reliability metric: the fraction of reps that hit a genuine harness crash
+ * (scuttlerun/pincenez, or any non-skip stage) among the reps that actually ran.
+ * Intentional skips (fail_fast, budget) are excluded from both the numerator and
+ * the denominator. Returns the raw, unrounded fraction (the gate compares against
+ * it directly); 0 when no rep ran.
+ */
+export function scenarioErrorRate(
+  successfulCount: number,
+  errors: ReadonlyArray<{ stage: string }>,
+): number {
+  const infraErrors = errors.filter((e) => !NON_INFRA_ERROR_STAGES.has(e.stage)).length;
+  const attempted = successfulCount + infraErrors;
+  if (attempted === 0) return 0;
+  return infraErrors / attempted;
+}
+
+export interface GateOutcome {
+  kind: 'pass' | 'reliability' | 'quality';
+  failures: ScenarioOutput[];
+}
+
+/**
+ * Decide the run's gate outcome from the final scenario outputs. Gating is
+ * opt-in: with no min_pass_rate the run is pure data collection and always
+ * passes. When gating is on, the reliability gate (error_rate > max_error_rate,
+ * default 0, strict) is checked first and maps to an infra-error exit; the
+ * quality gate (pass_rate null or below min_pass_rate) is checked second.
+ * Reliability takes precedence so an infrastructure failure is never
+ * misreported as a quality regression.
+ */
+export function evaluateGate(
+  scenarios: ScenarioOutput[],
+  opts: { minPassRate?: number; maxErrorRate?: number },
+): GateOutcome {
+  if (opts.minPassRate === undefined) return { kind: 'pass', failures: [] };
+  const maxErrorRate = opts.maxErrorRate ?? 0;
+  const reliabilityFailures = scenarios.filter((s) => (s.error_rate ?? 0) > maxErrorRate);
+  if (reliabilityFailures.length > 0) {
+    return { kind: 'reliability', failures: reliabilityFailures };
+  }
+  const minPassRate = opts.minPassRate;
+  const qualityFailures = scenarios.filter(
+    (s) => s.pass_rate === null || s.pass_rate < minPassRate,
+  );
+  if (qualityFailures.length > 0) {
+    return { kind: 'quality', failures: qualityFailures };
+  }
+  return { kind: 'pass', failures: [] };
+}
+
 export function writeYamlArrayItem(item: Record<string, unknown>): string {
   const doc = new Document(item);
   applyDepthAwareWrap(doc, ENTRY_PREFIX_WIDTH, LINE_WIDTH);
@@ -276,6 +333,10 @@ export function streamScenarioYaml(
     checks,
     pass_rate: scenario.pass_rate,
   };
+
+  if (scenario.error_rate !== undefined && scenario.error_rate > 0) {
+    content.error_rate = Math.round(scenario.error_rate * 100) / 100;
+  }
 
   if (scenario.cost_usd !== undefined) {
     content.cost_usd = Math.round(scenario.cost_usd * 10000) / 10000;

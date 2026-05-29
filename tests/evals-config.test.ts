@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdir, writeFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { stringify } from 'yaml';
@@ -172,6 +172,97 @@ describe('evals-config', () => {
       await expect(loadEvalsConfig(tmpDir)).rejects.toThrow(
         'max_budget_usd must be a positive number',
       );
+    });
+
+    it('parses max_error_rate into EvalsConfig.maxErrorRate', async () => {
+      const { loadEvalsConfig } = await import('../src/config.js');
+      await writeEvals({
+        version: '1',
+        min_pass_rate: 0.8,
+        max_error_rate: 0.2,
+        scenarios: { base: {} },
+      });
+      const config = await loadEvalsConfig(tmpDir);
+      expect(config.maxErrorRate).toBe(0.2);
+    });
+
+    it('accepts max_error_rate: 0 (the strict default value)', async () => {
+      const { loadEvalsConfig } = await import('../src/config.js');
+      await writeEvals({
+        version: '1',
+        min_pass_rate: 0.8,
+        max_error_rate: 0,
+        scenarios: { base: {} },
+      });
+      const config = await loadEvalsConfig(tmpDir);
+      expect(config.maxErrorRate).toBe(0);
+    });
+
+    it('accepts max_error_rate: 1', async () => {
+      const { loadEvalsConfig } = await import('../src/config.js');
+      await writeEvals({
+        version: '1',
+        min_pass_rate: 0.8,
+        max_error_rate: 1,
+        scenarios: { base: {} },
+      });
+      const config = await loadEvalsConfig(tmpDir);
+      expect(config.maxErrorRate).toBe(1);
+    });
+
+    it('leaves maxErrorRate undefined when absent', async () => {
+      const { loadEvalsConfig } = await import('../src/config.js');
+      await writeEvals({ version: '1', scenarios: { base: {} } });
+      const config = await loadEvalsConfig(tmpDir);
+      expect(config.maxErrorRate).toBeUndefined();
+    });
+
+    it('throws on invalid max_error_rate type', async () => {
+      const { loadEvalsConfig } = await import('../src/config.js');
+      await writeEvals({ version: '1', max_error_rate: 'low', scenarios: { base: {} } });
+      await expect(loadEvalsConfig(tmpDir)).rejects.toThrow(
+        'max_error_rate must be a number between 0 and 1',
+      );
+    });
+
+    it('throws on max_error_rate out of range', async () => {
+      const { loadEvalsConfig } = await import('../src/config.js');
+      await writeEvals({ version: '1', max_error_rate: 1.5, scenarios: { base: {} } });
+      await expect(loadEvalsConfig(tmpDir)).rejects.toThrow(
+        'max_error_rate must be a number between 0 and 1',
+      );
+    });
+
+    it('warns when max_error_rate is set without min_pass_rate (gate inert)', async () => {
+      const { loadEvalsConfig } = await import('../src/config.js');
+      const writes: string[] = [];
+      const warn = vi
+        .spyOn(process.stderr, 'write')
+        .mockImplementation((chunk: string | Uint8Array) => {
+          writes.push(typeof chunk === 'string' ? chunk : chunk.toString());
+          return true;
+        });
+      await writeEvals({ version: '1', max_error_rate: 0.2, scenarios: { base: {} } });
+      await loadEvalsConfig(tmpDir);
+      warn.mockRestore();
+      const joined = writes.join('');
+      expect(joined).toMatch(/max_error_rate/);
+      expect(joined).toMatch(/min_pass_rate/);
+    });
+
+    it('does not warn when max_error_rate and min_pass_rate are both set', async () => {
+      const { loadEvalsConfig } = await import('../src/config.js');
+      const warn = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+      await writeEvals({
+        version: '1',
+        min_pass_rate: 0.8,
+        max_error_rate: 0.2,
+        scenarios: { base: {} },
+      });
+      await loadEvalsConfig(tmpDir);
+      const calls = warn.mock.calls.length;
+      warn.mockRestore();
+      expect(calls).toBe(0);
     });
 
     it('throws on non-numeric repeats', async () => {

@@ -15,6 +15,8 @@ import { loadStageBResult } from '../stage-b-load.js';
 import { prepareRun } from '../prepare-run.js';
 import {
   averageResults,
+  evaluateGate,
+  scenarioErrorRate,
   streamHeader,
   streamScenarioYaml,
   streamTotalCost,
@@ -298,12 +300,14 @@ async function runCommandInner(
         ...(agentCost > 0 ? { agent_cost_usd: round4(agentCost) } : {}),
         ...(gradingCost > 0 ? { grading_cost_usd: round4(gradingCost) } : {}),
       };
+      const errorRate = scenarioErrorRate(successfulGradings.length, errors);
 
       if (successfulGradings.length === 0) {
         scenarioOutput = {
           id: scenarioId,
           checks: [],
           pass_rate: null,
+          error_rate: errorRate,
           ...costFields,
           errors,
         };
@@ -311,9 +315,9 @@ async function runCommandInner(
         const averaged = averageResults(successfulGradings, repTranscripts);
         scenarioOutput = {
           id: scenarioId,
-
           checks: averaged.checks,
           pass_rate: averaged.pass_rate,
+          error_rate: errorRate,
           ...costFields,
           ...(errors.length > 0 ? { errors } : {}),
         };
@@ -366,20 +370,38 @@ async function runCommandInner(
     process.exit(EXIT_INFRA_ERROR);
   }
 
-  // Check ratchet threshold
-  const minPassRate = pipeline.minPassRate;
-  if (minPassRate !== undefined) {
-    const failures = scenarioOutputs.filter(
-      (s) => s.pass_rate === null || s.pass_rate < minPassRate,
+  // Gate the run. Reliability (error_rate) takes precedence over quality
+  // (pass_rate), and both apply only when min_pass_rate opts the suite into
+  // gating — otherwise the run is pure data collection.
+  const gate = evaluateGate(scenarioOutputs, {
+    minPassRate: pipeline.minPassRate,
+    maxErrorRate: pipeline.maxErrorRate,
+  });
+
+  if (gate.kind === 'reliability') {
+    const maxErrorRate = pipeline.maxErrorRate ?? 0;
+    process.stderr.write(
+      `[craboodle] Reliability check failed (max_error_rate: ${maxErrorRate}):\n`,
     );
-    if (failures.length > 0) {
-      process.stderr.write(`[craboodle] Threshold check failed (min_pass_rate: ${minPassRate}):\n`);
-      for (const f of failures) {
-        process.stderr.write(`  ${f.id}: ${f.pass_rate ?? 'null'} < ${minPassRate}\n`);
-      }
-      process.stderr.write('  Try: re-run with -v for per-rep failure context\n');
-      process.stderr.write('  See: craboodle --help\n');
-      process.exit(EXIT_THRESHOLD_FAILURE);
+    for (const f of gate.failures) {
+      const rate = Math.round((f.error_rate ?? 0) * 100) / 100;
+      process.stderr.write(`  ${f.id}: error_rate=${rate} > ${maxErrorRate}\n`);
     }
+    process.stderr.write(
+      '  Crashed reps are excluded from pass_rate; inspect the scenario errors block.\n',
+    );
+    process.stderr.write('  See: craboodle --help\n');
+    process.exit(EXIT_INFRA_ERROR);
+  }
+
+  if (gate.kind === 'quality') {
+    const minPassRate = pipeline.minPassRate;
+    process.stderr.write(`[craboodle] Threshold check failed (min_pass_rate: ${minPassRate}):\n`);
+    for (const f of gate.failures) {
+      process.stderr.write(`  ${f.id}: ${f.pass_rate ?? 'null'} < ${minPassRate}\n`);
+    }
+    process.stderr.write('  Try: re-run with -v for per-rep failure context\n');
+    process.stderr.write('  See: craboodle --help\n');
+    process.exit(EXIT_THRESHOLD_FAILURE);
   }
 }
