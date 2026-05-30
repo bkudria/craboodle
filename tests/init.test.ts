@@ -330,6 +330,80 @@ describe('init', () => {
     expect(stdout).toContain('evals/agent-note-summarizer-placeholder/checks.yaml');
   });
 
+  it('plugin mode with multiple components: scaffolds a composition-placeholder scenario', async () => {
+    const initDir = join(tmpDir, 'my-plugin');
+    await mkdir(join(initDir, '.claude-plugin'), { recursive: true });
+    await writeFile(
+      join(initDir, '.claude-plugin', 'plugin.json'),
+      JSON.stringify({ name: 'my-plugin' }),
+    );
+    await mkdir(join(initDir, 'skills', 'alpha'), { recursive: true });
+    await writeFile(join(initDir, 'skills', 'alpha', 'SKILL.md'), '---\nname: alpha\n---');
+    await mkdir(join(initDir, 'agents'), { recursive: true });
+    await writeFile(
+      join(initDir, 'agents', 'note-summarizer.md'),
+      '---\nname: note-summarizer\n---\n',
+    );
+
+    await execFileAsync(process.execPath, [CLI_PATH, 'init', initDir]);
+
+    const scenarioRaw = await readFile(
+      join(initDir, 'evals', 'composition-placeholder', 'scenario.yaml'),
+      'utf8',
+    );
+    const scenario = parse(scenarioRaw);
+    expect(scenario).toBeTypeOf('object');
+    expect(typeof scenario.prompt).toBe('string');
+    expect((scenario.prompt as string).length).toBeGreaterThan(0);
+
+    const checksRaw = await readFile(
+      join(initDir, 'evals', 'composition-placeholder', 'checks.yaml'),
+      'utf8',
+    );
+    const checks = parse(checksRaw);
+    expect(checks).toBeTypeOf('object');
+    expect(checks).toHaveProperty('checks');
+    expect(checksRaw).toMatch(/cross-component/);
+  });
+
+  it('plugin mode with multiple components: stdout enumerates and points at the composition scenario', async () => {
+    const initDir = join(tmpDir, 'my-plugin');
+    await mkdir(join(initDir, '.claude-plugin'), { recursive: true });
+    await writeFile(
+      join(initDir, '.claude-plugin', 'plugin.json'),
+      JSON.stringify({ name: 'my-plugin' }),
+    );
+    await mkdir(join(initDir, 'skills', 'alpha'), { recursive: true });
+    await writeFile(join(initDir, 'skills', 'alpha', 'SKILL.md'), '---\nname: alpha\n---');
+    await mkdir(join(initDir, 'agents'), { recursive: true });
+    await writeFile(
+      join(initDir, 'agents', 'note-summarizer.md'),
+      '---\nname: note-summarizer\n---\n',
+    );
+
+    const { stdout } = await execFileAsync(process.execPath, [CLI_PATH, 'init', initDir]);
+    expect(stdout).toContain('evals/composition-placeholder/scenario.yaml');
+    expect(stdout).toContain('evals/composition-placeholder/checks.yaml');
+    expect(stdout).toMatch(/composition scenario/);
+  });
+
+  it('plugin mode with a single component: emits no composition-placeholder', async () => {
+    const initDir = join(tmpDir, 'my-plugin');
+    await mkdir(join(initDir, '.claude-plugin'), { recursive: true });
+    await writeFile(
+      join(initDir, '.claude-plugin', 'plugin.json'),
+      JSON.stringify({ name: 'my-plugin' }),
+    );
+    await mkdir(join(initDir, 'skills', 'alpha'), { recursive: true });
+    await writeFile(join(initDir, 'skills', 'alpha', 'SKILL.md'), '---\nname: alpha\n---');
+
+    await execFileAsync(process.execPath, [CLI_PATH, 'init', initDir]);
+
+    const entries = await readdir(join(initDir, 'evals'));
+    expect(entries).toContain('skill-alpha-placeholder');
+    expect(entries).not.toContain('composition-placeholder');
+  });
+
   it('plugin mode without discoverable skills: still emits plugins: [.]', async () => {
     const initDir = join(tmpDir, 'my-plugin');
     await mkdir(join(initDir, '.claude-plugin'), { recursive: true });

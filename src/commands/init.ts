@@ -127,6 +127,31 @@ function renderPlaceholderScenario(
   throw new Error(`Unsupported placeholder component type: ${componentType}`);
 }
 
+function renderCompositionPlaceholder(): { scenarioYaml: string; checksYaml: string } {
+  return {
+    scenarioYaml:
+      `# TODO: replace with a prompt that exercises TWO OR MORE of this plugin's\n` +
+      `# components together in one session — the composition the plugin adds over\n` +
+      `# its components in isolation. Single-component scenarios belong in the\n` +
+      `# per-component placeholders scaffolded alongside this one.\n` +
+      `prompt: |\n` +
+      `  TODO: describe a user request that should make two or more components work together.\n` +
+      `\n` +
+      `# user:\n` +
+      `#   max_turns: 8\n`,
+    checksYaml:
+      `# Placeholder checks for a composition (bundle) scenario. Uncomment and edit.\n` +
+      `# A composition scenario must keep at least one cross-component check — one that\n` +
+      `# asserts two or more components interacting in the same session, not a single\n` +
+      `# component in isolation.\n` +
+      `checks: []\n` +
+      `# checks:\n` +
+      `#   - cross-component-interaction:\n` +
+      `#       check: 'TODO: assert two components interacting in one session — e.g. a \`tool: Skill\` entry with \`skill: <skill-id>\` AND a later \`tool: Agent\` entry with \`subagent_type: <agent-id>\`'\n` +
+      `#       note: 'Composition check: at least one check must assert a cross-component interaction'\n`,
+  };
+}
+
 export function placeholderDirName(componentType: PlaceholderComponentType, id: string): string {
   // Named components get a `<type>-` prefix so the coverage matcher (which
   // requires `<type>-<id>` or `<type>-<id>-*` for skills/agents/commands)
@@ -171,6 +196,25 @@ async function writePlaceholderScenarios(
   if (components.hasMcpServers) {
     await writeOne('mcp_servers', 'mcp-servers');
   }
+
+  // A composition (bundle) scenario exercises two or more components together,
+  // so it only makes sense when the plugin actually has multiple components.
+  const componentTotal =
+    components.skills.length +
+    components.agents.length +
+    components.commands.length +
+    (components.hasHooks ? 1 : 0) +
+    (components.hasMcpServers ? 1 : 0);
+  if (componentTotal >= 2) {
+    const dir = join(rootDir, 'evals', 'composition-placeholder');
+    await mkdir(dir, { recursive: true });
+    const rendered = renderCompositionPlaceholder();
+    await writeFile(join(dir, 'scenario.yaml'), rendered.scenarioYaml);
+    await writeFile(join(dir, 'checks.yaml'), rendered.checksYaml);
+    written.push('evals/composition-placeholder/scenario.yaml');
+    written.push('evals/composition-placeholder/checks.yaml');
+  }
+
   return written;
 }
 
@@ -293,6 +337,11 @@ export async function initCommand(dir: string): Promise<void> {
   }
 
   process.stdout.write(`\nNext steps:\n`);
+  if (placeholderPaths.some((p) => p.includes('composition-placeholder'))) {
+    process.stdout.write(
+      `  Turn evals/composition-placeholder/ into a real composition scenario (exercises two or more components; keep at least one cross-component check)\n`,
+    );
+  }
   process.stdout.write(`  Create evals/<scenario-id>/scenario.yaml and checks.yaml\n`);
   process.stdout.write(`  craboodle list ${dir}     # validate scenarios\n`);
   process.stdout.write(`  craboodle lint ${dir}     # check quality\n`);
