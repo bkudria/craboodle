@@ -193,6 +193,7 @@ describe('init', () => {
       const checks = parse(checksRaw);
       expect(checks).toBeTypeOf('object');
       expect(checks).toHaveProperty('checks');
+      expect(checksRaw).toMatch(new RegExp(`input\\.skill:\\s*<plugin>:${id}`));
     }
   });
 
@@ -224,7 +225,7 @@ describe('init', () => {
       'utf8',
     );
     expect(checksRaw).toMatch(/tool:\s*Agent/);
-    expect(checksRaw).toMatch(/subagent_type:\s*note-summarizer/);
+    expect(checksRaw).toMatch(/input\.subagent_type:\s*<plugin>:note-summarizer/);
   });
 
   it('plugin mode: scaffolds a command-placeholder for each commands/<id>.md', async () => {

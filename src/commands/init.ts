@@ -27,11 +27,11 @@ function renderPlaceholderScenario(
         `#   max_turns: 4\n`,
       checksYaml:
         `# Placeholder checks for the \`${componentId}\` skill. Uncomment and edit.\n` +
-        `# Skill calls surface in the transcript as \`tool: Skill\` entries with \`skill: <id>\`.\n` +
+        `# Skill calls surface in the transcript as \`tool: Skill\` entries with \`input.skill: <plugin>:<id>\` (the skill id is namespaced).\n` +
         `checks: []\n` +
         `# checks:\n` +
         `#   - ${componentId}-skill-triggered:\n` +
-        `#       check: 'A \`tool: Skill\` entry with \`skill: ${componentId}\` appears in the transcript'\n` +
+        `#       check: 'A \`tool: Skill\` entry with \`input.skill: <plugin>:${componentId}\` appears in the transcript'\n` +
         `#       note: 'Plugin-component check: verifies the skill loaded for this prompt'\n`,
     };
   }
@@ -114,12 +114,12 @@ function renderPlaceholderScenario(
         `#   max_turns: 4\n`,
       checksYaml:
         `# Placeholder checks for the \`${componentId}\` sub-agent. Uncomment and edit.\n` +
-        `# Sub-agent dispatches surface in the transcript as \`tool: Agent\` entries with \`subagent_type: <id>\`.\n` +
+        `# Sub-agent dispatches surface in the transcript as \`tool: Agent\` entries with \`input.subagent_type: <plugin>:<id>\` (the sub-agent id is namespaced).\n` +
         `# Tools used inside the sub-agent's sub-session are NOT visible in the outer transcript.\n` +
         `checks: []\n` +
         `# checks:\n` +
         `#   - ${componentId}-dispatched:\n` +
-        `#       check: 'A \`tool: Agent\` entry with \`subagent_type: ${componentId}\` appears in the transcript'\n` +
+        `#       check: 'A \`tool: Agent\` entry with \`input.subagent_type: <plugin>:${componentId}\` appears in the transcript'\n` +
         `#       note: 'Plugin-component check: verifies the sub-agent was dispatched for this prompt'\n`,
     };
   }
