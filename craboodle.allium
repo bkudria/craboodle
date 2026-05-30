@@ -1057,7 +1057,14 @@ rule InitRefuseExistingScenarios {
 -- TODO prompt and a commented example check keyed to the component
 -- type's transcript observability surface (`tool: Skill`, `tool: Agent`,
 -- a user-message slash-command prefix, an observable hook side effect,
--- or `tool: mcp__<server>__<tool>`). Skill mode and generic mode write
+-- or `tool: mcp__<server>__<tool>`). When the plugin has two or more
+-- components, the scaffold also writes a single `composition-placeholder`
+-- scenario: a TODO prompt directing the author to exercise two or more
+-- components together in one session, plus a commented check skeleton
+-- noting that a composition scenario must keep at least one
+-- cross-component check (asserting two or more components interacting, not
+-- one in isolation). It is omitted for single-component plugins, where a
+-- composition scenario is meaningless. Skill mode and generic mode write
 -- only evals.yaml.
 rule InitCreateScaffold {
     when: init: InitInvocation.created
@@ -1269,8 +1276,10 @@ surface InitCommand {
         -- On successful scaffold, init writes a confirmation block to
         -- stdout naming the created directory and the files written, then
         -- a "Next steps:" block listing the suggested follow-up commands
-        -- (scenario authoring, list, lint, run). The exact wording is
-        -- incidental UX, but the two blocks are part of the contract.
+        -- (scenario authoring, list, lint, run). When a composition
+        -- placeholder was scaffolded, the Next steps block additionally
+        -- points the author at it. The exact wording is incidental UX, but
+        -- the two blocks are part of the contract.
 }
 
 -- ============================================================================
