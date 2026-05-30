@@ -349,6 +349,129 @@ cost_usd: 0.0042
     });
   });
 
+  describe('scenarioErrorRate', () => {
+    it('is 0 when there are no errored reps', async () => {
+      const { scenarioErrorRate } = await import('../src/output.js');
+      expect(scenarioErrorRate(3, [])).toBe(0);
+    });
+
+    it('counts infra crashes over the reps that actually ran', async () => {
+      const { scenarioErrorRate } = await import('../src/output.js');
+      // 1 success + 1 scuttlerun crash => 1 / (1 + 1) = 0.5
+      expect(scenarioErrorRate(1, [{ stage: 'scuttlerun' }])).toBe(0.5);
+    });
+
+    it('counts both scuttlerun and pincenez crashes', async () => {
+      const { scenarioErrorRate } = await import('../src/output.js');
+      // 0 success + 2 crashes => 2 / 2 = 1
+      expect(scenarioErrorRate(0, [{ stage: 'scuttlerun' }, { stage: 'pincenez' }])).toBe(1);
+    });
+
+    it('excludes fail_fast and budget skips from numerator and denominator', async () => {
+      const { scenarioErrorRate } = await import('../src/output.js');
+      // 1 success + 1 scuttlerun crash + 1 fail_fast + 1 budget
+      // => infra 1 / attempted (1 success + 1 infra) = 0.5; skips ignored entirely
+      expect(
+        scenarioErrorRate(1, [
+          { stage: 'scuttlerun' },
+          { stage: 'fail_fast' },
+          { stage: 'budget' },
+        ]),
+      ).toBe(0.5);
+    });
+
+    it('is 0 when every errored rep is an intentional skip', async () => {
+      const { scenarioErrorRate } = await import('../src/output.js');
+      // 1 success + 2 fail_fast => infra 0 / attempted 1 = 0
+      expect(scenarioErrorRate(1, [{ stage: 'fail_fast' }, { stage: 'fail_fast' }])).toBe(0);
+    });
+
+    it('is 0 when no rep ran at all (all reps skipped)', async () => {
+      const { scenarioErrorRate } = await import('../src/output.js');
+      // 0 success + 2 skips => attempted 0 => guard returns 0
+      expect(scenarioErrorRate(0, [{ stage: 'fail_fast' }, { stage: 'budget' }])).toBe(0);
+    });
+
+    it('treats an unknown error stage as an infra failure (fail-safe)', async () => {
+      const { scenarioErrorRate } = await import('../src/output.js');
+      // 1 success + 1 unknown => infra 1 / attempted 2 = 0.5
+      expect(scenarioErrorRate(1, [{ stage: 'unknown' }])).toBe(0.5);
+    });
+
+    it('returns the raw (unrounded) fraction so the gate is not fooled by rounding', async () => {
+      const { scenarioErrorRate } = await import('../src/output.js');
+      // 1 infra crash among 300 reps that ran => 1/300 ≈ 0.0033, must NOT round to 0
+      const rate = scenarioErrorRate(299, [{ stage: 'scuttlerun' }]);
+      expect(rate).toBeGreaterThan(0);
+      expect(rate).toBeCloseTo(1 / 300, 6);
+    });
+  });
+
+  describe('evaluateGate', () => {
+    const scn = (id: string, pass_rate: number | null, error_rate?: number) => ({
+      id,
+      checks: [],
+      pass_rate,
+      ...(error_rate !== undefined ? { error_rate } : {}),
+    });
+
+    it('passes when min_pass_rate is not configured (pure data collection)', async () => {
+      const { evaluateGate } = await import('../src/output.js');
+      const scenarios = [scn('a', null, 1.0), scn('b', 0.1, 0.5)];
+      expect(evaluateGate(scenarios, {}).kind).toBe('pass');
+    });
+
+    it('passes when every gated scenario meets the bar with no infra errors', async () => {
+      const { evaluateGate } = await import('../src/output.js');
+      const scenarios = [scn('a', 1.0, 0), scn('b', 0.9, 0)];
+      expect(evaluateGate(scenarios, { minPassRate: 0.8 }).kind).toBe('pass');
+    });
+
+    it('fails reliability when a gated scenario has infra errors (default tolerance 0)', async () => {
+      const { evaluateGate } = await import('../src/output.js');
+      // b's survivors pass (pass_rate 1.0) but some reps crashed (error_rate 0.5)
+      const scenarios = [scn('a', 1.0, 0), scn('b', 1.0, 0.5)];
+      const outcome = evaluateGate(scenarios, { minPassRate: 0.8 });
+      expect(outcome.kind).toBe('reliability');
+      expect(outcome.failures.map((s) => s.id)).toEqual(['b']);
+    });
+
+    it('takes reliability precedence over a simultaneous quality failure', async () => {
+      const { evaluateGate } = await import('../src/output.js');
+      // a fails quality (0.1 < 0.8); b fails reliability — reliability wins (exit 4 before 3)
+      const scenarios = [scn('a', 0.1, 0), scn('b', 1.0, 0.5)];
+      expect(evaluateGate(scenarios, { minPassRate: 0.8 }).kind).toBe('reliability');
+    });
+
+    it('respects max_error_rate as a tolerance (strict greater-than)', async () => {
+      const { evaluateGate } = await import('../src/output.js');
+      // error_rate 0.5 is NOT > 0.5 tolerance => no reliability failure; quality ok => pass
+      const scenarios = [scn('a', 1.0, 0.5)];
+      expect(evaluateGate(scenarios, { minPassRate: 0.8, maxErrorRate: 0.5 }).kind).toBe('pass');
+    });
+
+    it('does not let a tolerated error_rate mask a quality failure', async () => {
+      const { evaluateGate } = await import('../src/output.js');
+      // error_rate within tolerance, but pass_rate null => quality failure (exit 3)
+      const scenarios = [scn('a', null, 1.0)];
+      const outcome = evaluateGate(scenarios, { minPassRate: 0.8, maxErrorRate: 1.0 });
+      expect(outcome.kind).toBe('quality');
+      expect(outcome.failures.map((s) => s.id)).toEqual(['a']);
+    });
+
+    it('fails quality when pass_rate is below min and there are no infra errors', async () => {
+      const { evaluateGate } = await import('../src/output.js');
+      const scenarios = [scn('a', 0.5, 0)];
+      expect(evaluateGate(scenarios, { minPassRate: 0.8 }).kind).toBe('quality');
+    });
+
+    it('treats a missing error_rate as 0 (no reliability failure)', async () => {
+      const { evaluateGate } = await import('../src/output.js');
+      const scenarios = [scn('a', 1.0)];
+      expect(evaluateGate(scenarios, { minPassRate: 0.8 }).kind).toBe('pass');
+    });
+  });
+
   describe('streamHeader', () => {
     it('writes artifact_dir and scenarios key', async () => {
       const { streamHeader } = await import('../src/output.js');
@@ -430,6 +553,47 @@ cost_usd: 0.0042
       expect(written).toContain('cost_usd: 0.0294');
       expect(written).toContain('agent_cost_usd: 0.0234');
       expect(written).toContain('grading_cost_usd: 0.006');
+    });
+
+    it('includes error_rate (rounded) when present and positive', async () => {
+      const { streamScenarioYaml } = await import('../src/output.js');
+
+      streamScenarioYaml({
+        id: 'test',
+        checks: [{ check: 'test', pass_rate: 1.0 }],
+        pass_rate: 1.0,
+        error_rate: 0.5,
+        errors: [{ rep: 2, stage: 'scuttlerun', error: 'boom' }],
+      });
+
+      expect(written).toContain('error_rate: 0.5');
+    });
+
+    it('rounds error_rate to two decimals for display', async () => {
+      const { streamScenarioYaml } = await import('../src/output.js');
+
+      streamScenarioYaml({
+        id: 'test',
+        checks: [{ check: 'test', pass_rate: 1.0 }],
+        pass_rate: 1.0,
+        error_rate: 1 / 3,
+        errors: [{ rep: 2, stage: 'scuttlerun', error: 'boom' }],
+      });
+
+      expect(written).toContain('error_rate: 0.33');
+    });
+
+    it('omits error_rate when zero', async () => {
+      const { streamScenarioYaml } = await import('../src/output.js');
+
+      streamScenarioYaml({
+        id: 'test',
+        checks: [{ check: 'test', pass_rate: 1.0 }],
+        pass_rate: 1.0,
+        error_rate: 0,
+      });
+
+      expect(written).not.toContain('error_rate');
     });
 
     it('adds blank lines between check items', async () => {

@@ -272,6 +272,7 @@ describe('prepareRun', () => {
         version: '1',
         min_pass_rate: 0.5,
         max_budget_usd: 2.0,
+        max_error_rate: 0.2,
         repeats: 7,
         artifact_retention_days: 14,
         scenarios: { base: {} },
@@ -284,6 +285,7 @@ describe('prepareRun', () => {
       version: '1',
       minPassRate: 0.5,
       maxBudgetUsd: 2.0,
+      maxErrorRate: 0.2,
       repeats: 7,
       artifactRetentionDays: 14,
     });

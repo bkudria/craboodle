@@ -22,7 +22,8 @@
 --   3    ratchet failure (any scenario below min_pass_rate)
 --   4    infrastructure / dependency error
 --          (no scenarios, empty filter, zero successful reps across all
---          scenarios, zero lint invocations succeeded)
+--          scenarios, zero lint invocations succeeded, or a gated scenario's
+--          error_rate exceeds max_error_rate)
 --   5    budget exhausted (max_budget_usd reached; mirrors scuttlerun's
 --          exhausted_budget so CI can distinguish budget cutoff from
 --          generic failure)
@@ -137,13 +138,14 @@ entity Scenario {
 }
 
 -- The parsed evals.yaml file at <eval_root>/evals.yaml. The top-level
--- pipeline knobs (min_pass_rate, max_budget_usd, repeats, retention) sit
--- alongside scenarios.base, which is an opaque scuttlerun config block
--- applied to every scenario.
+-- pipeline knobs (min_pass_rate, max_error_rate, max_budget_usd, repeats,
+-- retention) sit alongside scenarios.base, which is an opaque scuttlerun
+-- config block applied to every scenario.
 entity EvalsConfig {
     eval_root: EvalRoot
     version: String
     min_pass_rate: Decimal?
+    max_error_rate: Decimal?                -- reliability tolerance; active only with min_pass_rate
     max_budget_usd: Decimal?
     repeats_override: Integer?
     artifact_retention_days_override: Integer?
@@ -248,6 +250,13 @@ entity RunInvocation {
         and scenario_results.any(s =>
             s.pass_rate = null
             or s.pass_rate < eval_root.evals_config.min_pass_rate)
+
+    error_gate_triggered:
+        eval_root.evals_config.min_pass_rate != null
+        and scenario_results.any(s =>
+            (eval_root.evals_config.max_error_rate = null and s.error_rate > 0)
+            or (eval_root.evals_config.max_error_rate != null
+                and s.error_rate > eval_root.evals_config.max_error_rate))
 
     interrupt_requested: Boolean = false
 
@@ -392,6 +401,7 @@ entity ScenarioResult {
 
     checks: List<CheckAggregate> with scenario_result = this
     pass_rate: Decimal?              -- null iff successful_reps_count = 0
+    error_rate: Decimal              -- crashed reps / reps that ran (0 if none ran)
     agent_cost_usd: Decimal
     grading_cost_usd: Decimal
     cost_usd: Decimal                -- agent + grading
@@ -655,6 +665,7 @@ rule AggregateScenario {
     let with_transcript = scenario_items where transcript_path != null
     let non_successes = scenario_items where status in
         {failed, aborted, budget_skipped, interrupted}
+    let crashed = scenario_items where status = failed
 
     ensures: ScenarioResult.created(
         invocation: invocation,
@@ -665,6 +676,9 @@ rule AggregateScenario {
         pass_rate:
             if successes.count = 0: null
             else: mean_pass_rate(successes),
+        error_rate:
+            if (successes.count + crashed.count) = 0: 0
+            else: crashed.count / (successes.count + crashed.count),
         agent_cost_usd: sum_decimals(with_transcript.agent_cost_usd),
         grading_cost_usd: sum_decimals(successes.grading_cost_usd),
         cost_usd:
@@ -679,6 +693,13 @@ rule AggregateScenario {
         -- under errors and never contribute to the averaging. Partial reps
         -- (scuttlerun succeeded, pincenez failed) contribute their agent
         -- cost to cost reporting but not their (absent) grading cost.
+        --
+        -- error_rate is the reliability companion to pass_rate: the fraction
+        -- of reps that crashed (status = failed) among the reps that actually
+        -- ran (successes + crashed). Aborted and budget-skipped reps never ran
+        -- to completion and are excluded from both numerator and denominator,
+        -- so a fail-fast cascade cannot inflate error_rate. It is the raw
+        -- fraction the reliability gate compares against (see ExitRunReliability).
 }
 
 rule StreamScenarioBlock {
@@ -689,9 +710,9 @@ rule StreamScenarioBlock {
     @guidance
         -- Passing checks (pass_rate = 1.0) emit only check + pass_rate;
         -- failing checks include per-rep evidence and optional transcript
-        -- paths. Failed reps appear under an errors array on the scenario.
-        -- Blocks arrive in completion order; ordering between scenarios
-        -- is not specified.
+        -- paths. Failed reps appear under an errors array on the scenario, and
+        -- error_rate is emitted only when greater than 0. Blocks arrive in
+        -- completion order; ordering between scenarios is not specified.
 }
 
 -- ============================================================================
@@ -731,10 +752,28 @@ rule ExitRunNoSuccess {
     ensures: inv.exit_code = 4
 }
 
+rule ExitRunReliability {
+    when: inv: RunInvocation.status transitions_to completed
+    requires: not inv.budget_exceeded
+    requires: inv.has_any_success
+    requires: inv.error_gate_triggered
+    ensures: inv.exit_code = 4
+    ensures: emit_stderr("Reliability check failed")
+    @guidance
+        -- Fires when a gated scenario's error_rate exceeds max_error_rate
+        -- (default 0 = any crash fails). Maps to exit 4 (infrastructure
+        -- error) rather than 3 (ratchet), keeping a crash-driven failure
+        -- distinguishable from a quality regression, and takes precedence
+        -- over the ratchet so an infra failure is never reported as a quality
+        -- one. Like the ratchet, it applies only when min_pass_rate has opted
+        -- the suite into gating.
+}
+
 rule ExitRunRatchet {
     when: inv: RunInvocation.status transitions_to completed
     requires: not inv.budget_exceeded
     requires: inv.has_any_success
+    requires: not inv.error_gate_triggered
     requires: inv.fail_fast_triggered
     ensures: inv.exit_code = 3
     ensures: emit_stderr("Threshold check failed")
@@ -744,6 +783,7 @@ rule ExitRunSuccess {
     when: inv: RunInvocation.status transitions_to completed
     requires: not inv.budget_exceeded
     requires: inv.has_any_success
+    requires: not inv.error_gate_triggered
     requires: not inv.fail_fast_triggered
     ensures: inv.exit_code = 0
 }
@@ -1042,10 +1082,10 @@ rule RejectUnknownConfigKeys {
     @guidance
         -- Load fails with exit 2; the rejecting invocation never reaches
         -- the state machine above. Recognised top-level keys are: version,
-        -- min_pass_rate, max_budget_usd, repeats, artifact_retention_days,
-        -- timeout, scenarios. Inside scenarios: path, base. The base block
-        -- itself is not validated by craboodle; that contract belongs to
-        -- scuttlerun.
+        -- min_pass_rate, max_error_rate, max_budget_usd, repeats,
+        -- artifact_retention_days, timeout, scenarios. Inside scenarios: path,
+        -- base. The base block itself is not validated by craboodle; that
+        -- contract belongs to scuttlerun.
 }
 
 rule RejectUnsupportedVersion {
@@ -1063,6 +1103,16 @@ rule RejectInvalidMinPassRate {
     requires: cfg.min_pass_rate < 0 or cfg.min_pass_rate > 1
     @guidance
         -- Load fails with exit 2. min_pass_rate must be in [0, 1].
+}
+
+rule RejectInvalidMaxErrorRate {
+    when: cfg: EvalsConfig.created
+    requires: cfg.max_error_rate != null
+    requires: cfg.max_error_rate < 0 or cfg.max_error_rate > 1
+    @guidance
+        -- Load fails with exit 2. max_error_rate must be in [0, 1]. Setting
+        -- max_error_rate without min_pass_rate loads successfully but is inert
+        -- (the reliability gate only applies to gated suites); craboodle warns.
 }
 
 -- ============================================================================
@@ -1101,9 +1151,9 @@ surface RunCommand {
         -- columns.
 
     @guarantee RawPassRates
-        -- pass_rate fields are fractional (0.0 .. 1.0) and are never
-        -- collapsed to verdicts. min_pass_rate only affects the process
-        -- exit code, never the reported numbers.
+        -- pass_rate and error_rate fields are fractional (0.0 .. 1.0) and are
+        -- never collapsed to verdicts. The gates (min_pass_rate, max_error_rate)
+        -- only affect the process exit code, never the reported numbers.
 
     @guarantee ArtifactsPreserved
         -- The artifact directory survives the run (success or failure)

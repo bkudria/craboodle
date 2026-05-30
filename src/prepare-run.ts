@@ -22,6 +22,7 @@ export interface PreparedRun {
     version: string;
     minPassRate?: number;
     maxBudgetUsd?: number;
+    maxErrorRate?: number;
     repeats?: number;
     artifactRetentionDays?: number;
     timeout?: number;
@@ -66,6 +67,7 @@ export async function prepareRun(root: string, options?: PrepareRunOptions): Pro
       version: config.version,
       minPassRate: config.minPassRate,
       maxBudgetUsd: config.maxBudgetUsd,
+      maxErrorRate: config.maxErrorRate,
       repeats: config.repeats,
       artifactRetentionDays: config.artifactRetentionDays,
       ...(resolvedTimeout !== undefined ? { timeout: resolvedTimeout } : {}),
