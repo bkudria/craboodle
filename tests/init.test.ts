@@ -449,6 +449,68 @@ describe('init', () => {
     expect(stdout).toMatch(/overrides\s+evals\.yaml|takes precedence/i);
   });
 
+  describe('scaffold quality (anti-pattern / staleness / docs)', () => {
+    async function scaffoldTwoComponentPlugin(): Promise<string> {
+      const initDir = join(tmpDir, 'my-plugin');
+      await mkdir(join(initDir, '.claude-plugin'), { recursive: true });
+      await writeFile(
+        join(initDir, '.claude-plugin', 'plugin.json'),
+        JSON.stringify({ name: 'my-plugin' }),
+      );
+      await mkdir(join(initDir, 'skills', 'alpha'), { recursive: true });
+      await writeFile(join(initDir, 'skills', 'alpha', 'SKILL.md'), '---\nname: alpha\n---');
+      await mkdir(join(initDir, 'agents'), { recursive: true });
+      await writeFile(
+        join(initDir, 'agents', 'note-summarizer.md'),
+        '---\nname: note-summarizer\n---\n',
+      );
+      await execFileAsync(process.execPath, [CLI_PATH, 'init', initDir]);
+      return initDir;
+    }
+
+    it('composition example check is a single, correctly-shaped cross-component interaction (not compound)', async () => {
+      const initDir = await scaffoldTwoComponentPlugin();
+      const checksRaw = await readFile(
+        join(initDir, 'evals', 'composition-placeholder', 'checks.yaml'),
+        'utf8',
+      );
+      // correct transcript field shape, matching the per-component placeholders
+      expect(checksRaw).toMatch(/input\.skill:\s*<plugin>:/);
+      expect(checksRaw).toMatch(/input\.subagent_type:\s*<plugin>:/);
+      // a single ordering relation tying the two components together (not "A AND B")
+      expect(checksRaw).toMatch(/appears after|after a `tool:/);
+    });
+
+    it('additional_tools example names a current tool, not the superseded TodoWrite', async () => {
+      const initDir = join(tmpDir, 'my-skill');
+      await execFileAsync(process.execPath, [CLI_PATH, 'init', initDir]);
+      const content = await readFile(join(initDir, 'evals.yaml'), 'utf8');
+      expect(content).toMatch(/#\s*-\s*WebSearch/);
+      expect(content).not.toMatch(/TodoWrite/);
+    });
+
+    it('composition scenario comment routes single-component scenarios to the per-skill suite', async () => {
+      const initDir = await scaffoldTwoComponentPlugin();
+      const scenarioRaw = await readFile(
+        join(initDir, 'evals', 'composition-placeholder', 'scenario.yaml'),
+        'utf8',
+      );
+      expect(scenarioRaw).toMatch(/per-skill suite/i);
+    });
+
+    it('main --help documents init plugin-mode placeholder scaffolding', async () => {
+      const { stdout } = await execFileAsync(process.execPath, [CLI_PATH, '--help']);
+      expect(stdout).toMatch(/plugin mode/i);
+      expect(stdout).toMatch(/placeholder/i);
+      expect(stdout).toMatch(/composition/i);
+    });
+
+    it('init --help describes plugin-mode placeholder scaffolding', async () => {
+      const { stdout } = await execFileAsync(process.execPath, [CLI_PATH, 'init', '--help']);
+      expect(stdout).toMatch(/per-component placeholder/i);
+    });
+  });
+
   describe('scaffold YAML indentation', () => {
     it('skill mode: uncommented project.skills nests correctly under scenarios.base.project', async () => {
       const initDir = join(tmpDir, 'my-skill');
