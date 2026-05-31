@@ -95,7 +95,11 @@ Output Format:
   cost_usd includes both agent (scuttlerun) and grading (pincenez) costs.
 
 Examples:
-  # Scaffold an evals.yaml at the skill / plugin root
+  # Scaffold an evals.yaml at the skill / plugin root. Mode is auto-detected:
+  #   SKILL.md -> skill, .claude-plugin/plugin.json -> plugin, else generic.
+  # In plugin mode it also scaffolds one placeholder scenario per component
+  # (skill / agent / command / hooks / mcp) under evals/<type>-<id>-placeholder/,
+  # plus a composition-placeholder when the plugin has two or more components.
   craboodle init ./my-skill
 
   # List and validate scenarios without running

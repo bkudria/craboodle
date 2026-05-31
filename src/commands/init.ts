@@ -132,8 +132,8 @@ function renderCompositionPlaceholder(): { scenarioYaml: string; checksYaml: str
     scenarioYaml:
       `# TODO: replace with a prompt that exercises TWO OR MORE of this plugin's\n` +
       `# components together in one session — the composition the plugin adds over\n` +
-      `# its components in isolation. Single-component scenarios belong in the\n` +
-      `# per-component placeholders scaffolded alongside this one.\n` +
+      `# its components in isolation. A scenario that exercises a single component in\n` +
+      `# isolation belongs in that component's own per-skill suite, not here.\n` +
       `prompt: |\n` +
       `  TODO: describe a user request that should make two or more components work together.\n` +
       `\n` +
@@ -146,9 +146,9 @@ function renderCompositionPlaceholder(): { scenarioYaml: string; checksYaml: str
       `# component in isolation.\n` +
       `checks: []\n` +
       `# checks:\n` +
-      `#   - cross-component-interaction:\n` +
-      `#       check: 'TODO: assert two components interacting in one session — e.g. a \`tool: Skill\` entry with \`skill: <skill-id>\` AND a later \`tool: Agent\` entry with \`subagent_type: <agent-id>\`'\n` +
-      `#       note: 'Composition check: at least one check must assert a cross-component interaction'\n`,
+      `#   - agent-dispatched-after-skill:\n` +
+      `#       check: 'A \`tool: Agent\` entry with \`input.subagent_type: <plugin>:<agent-id>\` appears after a \`tool: Skill\` entry with \`input.skill: <plugin>:<skill-id>\` in the same transcript'\n` +
+      `#       note: 'Composition check: assert ONE interaction tying two components together (e.g. an ordering relation), not two independent presence checks merged into one'\n`,
   };
 }
 
@@ -266,7 +266,7 @@ function renderEvalsYaml(mode: 'skill' | 'plugin' | 'generic'): string {
     `    #\n` +
     `    # model: claude-haiku-4-5\n` +
     `    # additional_tools:\n` +
-    `    #   - TodoWrite\n` +
+    `    #   - WebSearch\n` +
     `    # project:\n` +
     `    #   claude_md: |\n` +
     `    #     # Project-level instructions here\n` +

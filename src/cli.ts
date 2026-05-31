@@ -110,7 +110,9 @@ program
 
 program
   .command('init <dir>')
-  .description('Scaffold an evals.yaml at the given skill/plugin root')
+  .description(
+    'Scaffold evals.yaml at a skill/plugin root (plugin mode also scaffolds per-component placeholders)',
+  )
   .action(async (dir: string) => {
     await initCommand(dir);
   });
