@@ -54,7 +54,7 @@
     "prepublishOnly": "npm run build && npm test"
   },
   "dependencies": {
-    "commander": "^14.0.3",
+    "commander": "^15.0.0",
     "glob": "^13.0.6",
     "p-limit": "^7.3.0",
     "word-wrap": "^1.2.5",
