@@ -152,6 +152,16 @@ function isAbortError(err: Error & { code?: string | number }): boolean {
   return err.code === 'ABORT_ERR';
 }
 
+// On a subprocess failure, forward the child's captured stderr to craboodle's
+// own stderr — mirroring the success path — so a failing scuttlerun/pincenez
+// run's diagnostics reach the operator's terminal instead of being folded only
+// into the structured RepError.message. Aborts (SIGINT) carry no diagnostic.
+function forwardFailureStderr(error: Error & { stderr?: string; code?: string | number }): void {
+  if (!isAbortError(error) && error.stderr) {
+    process.stderr.write(error.stderr);
+  }
+}
+
 export async function runScuttlerun(options: RunScuttlerunOptions): Promise<SubprocessResult> {
   const { scenarioPath, basePath, outputPath, agentModel, signal } = options;
 
@@ -176,6 +186,7 @@ export async function runScuttlerun(options: RunScuttlerunOptions): Promise<Subp
       code?: string | number;
     };
     const exitCode = typeof error.code === 'number' ? error.code : undefined;
+    forwardFailureStderr(error);
     let transcriptPath: string | undefined;
     if (error.stdout && error.stdout.length > 0) {
       await writeFile(outputPath, error.stdout);
@@ -216,6 +227,7 @@ export async function listScuttlerunConfig(
   } catch (err: unknown) {
     const error = err as Error & { stderr?: string; code?: string | number };
     const exitCode = typeof error.code === 'number' ? error.code : undefined;
+    forwardFailureStderr(error);
     return {
       success: false,
       error: {
@@ -258,6 +270,7 @@ export async function runPincenezLint(
   } catch (err: unknown) {
     const error = err as Error & { stderr?: string; code?: string | number };
     const exitCode = typeof error.code === 'number' ? error.code : undefined;
+    forwardFailureStderr(error);
     return {
       success: false,
       error: {
@@ -285,6 +298,7 @@ export async function runPincenez(options: RunPincenezOptions): Promise<Subproce
   } catch (err: unknown) {
     const error = err as Error & { stderr?: string; code?: string | number };
     const exitCode = typeof error.code === 'number' ? error.code : undefined;
+    forwardFailureStderr(error);
     return {
       success: false,
       error: {
