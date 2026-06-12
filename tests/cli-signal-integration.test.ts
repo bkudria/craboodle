@@ -168,6 +168,9 @@ describe('cli signal handling (integration)', () => {
     expect(result.code).toBe(130);
     expect(result.stderr).toContain('Cleaning up subprocesses');
     expect(result.stderr).toContain('Ctrl-C again');
+    // An interrupted run must not claim a verdict — the trailer's absence is
+    // what distinguishes an interrupted run from a completed one.
+    expect(result.stdout).not.toContain('result:');
 
     // Give SIGTERM a moment to propagate
     await delay(200);

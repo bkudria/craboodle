@@ -89,10 +89,15 @@ Output Format:
         agent_cost_usd: 0.0234
         grading_cost_usd: 0.006
     total_cost_usd: 0.0294
+    result: pass
+    exit_code: 0
 
   Passing checks are compact (check + pass_rate). Failing checks
   include per-rep evidence. pass_rate is a fraction (0.0-1.0), never binary.
   cost_usd includes both agent (scuttlerun) and grading (pincenez) costs.
+  The stream always ends with result + exit_code naming the run outcome
+  (mirroring the process exit code); if they are missing, the run was
+  interrupted or crashed before completing.
 
 Examples:
   # Scaffold an evals.yaml at the skill / plugin root. Mode is auto-detected:

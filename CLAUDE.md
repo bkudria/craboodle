@@ -48,7 +48,7 @@ See [GOALS.md](GOALS.md) for design philosophy and [craboodle.allium](craboodle.
 ## Key decisions
 
 - Hardwired to scuttlerun + pincenez — no pluggable runners/graders
-- Raw fractional pass rates — no verdicts, no majority voting
+- Raw fractional pass rates — no per-scenario verdicts, no majority voting; the run-level `result`/`exit_code` trailer is separate
 - Flat concurrency pool over all (scenario, rep) pairs
 - Streaming YAML output (scenario by scenario, arrival order)
 - Unified pipeline + base config in a single `evals.yaml` at the project root; per-scenario configs split across `scenario.yaml` (scuttlerun) and `checks.yaml` (pincenez)

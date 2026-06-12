@@ -472,6 +472,50 @@ cost_usd: 0.0042
     });
   });
 
+  describe('resolveRunVerdict', () => {
+    it('maps a clean run to pass / exit 0', async () => {
+      const { resolveRunVerdict } = await import('../src/output.js');
+      expect(
+        resolveRunVerdict({ budgetExceeded: false, hasAnySuccess: true, gateKind: 'pass' }),
+      ).toEqual({ result: 'pass', exitCode: 0 });
+    });
+
+    it('maps a quality gate failure to threshold_failure / exit 3', async () => {
+      const { resolveRunVerdict } = await import('../src/output.js');
+      expect(
+        resolveRunVerdict({ budgetExceeded: false, hasAnySuccess: true, gateKind: 'quality' }),
+      ).toEqual({ result: 'threshold_failure', exitCode: 3 });
+    });
+
+    it('maps a reliability gate failure to reliability_failure / exit 4', async () => {
+      const { resolveRunVerdict } = await import('../src/output.js');
+      expect(
+        resolveRunVerdict({ budgetExceeded: false, hasAnySuccess: true, gateKind: 'reliability' }),
+      ).toEqual({ result: 'reliability_failure', exitCode: 4 });
+    });
+
+    it('maps a run with no successful reps to no_successful_reps / exit 4', async () => {
+      const { resolveRunVerdict } = await import('../src/output.js');
+      expect(
+        resolveRunVerdict({ budgetExceeded: false, hasAnySuccess: false, gateKind: 'pass' }),
+      ).toEqual({ result: 'no_successful_reps', exitCode: 4 });
+    });
+
+    it('takes no-success precedence over a simultaneous gate failure', async () => {
+      const { resolveRunVerdict } = await import('../src/output.js');
+      expect(
+        resolveRunVerdict({ budgetExceeded: false, hasAnySuccess: false, gateKind: 'quality' }),
+      ).toEqual({ result: 'no_successful_reps', exitCode: 4 });
+    });
+
+    it('takes budget precedence over everything else', async () => {
+      const { resolveRunVerdict } = await import('../src/output.js');
+      expect(
+        resolveRunVerdict({ budgetExceeded: true, hasAnySuccess: false, gateKind: 'quality' }),
+      ).toEqual({ result: 'budget_exceeded', exitCode: 5 });
+    });
+  });
+
   describe('streamHeader', () => {
     it('writes artifact_dir and scenarios key', async () => {
       const { streamHeader } = await import('../src/output.js');
@@ -779,6 +823,24 @@ prompt: Write a haiku about autumn
       streamTotalCost(0.12345678);
 
       expect(written).toContain('total_cost_usd: 0.1235');
+    });
+  });
+
+  describe('streamVerdict', () => {
+    it('writes result and exit_code for a passing run', async () => {
+      const { streamVerdict } = await import('../src/output.js');
+
+      streamVerdict({ result: 'pass', exitCode: 0 });
+
+      expect(written).toBe('result: pass\nexit_code: 0\n');
+    });
+
+    it('writes result and exit_code for a threshold failure', async () => {
+      const { streamVerdict } = await import('../src/output.js');
+
+      streamVerdict({ result: 'threshold_failure', exitCode: 3 });
+
+      expect(written).toBe('result: threshold_failure\nexit_code: 3\n');
     });
   });
 
@@ -1159,6 +1221,44 @@ prompt: Write a haiku about autumn
       expect(parsed.scenarios[0]['scenario-a'].pass_rate).toBe(0.83);
       expect(Object.keys(parsed.scenarios[1])[0]).toBe('scenario-b');
       expect(parsed.scenarios[1]['scenario-b'].pass_rate).toBe(1.0);
+    });
+
+    it('stays valid YAML with total cost and verdict trailer appended', async () => {
+      const { parse } = await import('yaml');
+      const { streamHeader, streamScenarioYaml, streamTotalCost, streamVerdict } =
+        await import('../src/output.js');
+
+      streamHeader('/tmp/craboodle-run-abc');
+      streamScenarioYaml({
+        id: 'scenario-a',
+        checks: [{ check: 'passes', pass_rate: 1.0 }],
+        pass_rate: 1.0,
+      });
+      streamTotalCost(0.5);
+      streamVerdict({ result: 'pass', exitCode: 0 });
+
+      const parsed = parse(written);
+      expect(parsed.total_cost_usd).toBe(0.5);
+      expect(parsed.result).toBe('pass');
+      expect(parsed.exit_code).toBe(0);
+    });
+
+    it('stays valid YAML with the verdict trailer and no total cost', async () => {
+      const { parse } = await import('yaml');
+      const { streamHeader, streamScenarioYaml, streamVerdict } = await import('../src/output.js');
+
+      streamHeader('/tmp/craboodle-run-abc');
+      streamScenarioYaml({
+        id: 'scenario-a',
+        checks: [{ check: 'fails', pass_rate: 0 }],
+        pass_rate: 0,
+      });
+      streamVerdict({ result: 'threshold_failure', exitCode: 3 });
+
+      const parsed = parse(written);
+      expect(parsed.total_cost_usd).toBeUndefined();
+      expect(parsed.result).toBe('threshold_failure');
+      expect(parsed.exit_code).toBe(3);
     });
   });
 });
