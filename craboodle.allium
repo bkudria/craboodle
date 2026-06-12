@@ -353,15 +353,12 @@ entity InitInvocation {
     operator: Operator
     target_dir: String
 
-    status: starting | refused | created
-    refusal_reason: existing_evals_yaml | existing_scenario_files
-        when status = refused
-    exit_code: Integer when status = refused | created
+    status: starting | completed
+    exit_code: Integer when status = completed
 
     transitions status {
-        starting -> refused
-        starting -> created
-        terminal: refused, created
+        starting -> completed
+        terminal: completed
     }
 }
 
@@ -1095,29 +1092,14 @@ rule StartInit {
     )
 }
 
-rule InitRefuseExistingEvals {
-    when: init: InitInvocation.created
-    requires: init.status = starting
-    requires: file_exists(init.target_dir, "evals.yaml")
-    ensures: init.status = refused
-    ensures: init.refusal_reason = existing_evals_yaml
-    ensures: init.exit_code = 1
-    ensures: emit_stderr("already contains evals.yaml")
-}
-
-rule InitRefuseExistingScenarios {
-    when: init: InitInvocation.created
-    requires: init.status = starting
-    requires: not file_exists(init.target_dir, "evals.yaml")
-    requires: scenario_files_present(init.target_dir)
-    ensures: init.status = refused
-    ensures: init.refusal_reason = existing_scenario_files
-    ensures: init.exit_code = 1
-    ensures: emit_stderr("already contains scenario files")
-}
-
--- The scaffold always writes evals.yaml at the target dir. Its body is
--- mode-flavoured: skill mode emits a `project.skills: ['.']`
+-- Init is incremental and idempotent: it scaffolds only what is missing,
+-- skips what already exists (never modifying an existing file), reports
+-- created and skipped artifacts, and exits 0 — including the full no-op
+-- where every artifact is already present.
+--
+-- The scaffold writes evals.yaml at the target dir only when absent; an
+-- existing evals.yaml is left untouched and reported as skipped. The body
+-- is mode-flavoured: skill mode emits a `project.skills: ['.']`
 -- self-reference hint; plugin mode emits a `project.plugins: ['.']`
 -- self-reference hint that loads the plugin bundle cohesively (skills +
 -- hooks + sub-agents + MCP servers + commands); generic mode emits a
@@ -1125,7 +1107,7 @@ rule InitRefuseExistingScenarios {
 --
 -- In plugin mode the scaffold additionally fans out one informative
 -- placeholder scenario per discovered component, under
--- evals/<scenario-id>/{scenario,checks}.yaml. The <scenario-id> is
+-- <scenarios_path>/<scenario-id>/{scenario,checks}.yaml. The <scenario-id> is
 -- `<type>-<id>-placeholder` for named components (where <type> is
 -- `skill`, `agent`, or `command` and <id> is the component id, sorted)
 -- and `<id>-placeholder` for singleton components (where <id> is the
@@ -1145,16 +1127,36 @@ rule InitRefuseExistingScenarios {
 -- one in isolation). It is omitted for single-component plugins, where a
 -- composition scenario is meaningless. Skill mode and generic mode write
 -- only evals.yaml.
-rule InitCreateScaffold {
+--
+-- A component's placeholder is skipped (reported with the covering path)
+-- when the component is already covered, meaning any of:
+--   1. a scenario directory under <scenarios_path> matches the component's
+--      coverage key — `<type>-<id>` exactly or `<type>-<id>-` as a
+--      dash-bounded prefix for named components; the literal id (`hooks`,
+--      `mcp-servers`) likewise for singletons; key `composition` for the
+--      composition placeholder. The dash boundary is load-bearing:
+--      `skill-alphabet` does not cover skill `alpha`.
+--   2. (skills only) the skill carries its own nested suite at
+--      skills/<id>/evals/<scenario-id>/scenario.{yaml,yml} — the layout
+--      per-skill bootstraps produce.
+--   3. the exact target placeholder directory already exists (even empty
+--      or partial), so init never writes into a directory it did not
+--      create in this invocation.
+--
+-- <scenarios_path> is resolved best-effort from an existing evals.yaml's
+-- scenarios.path (same single-directory-name shape rule as load-time
+-- validation); a missing, unparseable, or malformed value falls back to
+-- the default `evals` without erroring — init is a scaffolder, and
+-- evals.yaml validation belongs to the run/list/lint loaders.
+rule InitScaffoldMissing {
     when: init: InitInvocation.created
     requires: init.status = starting
-    requires: not file_exists(init.target_dir, "evals.yaml")
-    requires: not scenario_files_present(init.target_dir)
-    ensures: write_scaffold(init.target_dir, "evals.yaml",
-                            evals_template_for(init.target_dir))
-    ensures: write_plugin_placeholders_if_plugin_mode(init.target_dir,
-                                                     plugin_components_of(init.target_dir))
-    ensures: init.status = created
+    ensures: write_evals_yaml_if_missing(init.target_dir,
+                                         evals_template_for(init.target_dir))
+    ensures: write_uncovered_plugin_placeholders_if_plugin_mode(
+                 init.target_dir,
+                 plugin_components_of(init.target_dir))
+    ensures: init.status = completed
     ensures: init.exit_code = 0
 }
 
@@ -1365,19 +1367,25 @@ surface InitCommand {
     exposes:
         invocation.exit_code
 
-    @guarantee RefusesOverwrite
-        -- If the target already contains evals.yaml or any scenario
-        -- directory matching <scenarios_path>/<id>/scenario.{yaml,yml},
-        -- init refuses with exit code 1 and writes nothing.
+    @guarantee NeverOverwrites
+        -- Init never modifies an existing file. Existing artifacts —
+        -- evals.yaml, any scenario directory covering a component, or a
+        -- placeholder directory that already exists — are skipped and
+        -- reported, and the rest of the scaffold proceeds around them.
+        -- Re-running init on the same target is always safe and exits 0.
 
     @guarantee InitSuccessMessage
-        -- On successful scaffold, init writes a confirmation block to
-        -- stdout naming the created directory and the files written, then
-        -- a "Next steps:" block listing the suggested follow-up commands
-        -- (scenario authoring, list, lint, run). When a composition
-        -- placeholder was scaffolded, the Next steps block additionally
-        -- points the author at it. The exact wording is incidental UX, but
-        -- the two blocks are part of the contract.
+        -- When anything was scaffolded, init writes a confirmation block
+        -- to stdout naming the created directory and the files written,
+        -- then a "Next steps:" block listing the suggested follow-up
+        -- commands (scenario authoring, list, lint, run). When a
+        -- composition placeholder was scaffolded, the Next steps block
+        -- additionally points the author at it. Skipped artifacts are
+        -- listed in their own block, each with the existing path that
+        -- covers it. When nothing was scaffolded, init reports the no-op
+        -- explicitly and emits neither the confirmation nor the Next
+        -- steps block. The exact wording is incidental UX, but the
+        -- blocks are part of the contract.
 }
 
 -- ============================================================================

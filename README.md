@@ -45,7 +45,9 @@ npx craboodle <command> [args]
 ## Usage
 
 ```bash
-# Scaffold an evals.yaml at the skill / plugin root
+# Scaffold an evals.yaml at the skill / plugin root (incremental and safe to
+# re-run: skips evals.yaml and component placeholders that already exist or
+# are covered by an existing suite)
 craboodle init ./my-skill
 
 # Validate scenarios
@@ -131,14 +133,14 @@ Subset of the shared scuttlerun/pincenez/craboodle taxonomy — see [scuttlerun/
 | Code | Meaning                                                                            |
 | ---- | ---------------------------------------------------------------------------------- |
 | 0    | Pipeline completed                                                                 |
-| 1    | Refusal (init won't overwrite; list found invalid scenarios; lint reported issues) |
+| 1    | Refusal (list found invalid scenarios; lint reported issues)                       |
 | 2    | Load failure (`evals.yaml` schema/version/range) or runtime error                  |
 | 3    | Threshold failure (`min_pass_rate` ratchet)                                        |
 | 4    | Infrastructure/dependency error (no scenarios, empty filter, zero successful reps) |
 | 5    | Budget exhausted (`max_budget_usd`)                                                |
 | 130  | Interrupted (SIGINT)                                                               |
 
-The 1-vs-2 split — refusal (1) vs load failure (2) — matches `craboodle.allium` rules `RejectUnknownConfigKeys`, `RejectUnsupportedVersion`, `RejectInvalidMinPassRate` (load → 2) and `ExitListInvalid`, `ExitLintIssuesFound`, `InitRefuseExistingEvals`, `InitRefuseExistingScenarios` (refuse → 1).
+The 1-vs-2 split — refusal (1) vs load failure (2) — matches `craboodle.allium` rules `RejectUnknownConfigKeys`, `RejectUnsupportedVersion`, `RejectInvalidMinPassRate` (load → 2) and `ExitListInvalid`, `ExitLintIssuesFound` (refuse → 1). `init` is incremental (rule `InitScaffoldMissing`): it skips existing artifacts rather than refusing, and exits 0.
 
 `craboodle run` also embeds the verdict in the stdout YAML stream as trailing `result:` / `exit_code:` fields (`pass`, `threshold_failure`, `reliability_failure`, `no_successful_reps`, or `budget_exceeded`), so the outcome stays readable even when a shell wrapper masks `$?`. A missing trailer means the run was interrupted or exited before streaming began.
 

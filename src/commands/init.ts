@@ -1,7 +1,7 @@
-import { access, mkdir, stat, writeFile } from 'node:fs/promises';
+import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import { formatErrorWithHint } from '../errors.js';
-import { EXIT_CONFIG_ERROR } from '../exit-codes.js';
+import { parse } from 'yaml';
+import { coversComponentKey, discoverScenarios } from '../discovery.js';
 import {
   enumeratePluginComponents,
   loadPluginManifest,
@@ -10,6 +10,11 @@ import {
 } from '../plugin.js';
 
 type PlaceholderComponentType = 'skill' | 'agent' | 'command' | 'hooks' | 'mcp_servers';
+
+interface SkippedItem {
+  label: string;
+  reason: string;
+}
 
 function renderPlaceholderScenario(
   componentType: PlaceholderComponentType,
@@ -164,21 +169,60 @@ export function placeholderDirName(componentType: PlaceholderComponentType, id: 
   return `${id}-placeholder`;
 }
 
+// Coverage key for a component: `<type>-<id>` for named components, the
+// literal id (`hooks` / `mcp-servers`) for singletons — the same convention
+// the coverage matcher and placeholderDirName use.
+function componentCoverageKey(componentType: PlaceholderComponentType, id: string): string {
+  if (componentType === 'skill' || componentType === 'agent' || componentType === 'command') {
+    return `${componentType}-${id}`;
+  }
+  return id;
+}
+
 async function writePlaceholderScenarios(
   rootDir: string,
   components: PluginComponents,
-): Promise<string[]> {
+  scenariosPath: string,
+  existingIds: string[],
+): Promise<{ written: string[]; skipped: SkippedItem[] }> {
   const written: string[] = [];
+  const skipped: SkippedItem[] = [];
 
   async function writeOne(componentType: PlaceholderComponentType, id: string): Promise<void> {
+    const label =
+      componentType === 'hooks' || componentType === 'mcp_servers' ? id : `${componentType} ${id}`;
+
+    const key = componentCoverageKey(componentType, id);
+    const cover = existingIds.find((existingId) => coversComponentKey(existingId, key));
+    if (cover) {
+      skipped.push({ label, reason: `covered by ${scenariosPath}/${cover}/` });
+      return;
+    }
+
+    if (componentType === 'skill') {
+      const nested = await discoverScenarios(join(rootDir, 'skills', id), 'evals');
+      if (nested.length > 0) {
+        skipped.push({ label, reason: `covered by skills/${id}/evals/` });
+        return;
+      }
+    }
+
     const dirName = placeholderDirName(componentType, id);
-    const dir = join(rootDir, 'evals', dirName);
+    const dir = join(rootDir, scenariosPath, dirName);
+    const dirExists = await access(dir).then(
+      () => true,
+      () => false,
+    );
+    if (dirExists) {
+      skipped.push({ label, reason: `${scenariosPath}/${dirName}/ already exists` });
+      return;
+    }
     await mkdir(dir, { recursive: true });
     const rendered = renderPlaceholderScenario(componentType, id);
     await writeFile(join(dir, 'scenario.yaml'), rendered.scenarioYaml);
     await writeFile(join(dir, 'checks.yaml'), rendered.checksYaml);
-    written.push(`evals/${dirName}/scenario.yaml`);
-    written.push(`evals/${dirName}/checks.yaml`);
+    written.push(`${scenariosPath}/${dirName}/scenario.yaml`);
+    written.push(`${scenariosPath}/${dirName}/checks.yaml`);
   }
 
   for (const skillId of components.skills) {
@@ -206,16 +250,53 @@ async function writePlaceholderScenarios(
     (components.hasHooks ? 1 : 0) +
     (components.hasMcpServers ? 1 : 0);
   if (componentTotal >= 2) {
-    const dir = join(rootDir, 'evals', 'composition-placeholder');
-    await mkdir(dir, { recursive: true });
-    const rendered = renderCompositionPlaceholder();
-    await writeFile(join(dir, 'scenario.yaml'), rendered.scenarioYaml);
-    await writeFile(join(dir, 'checks.yaml'), rendered.checksYaml);
-    written.push('evals/composition-placeholder/scenario.yaml');
-    written.push('evals/composition-placeholder/checks.yaml');
+    const cover = existingIds.find((existingId) => coversComponentKey(existingId, 'composition'));
+    const dir = join(rootDir, scenariosPath, 'composition-placeholder');
+    const dirExists = await access(dir).then(
+      () => true,
+      () => false,
+    );
+    if (cover) {
+      skipped.push({ label: 'composition', reason: `covered by ${scenariosPath}/${cover}/` });
+    } else if (dirExists) {
+      skipped.push({
+        label: 'composition',
+        reason: `${scenariosPath}/composition-placeholder/ already exists`,
+      });
+    } else {
+      await mkdir(dir, { recursive: true });
+      const rendered = renderCompositionPlaceholder();
+      await writeFile(join(dir, 'scenario.yaml'), rendered.scenarioYaml);
+      await writeFile(join(dir, 'checks.yaml'), rendered.checksYaml);
+      written.push(`${scenariosPath}/composition-placeholder/scenario.yaml`);
+      written.push(`${scenariosPath}/composition-placeholder/checks.yaml`);
+    }
   }
 
-  return written;
+  return { written, skipped };
+}
+
+// Best-effort read of scenarios.path from an existing evals.yaml. init is a
+// scaffolder, not a validator — on any parse or shape problem it falls back to
+// the default rather than erroring (`run` owns config validation). The shape
+// rule mirrors loadEvalsConfig's: a single directory name, no separators.
+async function readScenariosPathBestEffort(root: string): Promise<string> {
+  const fallback = 'evals';
+  try {
+    const raw = await readFile(join(root, 'evals.yaml'), 'utf8');
+    const parsed: unknown = parse(raw);
+    if (typeof parsed !== 'object' || parsed === null) return fallback;
+    const scenarios = (parsed as Record<string, unknown>).scenarios;
+    if (typeof scenarios !== 'object' || scenarios === null) return fallback;
+    const path = (scenarios as Record<string, unknown>).path;
+    if (typeof path !== 'string' || path.length === 0) return fallback;
+    if (path.includes('/') || path.includes('\\') || path === '.' || path === '..') {
+      return fallback;
+    }
+    return path;
+  } catch {
+    return fallback;
+  }
 }
 
 async function detectInitMode(root: string): Promise<{ mode: 'skill' | 'plugin' | 'generic' }> {
@@ -280,53 +361,56 @@ function renderEvalsYaml(mode: 'skill' | 'plugin' | 'generic'): string {
 export async function initCommand(dir: string): Promise<void> {
   const resolvedDir = resolve(dir);
 
-  try {
-    await access(join(resolvedDir, 'evals.yaml'));
-    process.stderr.write(
-      formatErrorWithHint(
-        `${resolvedDir} already contains evals.yaml`,
-        'pick a different directory or remove the existing file(s)',
-      ),
-    );
-    process.exit(EXIT_CONFIG_ERROR);
-  } catch {
-    // evals.yaml doesn't exist, good
-  }
-
-  try {
-    const dirStat = await stat(resolvedDir);
-    if (dirStat.isDirectory()) {
-      const { glob: globFn } = await import('glob');
-      const existing = await globFn('evals/*/scenario.{yaml,yml}', { cwd: resolvedDir });
-      if (existing.length > 0) {
-        process.stderr.write(
-          formatErrorWithHint(
-            `${resolvedDir} already contains scenario files`,
-            'pick a different directory or remove the existing file(s)',
-          ),
-        );
-        process.exit(EXIT_CONFIG_ERROR);
-      }
-    }
-  } catch {
-    // directory doesn't exist, we'll create it
-  }
-
   await mkdir(resolvedDir, { recursive: true });
 
   const { mode } = await detectInitMode(resolvedDir);
-  await writeFile(join(resolvedDir, 'evals.yaml'), renderEvalsYaml(mode));
 
-  let placeholderPaths: string[] = [];
-  if (mode === 'plugin') {
-    const components = await enumeratePluginComponents(resolvedDir);
-    placeholderPaths = await writePlaceholderScenarios(resolvedDir, components);
+  const created: string[] = [];
+  const skipped: SkippedItem[] = [];
+
+  const evalsYamlExists = await access(join(resolvedDir, 'evals.yaml')).then(
+    () => true,
+    () => false,
+  );
+  if (evalsYamlExists) {
+    skipped.push({ label: 'evals.yaml', reason: 'already present' });
+  } else {
+    await writeFile(join(resolvedDir, 'evals.yaml'), renderEvalsYaml(mode));
+    created.push('evals.yaml');
   }
 
-  process.stdout.write(`Created ${resolvedDir}/\n`);
-  process.stdout.write(`  evals.yaml\n`);
-  for (const relPath of placeholderPaths) {
-    process.stdout.write(`  ${relPath}\n`);
+  if (mode === 'plugin') {
+    const scenariosPath = evalsYamlExists
+      ? await readScenariosPathBestEffort(resolvedDir)
+      : 'evals';
+    const components = await enumeratePluginComponents(resolvedDir);
+    const existingIds = (await discoverScenarios(resolvedDir, scenariosPath)).map((s) => s.id);
+    const placeholders = await writePlaceholderScenarios(
+      resolvedDir,
+      components,
+      scenariosPath,
+      existingIds,
+    );
+    created.push(...placeholders.written);
+    skipped.push(...placeholders.skipped);
+  }
+
+  if (created.length > 0) {
+    process.stdout.write(`Created ${resolvedDir}/\n`);
+    for (const relPath of created) {
+      process.stdout.write(`  ${relPath}\n`);
+    }
+  } else {
+    process.stdout.write(
+      `Nothing to scaffold in ${resolvedDir}/ — all artifacts already present.\n`,
+    );
+  }
+
+  if (skipped.length > 0) {
+    process.stdout.write(`\nSkipped (already present):\n`);
+    for (const item of skipped) {
+      process.stdout.write(`  ${item.label} — ${item.reason}\n`);
+    }
   }
 
   if (mode === 'plugin') {
@@ -337,14 +421,16 @@ export async function initCommand(dir: string): Promise<void> {
     }
   }
 
-  process.stdout.write(`\nNext steps:\n`);
-  if (placeholderPaths.some((p) => p.includes('composition-placeholder'))) {
-    process.stdout.write(
-      `  Turn evals/composition-placeholder/ into a real composition scenario (exercises two or more components; keep at least one cross-component check)\n`,
-    );
+  if (created.length > 0) {
+    process.stdout.write(`\nNext steps:\n`);
+    if (created.some((p) => p.includes('composition-placeholder'))) {
+      process.stdout.write(
+        `  Turn evals/composition-placeholder/ into a real composition scenario (exercises two or more components; keep at least one cross-component check)\n`,
+      );
+    }
+    process.stdout.write(`  Create evals/<scenario-id>/scenario.yaml and checks.yaml\n`);
+    process.stdout.write(`  craboodle list ${dir}     # validate scenarios\n`);
+    process.stdout.write(`  craboodle lint ${dir}     # check quality\n`);
+    process.stdout.write(`  craboodle run ${dir}      # run eval pipeline\n`);
   }
-  process.stdout.write(`  Create evals/<scenario-id>/scenario.yaml and checks.yaml\n`);
-  process.stdout.write(`  craboodle list ${dir}     # validate scenarios\n`);
-  process.stdout.write(`  craboodle lint ${dir}     # check quality\n`);
-  process.stdout.write(`  craboodle run ${dir}      # run eval pipeline\n`);
 }

@@ -116,6 +116,9 @@ Examples:
   # In plugin mode it also scaffolds one placeholder scenario per component
   # (skill / agent / command / hooks / mcp) under evals/<type>-<id>-placeholder/,
   # plus a composition-placeholder when the plugin has two or more components.
+  # Incremental and safe to re-run: existing files are never overwritten, and it
+  # skips components already covered by a suite (a scenario dir matching
+  # <type>-<id> / <type>-<id>-*, or a nested skills/<id>/evals/ suite).
   craboodle init ./my-skill
 
   # List and validate scenarios without running
@@ -141,7 +144,7 @@ Examples:
 
 Exit Codes (shared scuttlerun/pincenez/craboodle taxonomy; codes 6-7 scuttlerun-only):
   0   Pipeline completed successfully
-  1   Refusal (init won't overwrite; list found invalid scenarios; lint reported issues)
+  1   Refusal (list found invalid scenarios; lint reported issues)
   2   Load failure (evals.yaml schema/version/range) or runtime error (caught exception in run/lint)
   3   Threshold failure (min_pass_rate ratchet violated)
   4   Infrastructure/dependency error (no scenarios, empty filter, zero successful reps)

@@ -28,13 +28,19 @@ function uncommentProjectBlock(content: string): string {
   ].join('\n');
 }
 
-async function runAndCapture(args: string[]): Promise<{ code: number; stderr: string }> {
+async function runAndCapture(
+  args: string[],
+): Promise<{ code: number; stdout: string; stderr: string }> {
   try {
-    const { stderr } = await execFileAsync(process.execPath, [CLI_PATH, ...args]);
-    return { code: 0, stderr };
+    const { stdout, stderr } = await execFileAsync(process.execPath, [CLI_PATH, ...args]);
+    return { code: 0, stdout, stderr };
   } catch (err) {
-    const e = err as { code?: number; stderr?: string };
-    return { code: typeof e.code === 'number' ? e.code : -1, stderr: e.stderr ?? '' };
+    const e = err as { code?: number; stdout?: string; stderr?: string };
+    return {
+      code: typeof e.code === 'number' ? e.code : -1,
+      stdout: e.stdout ?? '',
+      stderr: e.stderr ?? '',
+    };
   }
 }
 
@@ -529,6 +535,19 @@ describe('init', () => {
       const { stdout } = await execFileAsync(process.execPath, [CLI_PATH, 'init', '--help']);
       expect(stdout).toMatch(/per-component placeholder/i);
     });
+
+    it('init --help describes incremental behavior', async () => {
+      const { stdout } = await execFileAsync(process.execPath, [CLI_PATH, 'init', '--help']);
+      expect(stdout).toMatch(/incremental|skip|already exist/i);
+    });
+
+    it('main --help describes init as incremental and does not attribute exit 1 to init', async () => {
+      const { stdout } = await execFileAsync(process.execPath, [CLI_PATH, '--help']);
+      expect(stdout).toMatch(
+        /skips (components|scenarios|artifacts)|already covered|safe to re-run/i,
+      );
+      expect(stdout).not.toMatch(/init won't overwrite/);
+    });
   });
 
   describe('scaffold YAML indentation', () => {
@@ -573,28 +592,221 @@ describe('init', () => {
     });
   });
 
-  describe('conflict guidance', () => {
-    it('emits recovery hint when evals.yaml already exists', async () => {
-      const initDir = join(tmpDir, 'my-skill');
-      await mkdir(initDir);
+  describe('incremental behavior', () => {
+    async function makePlugin(initDir: string, skillIds: string[]): Promise<void> {
+      await mkdir(join(initDir, '.claude-plugin'), { recursive: true });
       await writeFile(
-        join(initDir, 'evals.yaml'),
-        stringify({ version: '1', scenarios: { base: {} } }),
+        join(initDir, '.claude-plugin', 'plugin.json'),
+        JSON.stringify({ name: 'my-plugin' }),
       );
-      const { code, stderr } = await runAndCapture(['init', initDir]);
-      expect(code).toBe(1);
-      expect(stderr).toContain('already contains evals.yaml');
-      expect(stderr).toContain('pick a different directory');
+      for (const id of skillIds) {
+        await mkdir(join(initDir, 'skills', id), { recursive: true });
+        await writeFile(join(initDir, 'skills', id, 'SKILL.md'), `---\nname: ${id}\n---`);
+      }
+    }
+
+    it('skips a skill placeholder when a coverage-pattern scenario exists for it', async () => {
+      const initDir = join(tmpDir, 'my-plugin');
+      await makePlugin(initDir, ['alpha', 'beta']);
+      await mkdir(join(initDir, 'evals', 'skill-alpha-tests'), { recursive: true });
+      await writeFile(join(initDir, 'evals', 'skill-alpha-tests', 'scenario.yaml'), 'prompt: x\n');
+
+      const { code, stdout } = await runAndCapture(['init', initDir]);
+
+      expect(code).toBe(0);
+      const entries = await readdir(join(initDir, 'evals'));
+      expect(entries).not.toContain('skill-alpha-placeholder');
+      expect(entries).toContain('skill-beta-placeholder');
+      expect(stdout).toContain('evals/skill-beta-placeholder/scenario.yaml');
+      expect(stdout).toMatch(/skill alpha.*evals\/skill-alpha-tests/);
+      expect(
+        await readFile(join(initDir, 'evals', 'skill-alpha-tests', 'scenario.yaml'), 'utf8'),
+      ).toBe('prompt: x\n');
     });
 
-    it('emits recovery hint when directory has existing scenarios under evals/', async () => {
+    it('skips the hooks placeholder when a hooks-* scenario exists', async () => {
+      const initDir = join(tmpDir, 'my-plugin');
+      await makePlugin(initDir, []);
+      await mkdir(join(initDir, 'hooks'), { recursive: true });
+      await writeFile(join(initDir, 'hooks', 'hooks.json'), '{}');
+      await writeFile(join(initDir, '.mcp.json'), '{}');
+      await mkdir(join(initDir, 'evals', 'hooks-deny-write'), { recursive: true });
+      await writeFile(join(initDir, 'evals', 'hooks-deny-write', 'scenario.yaml'), 'prompt: x\n');
+
+      const { code, stdout } = await runAndCapture(['init', initDir]);
+
+      expect(code).toBe(0);
+      const entries = await readdir(join(initDir, 'evals'));
+      expect(entries).not.toContain('hooks-placeholder');
+      expect(entries).toContain('mcp-servers-placeholder');
+      expect(stdout).toMatch(/hooks.*evals\/hooks-deny-write/);
+    });
+
+    it('skips the composition placeholder when a composition-* scenario exists', async () => {
+      const initDir = join(tmpDir, 'my-plugin');
+      await makePlugin(initDir, ['alpha', 'beta']);
+      await mkdir(join(initDir, 'evals', 'composition-smoke'), { recursive: true });
+      await writeFile(join(initDir, 'evals', 'composition-smoke', 'scenario.yaml'), 'prompt: x\n');
+
+      const { code, stdout } = await runAndCapture(['init', initDir]);
+
+      expect(code).toBe(0);
+      const entries = await readdir(join(initDir, 'evals'));
+      expect(entries).not.toContain('composition-placeholder');
+      expect(entries).toContain('skill-alpha-placeholder');
+      expect(entries).toContain('skill-beta-placeholder');
+      expect(stdout).not.toMatch(/composition scenario/);
+      expect(stdout).toMatch(/composition.*evals\/composition-smoke/);
+    });
+
+    it('skips a skill placeholder when the skill has a nested evals suite', async () => {
+      const initDir = join(tmpDir, 'my-plugin');
+      await makePlugin(initDir, ['alpha', 'beta']);
+      await mkdir(join(initDir, 'skills', 'alpha', 'evals', 'smoke'), { recursive: true });
+      await writeFile(
+        join(initDir, 'skills', 'alpha', 'evals', 'smoke', 'scenario.yaml'),
+        'prompt: x\n',
+      );
+
+      const { code, stdout } = await runAndCapture(['init', initDir]);
+
+      expect(code).toBe(0);
+      const entries = await readdir(join(initDir, 'evals'));
+      expect(entries).not.toContain('skill-alpha-placeholder');
+      expect(entries).toContain('skill-beta-placeholder');
+      expect(stdout).toMatch(/skill alpha.*skills\/alpha\/evals/);
+    });
+
+    it('skips a placeholder whose exact target directory already exists, even when empty', async () => {
+      const initDir = join(tmpDir, 'my-plugin');
+      await makePlugin(initDir, ['alpha']);
+      await mkdir(join(initDir, 'evals', 'skill-alpha-placeholder'), { recursive: true });
+
+      const { code, stdout } = await runAndCapture(['init', initDir]);
+
+      expect(code).toBe(0);
+      const entries = await readdir(join(initDir, 'evals', 'skill-alpha-placeholder'));
+      expect(entries).toEqual([]);
+      expect(stdout).toMatch(/skill alpha/);
+    });
+
+    it('skips the composition placeholder when its target directory already exists', async () => {
+      const initDir = join(tmpDir, 'my-plugin');
+      await makePlugin(initDir, ['alpha', 'beta']);
+      await mkdir(join(initDir, 'evals', 'composition-placeholder'), { recursive: true });
+      await writeFile(join(initDir, 'evals', 'composition-placeholder', 'checks.yaml'), '# mine\n');
+
+      const { code } = await runAndCapture(['init', initDir]);
+
+      expect(code).toBe(0);
+      const entries = await readdir(join(initDir, 'evals', 'composition-placeholder'));
+      expect(entries).toEqual(['checks.yaml']);
+      expect(
+        await readFile(join(initDir, 'evals', 'composition-placeholder', 'checks.yaml'), 'utf8'),
+      ).toBe('# mine\n');
+    });
+
+    it('honours scenarios.path from an existing evals.yaml for detection and scaffolding', async () => {
+      const initDir = join(tmpDir, 'my-plugin');
+      await makePlugin(initDir, ['alpha', 'beta']);
+      await writeFile(
+        join(initDir, 'evals.yaml'),
+        stringify({ version: '1', scenarios: { path: 'cases', base: {} } }),
+      );
+      await mkdir(join(initDir, 'cases', 'skill-alpha-x'), { recursive: true });
+      await writeFile(join(initDir, 'cases', 'skill-alpha-x', 'scenario.yaml'), 'prompt: x\n');
+
+      const { code, stdout } = await runAndCapture(['init', initDir]);
+
+      expect(code).toBe(0);
+      const entries = await readdir(join(initDir, 'cases'));
+      expect(entries).not.toContain('skill-alpha-placeholder');
+      expect(entries).toContain('skill-beta-placeholder');
+      expect(stdout).toContain('cases/skill-beta-placeholder/scenario.yaml');
+      expect(stdout).toMatch(/skill alpha.*cases\/skill-alpha-x/);
+      const rootEntries = await readdir(initDir);
+      expect(rootEntries).not.toContain('evals');
+    });
+
+    it('falls back to the default scenarios dir when evals.yaml is malformed', async () => {
+      const initDir = join(tmpDir, 'my-plugin');
+      await makePlugin(initDir, ['alpha']);
+      const malformed = '{ not yaml: [\n';
+      await writeFile(join(initDir, 'evals.yaml'), malformed);
+
+      const { code } = await runAndCapture(['init', initDir]);
+
+      expect(code).toBe(0);
+      expect(await readFile(join(initDir, 'evals.yaml'), 'utf8')).toBe(malformed);
+      const entries = await readdir(join(initDir, 'evals'));
+      expect(entries).toContain('skill-alpha-placeholder');
+    });
+
+    it('is a full no-op on a second run: exit 0, no Created header, no Next steps', async () => {
+      const initDir = join(tmpDir, 'my-plugin');
+      await makePlugin(initDir, ['alpha', 'beta']);
+
+      const first = await runAndCapture(['init', initDir]);
+      expect(first.code).toBe(0);
+      const evalsYamlAfterFirst = await readFile(join(initDir, 'evals.yaml'), 'utf8');
+      const scenarioAfterFirst = await readFile(
+        join(initDir, 'evals', 'skill-alpha-placeholder', 'scenario.yaml'),
+        'utf8',
+      );
+
+      const second = await runAndCapture(['init', initDir]);
+
+      expect(second.code).toBe(0);
+      expect(second.stdout).toMatch(/nothing to scaffold/i);
+      expect(second.stdout).not.toContain('Created');
+      expect(second.stdout).not.toContain('Next steps');
+      expect(await readFile(join(initDir, 'evals.yaml'), 'utf8')).toBe(evalsYamlAfterFirst);
+      expect(
+        await readFile(join(initDir, 'evals', 'skill-alpha-placeholder', 'scenario.yaml'), 'utf8'),
+      ).toBe(scenarioAfterFirst);
+    });
+
+    it('does not let a coverage match cross a dash boundary', async () => {
+      const initDir = join(tmpDir, 'my-plugin');
+      await makePlugin(initDir, ['alpha']);
+      await mkdir(join(initDir, 'evals', 'skill-alphabet'), { recursive: true });
+      await writeFile(join(initDir, 'evals', 'skill-alphabet', 'scenario.yaml'), 'prompt: x\n');
+
+      const { code } = await runAndCapture(['init', initDir]);
+
+      expect(code).toBe(0);
+      const entries = await readdir(join(initDir, 'evals'));
+      expect(entries).toContain('skill-alpha-placeholder');
+    });
+
+    it('leaves an existing evals.yaml untouched and reports it as skipped', async () => {
+      const initDir = join(tmpDir, 'my-skill');
+      await mkdir(initDir);
+      const original = stringify({ version: '1', scenarios: { base: {} } });
+      await writeFile(join(initDir, 'evals.yaml'), original);
+
+      const { code, stdout } = await runAndCapture(['init', initDir]);
+
+      expect(code).toBe(0);
+      expect(await readFile(join(initDir, 'evals.yaml'), 'utf8')).toBe(original);
+      expect(stdout).toMatch(/skipped|already present|nothing to scaffold/i);
+      expect(stdout).toContain('evals.yaml');
+    });
+
+    it('scaffolds evals.yaml alongside existing scenarios without touching them', async () => {
       const initDir = join(tmpDir, 'my-skill');
       await mkdir(join(initDir, 'evals', 'alpha'), { recursive: true });
       await writeFile(join(initDir, 'evals', 'alpha', 'scenario.yaml'), 'prompt: x\n');
-      const { code, stderr } = await runAndCapture(['init', initDir]);
-      expect(code).toBe(1);
-      expect(stderr).toContain('already contains scenario files');
-      expect(stderr).toContain('pick a different directory');
+
+      const { code, stdout } = await runAndCapture(['init', initDir]);
+
+      expect(code).toBe(0);
+      expect(stdout).toContain('evals.yaml');
+      const content = await readFile(join(initDir, 'evals.yaml'), 'utf8');
+      expect(parse(content)).toHaveProperty('version', '1');
+      expect(await readFile(join(initDir, 'evals', 'alpha', 'scenario.yaml'), 'utf8')).toBe(
+        'prompt: x\n',
+      );
     });
   });
 });
