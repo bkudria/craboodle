@@ -3,10 +3,10 @@ import { formatErrorWithHint } from '../errors.js';
 import { installSignalHandler } from '../signals.js';
 import { filterScenarios } from '../discovery.js';
 import { findMissingBinaries, formatMissingBinariesError } from '../preflight.js';
-import { listScuttlerunConfig, runPincenezLint } from '../runner.js';
+import { runPincenezLint } from '../runner.js';
 import { prepareRun } from '../prepare-run.js';
+import { resolveScenarioGrounding } from '../grounding.js';
 import {
-  parseDryRunSummary,
   parseLintResult,
   streamLintScenarioYaml,
   streamLintTotals,
@@ -19,43 +19,6 @@ export interface LintOptions {
   graderModel?: string;
   scenarios?: string;
   verbose?: boolean;
-}
-
-export interface LintGrounding {
-  context?: string;
-  availableTools?: string[];
-}
-
-/**
- * Resolve the scenario's effective config via `scuttlerun --dry-run` so the
- * lint judge is grounded in the resolved (post-merge) prompt — tautology
- * detection — and tool list — availability judgments. Degrades to an empty
- * grounding with a stderr warning when resolution fails.
- */
-export async function resolveLintGrounding(
-  scenarioId: string,
-  scenarioPath: string,
-  basePath: string,
-  signal?: AbortSignal,
-): Promise<LintGrounding> {
-  const result = await listScuttlerunConfig({ scenarioPath, basePath, signal });
-  if (!result.success || result.stdout === undefined) {
-    process.stderr.write(
-      `[craboodle] ${scenarioId}: could not resolve scenario config (scuttlerun --dry-run failed); lint grounding degraded\n`,
-    );
-    return {};
-  }
-
-  const summary = parseDryRunSummary(result.stdout);
-  if (summary.prompt === undefined) {
-    process.stderr.write(
-      `[craboodle] ${scenarioId}: scenario has no prompt; tautology detection degraded\n`,
-    );
-  }
-  return {
-    ...(summary.prompt !== undefined ? { context: summary.prompt } : {}),
-    ...(summary.tools !== undefined ? { availableTools: summary.tools } : {}),
-  };
 }
 
 export async function lintCommand(root: string, opts: LintOptions): Promise<void> {
@@ -151,10 +114,11 @@ async function lintCommandInner(
         process.stderr.write(`[craboodle] ${scenario.id}: linting checks\n`);
       }
 
-      const grounding = await resolveLintGrounding(
+      const grounding = await resolveScenarioGrounding(
         scenario.id,
         scenario.configPath,
         prepared.basePath,
+        'lint',
         controller.signal,
       );
 

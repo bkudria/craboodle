@@ -2,5 +2,16 @@
 # Test stub for scuttlerun. Used when the real binary is not installed
 # (CI, fresh checkouts). Wired in via tests/setup-stubs.ts.
 # Exits 0 unless CRABOODLE_STUB_SCUTTLERUN_EXIT is set, which lets a test
-# simulate scuttlerun failing for a specific scenario.
+# simulate scuttlerun failing for a specific scenario. Optional hooks (all
+# off by default): CRABOODLE_STUB_SCUTTLERUN_ARGS_FILE records each
+# invocation's args (newline-separated, '===' between invocations);
+# CRABOODLE_STUB_SCUTTLERUN_DRYRUN_STDOUT / _DRYRUN_EXIT control --dry-run
+# invocations separately from real runs.
+if [ -n "${CRABOODLE_STUB_SCUTTLERUN_ARGS_FILE:-}" ]; then
+  printf '%s\n' "$@" '===' >> "$CRABOODLE_STUB_SCUTTLERUN_ARGS_FILE"
+fi
+if [ "${1:-}" = "--dry-run" ]; then
+  printf '%s' "${CRABOODLE_STUB_SCUTTLERUN_DRYRUN_STDOUT:-}"
+  exit "${CRABOODLE_STUB_SCUTTLERUN_DRYRUN_EXIT:-0}"
+fi
 exit "${CRABOODLE_STUB_SCUTTLERUN_EXIT:-0}"
