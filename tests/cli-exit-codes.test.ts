@@ -237,6 +237,20 @@ describe('cli exit codes (unified taxonomy)', () => {
       expect(stderr).toContain('Threshold check failed');
     });
 
+    it('verbose stderr names the min_pass_rate breach, not the fail-fast mechanism', async () => {
+      await writeEvals({ version: '1', min_pass_rate: 1, scenarios: { base: {} } });
+      await writeAlpha();
+      const { code, stderr } = await runAndCaptureAll(
+        ['run', '--repeats', '1', '--verbose', tmpDir],
+        { CRABOODLE_STUB_PINCENEZ_STDOUT: gradingYaml(false) },
+      );
+      expect(code).toBe(3);
+      expect(stderr).toContain(
+        'min_pass_rate breached by alpha (pass_rate=0 < 1) — remaining queued reps will be aborted (fail-fast)',
+      );
+      expect(stderr).not.toContain('Fail-fast triggered');
+    });
+
     it('ends stdout with no_successful_reps / 4 when every rep fails', async () => {
       await writeEvals();
       await writeAlpha();

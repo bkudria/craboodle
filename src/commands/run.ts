@@ -333,7 +333,7 @@ async function runCommandInner(
       ) {
         if (!failFastTriggered && opts.verbose) {
           process.stderr.write(
-            `[craboodle] Fail-fast triggered: ${scenarioId} pass_rate=${scenarioOutput.pass_rate} < ${pipeline.minPassRate}\n`,
+            `[craboodle] min_pass_rate breached by ${scenarioId} (pass_rate=${scenarioOutput.pass_rate} < ${pipeline.minPassRate}) — remaining queued reps will be aborted (fail-fast)\n`,
           );
         }
         failFastTriggered = true;
