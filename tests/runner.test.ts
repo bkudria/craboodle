@@ -113,6 +113,26 @@ describe('runner', () => {
       stderrSpy.mockRestore();
     });
 
+    it('forwards subprocess stderr to process.stderr on failure', async () => {
+      const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+      const { runScuttlerun } = await import('../src/runner.js');
+
+      const diagnostic = '[scuttlerun] boom: tool X exploded\n';
+      const error = new Error('Command failed') as Error & { code: number };
+      error.code = 2;
+      mockExecFileCall((cb) => cb(error, '', diagnostic));
+
+      const result = await runScuttlerun({
+        scenarioPath: '/path/to/scenario.yaml',
+        basePath: null,
+        outputPath: join(tmpDir, 'output.yaml'),
+      });
+
+      expect(result.success).toBe(false);
+      expect(stderrSpy).toHaveBeenCalledWith(diagnostic);
+      stderrSpy.mockRestore();
+    });
+
     it('invokes scuttlerun with base and scenario config files', async () => {
       const { runScuttlerun } = await import('../src/runner.js');
 
@@ -319,6 +339,24 @@ describe('runner', () => {
   });
 
   describe('runPincenezLint', () => {
+    it('forwards subprocess stderr to process.stderr on failure', async () => {
+      const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+      const { runPincenezLint } = await import('../src/runner.js');
+
+      const diagnostic = '[pincenez] grader crashed: boom\n';
+      const error = new Error('Command failed') as Error & { code: number };
+      error.code = 2;
+      mockExecFileCall((cb) => cb(error, '', diagnostic));
+
+      const result = await runPincenezLint({
+        checksPath: '/path/to/checks.yaml',
+      });
+
+      expect(result.success).toBe(false);
+      expect(stderrSpy).toHaveBeenCalledWith(diagnostic);
+      stderrSpy.mockRestore();
+    });
+
     it('invokes pincenez lint with checks file', async () => {
       const { runPincenezLint } = await import('../src/runner.js');
 
@@ -423,6 +461,25 @@ describe('runner', () => {
   });
 
   describe('listScuttlerunConfig', () => {
+    it('forwards subprocess stderr to process.stderr on failure', async () => {
+      const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+      const { listScuttlerunConfig } = await import('../src/runner.js');
+
+      const diagnostic = '[scuttlerun] invalid config: boom\n';
+      const error = new Error('Command failed') as Error & { code: number };
+      error.code = 1;
+      mockExecFileCall((cb) => cb(error, '', diagnostic));
+
+      const result = await listScuttlerunConfig({
+        scenarioPath: '/path/to/scenario.yaml',
+        basePath: null,
+      });
+
+      expect(result.success).toBe(false);
+      expect(stderrSpy).toHaveBeenCalledWith(diagnostic);
+      stderrSpy.mockRestore();
+    });
+
     it('invokes scuttlerun --dry-run with base and scenario config', async () => {
       const { listScuttlerunConfig } = await import('../src/runner.js');
 
@@ -500,6 +557,26 @@ describe('runner', () => {
   });
 
   describe('runPincenez', () => {
+    it('forwards subprocess stderr to process.stderr on failure', async () => {
+      const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+      const { runPincenez } = await import('../src/runner.js');
+
+      const diagnostic = '[pincenez] grader crashed: boom\n';
+      const error = new Error('Command failed') as Error & { code: number };
+      error.code = 2;
+      mockExecFileCall((cb) => cb(error, '', diagnostic));
+
+      const result = await runPincenez({
+        checksPath: '/path/to/checks.yaml',
+        outputPath: '/path/to/output.yaml',
+        gradingPath: join(tmpDir, 'grading.yaml'),
+      });
+
+      expect(result.success).toBe(false);
+      expect(stderrSpy).toHaveBeenCalledWith(diagnostic);
+      stderrSpy.mockRestore();
+    });
+
     it('invokes pincenez with checks file and output file', async () => {
       const { runPincenez } = await import('../src/runner.js');
 

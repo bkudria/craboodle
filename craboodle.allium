@@ -630,6 +630,15 @@ rule RepFails {
         -- when scuttlerun produced no output (e.g., immediate config-error
         -- exit) — in which case the YAML errors block omits the transcript
         -- field rather than referencing a missing file.
+        --
+        -- A failing subprocess's own stderr is forwarded to craboodle's
+        -- stderr (the operator's terminal), mirroring the success path,
+        -- in addition to being folded into failure_message. This keeps a
+        -- crashed scuttlerun/pincenez run's diagnostics visible instead of
+        -- collapsing them into a single structured line. Interrupted reps
+        -- (SIGINT) carry no diagnostic and forward nothing. The forwarding
+        -- itself is an operator-facing side effect below the structured
+        -- state this rule models.
 }
 
 -- A running rep observes invocation.interrupt_requested (set when the
