@@ -1,13 +1,12 @@
 import { dirname, join, resolve } from 'node:path';
-import { readFile } from 'node:fs/promises';
-import { parse } from 'yaml';
 import { formatErrorWithHint } from '../errors.js';
 import { installSignalHandler } from '../signals.js';
 import { filterScenarios } from '../discovery.js';
 import { findMissingBinaries, formatMissingBinariesError } from '../preflight.js';
-import { runPincenezLint } from '../runner.js';
+import { listScuttlerunConfig, runPincenezLint } from '../runner.js';
 import { prepareRun } from '../prepare-run.js';
 import {
+  parseDryRunSummary,
   parseLintResult,
   streamLintScenarioYaml,
   streamLintTotals,
@@ -20,6 +19,43 @@ export interface LintOptions {
   graderModel?: string;
   scenarios?: string;
   verbose?: boolean;
+}
+
+export interface LintGrounding {
+  context?: string;
+  availableTools?: string[];
+}
+
+/**
+ * Resolve the scenario's effective config via `scuttlerun --dry-run` so the
+ * lint judge is grounded in the resolved (post-merge) prompt — tautology
+ * detection — and tool list — availability judgments. Degrades to an empty
+ * grounding with a stderr warning when resolution fails.
+ */
+export async function resolveLintGrounding(
+  scenarioId: string,
+  scenarioPath: string,
+  basePath: string,
+  signal?: AbortSignal,
+): Promise<LintGrounding> {
+  const result = await listScuttlerunConfig({ scenarioPath, basePath, signal });
+  if (!result.success || result.stdout === undefined) {
+    process.stderr.write(
+      `[craboodle] ${scenarioId}: could not resolve scenario config (scuttlerun --dry-run failed); lint grounding degraded\n`,
+    );
+    return {};
+  }
+
+  const summary = parseDryRunSummary(result.stdout);
+  if (summary.prompt === undefined) {
+    process.stderr.write(
+      `[craboodle] ${scenarioId}: scenario has no prompt; tautology detection degraded\n`,
+    );
+  }
+  return {
+    ...(summary.prompt !== undefined ? { context: summary.prompt } : {}),
+    ...(summary.tools !== undefined ? { availableTools: summary.tools } : {}),
+  };
 }
 
 export async function lintCommand(root: string, opts: LintOptions): Promise<void> {
@@ -50,8 +86,9 @@ async function lintCommandInner(
 ): Promise<void> {
   const resolvedRoot = resolve(root);
 
-  // Pre-flight: pincenez is required for lint
-  const missing = await findMissingBinaries(['pincenez']);
+  // Pre-flight: pincenez grades the checks; scuttlerun resolves each
+  // scenario's effective config (--dry-run) to ground the lint judge.
+  const missing = await findMissingBinaries(['pincenez', 'scuttlerun']);
   if (missing.length > 0) {
     process.stderr.write(formatMissingBinariesError(missing));
     process.exit(EXIT_INFRA_ERROR);
@@ -114,28 +151,18 @@ async function lintCommandInner(
         process.stderr.write(`[craboodle] ${scenario.id}: linting checks\n`);
       }
 
-      // Read scenario prompt to pass as context for tautological detection
-      let context: string | undefined;
-      try {
-        const scenarioContent = await readFile(scenario.configPath, 'utf8');
-        const scenarioYaml = parse(scenarioContent) as Record<string, unknown>;
-        if (typeof scenarioYaml?.prompt === 'string') {
-          context = scenarioYaml.prompt;
-        }
-      } catch {
-        // scenario.yaml is optional for lint — proceed without context
-      }
-
-      if (context === undefined) {
-        process.stderr.write(
-          `[craboodle] ${scenario.id}: scenario has no prompt; tautology detection degraded\n`,
-        );
-      }
+      const grounding = await resolveLintGrounding(
+        scenario.id,
+        scenario.configPath,
+        prepared.basePath,
+        controller.signal,
+      );
 
       const result = await runPincenezLint({
         checksPath,
         graderModel: opts.graderModel,
-        context,
+        context: grounding.context,
+        availableTools: grounding.availableTools,
         signal: controller.signal,
       });
 

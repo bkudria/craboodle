@@ -243,6 +243,7 @@ export interface RunPincenezLintOptions {
   checksPath: string;
   graderModel?: string;
   context?: string;
+  availableTools?: string[];
   signal?: AbortSignal;
 }
 
@@ -253,7 +254,7 @@ export type LintSubprocessResult =
 export async function runPincenezLint(
   options: RunPincenezLintOptions,
 ): Promise<LintSubprocessResult> {
-  const { checksPath, graderModel, context, signal } = options;
+  const { checksPath, graderModel, context, availableTools, signal } = options;
 
   const args: string[] = ['lint'];
   if (graderModel) {
@@ -261,6 +262,9 @@ export async function runPincenezLint(
   }
   if (context) {
     args.push('--context', context);
+  }
+  if (availableTools && availableTools.length > 0) {
+    args.push('--available-tools', availableTools.join(','));
   }
   args.push(checksPath);
 
