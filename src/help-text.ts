@@ -63,6 +63,13 @@ scenario.yaml Schema:
 checks.yaml Schema:
   Pure pincenez checks file. Each check is an id-as-key object in a list.
 
+    context: Background for judges     # Optional. Superseded during run and
+                                       #   lint: the scenario's resolved prompt
+                                       #   is passed as pincenez --context,
+                                       #   which takes precedence; this field
+                                       #   applies only when prompt resolution
+                                       #   fails. Per-check guidance belongs in
+                                       #   the check's note field.
     checks:
       - validates-email:
           check: "Output contains a function that validates email format"

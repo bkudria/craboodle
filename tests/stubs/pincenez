@@ -1,4 +1,13 @@
 #!/bin/sh
 # Test stub for pincenez. See tests/stubs/scuttlerun for the pattern.
-# Exits 0 unless CRABOODLE_STUB_PINCENEZ_EXIT is set.
+# Exits 0 unless CRABOODLE_STUB_PINCENEZ_EXIT is set. Optional hooks (off by
+# default): CRABOODLE_STUB_PINCENEZ_ARGS_FILE records each invocation's args
+# (newline-separated, '===' between invocations); CRABOODLE_STUB_PINCENEZ_STDOUT
+# is printed as the grading result.
+if [ -n "${CRABOODLE_STUB_PINCENEZ_ARGS_FILE:-}" ]; then
+  printf '%s\n' "$@" '===' >> "$CRABOODLE_STUB_PINCENEZ_ARGS_FILE"
+fi
+if [ -n "${CRABOODLE_STUB_PINCENEZ_STDOUT:-}" ]; then
+  printf '%s' "$CRABOODLE_STUB_PINCENEZ_STDOUT"
+fi
 exit "${CRABOODLE_STUB_PINCENEZ_EXIT:-0}"

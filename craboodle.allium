@@ -619,6 +619,11 @@ rule RepSucceeds {
     ensures: item.agent_cost_usd = rep_agent_cost(item)
     ensures: item.grading_cost_usd = rep_grading_cost(item)
     ensures: item.grading = rep_grading(item)
+    @guidance
+        -- rep_grading invokes Pincenez.grade with the scenario's resolved
+        -- prompt as context (see the Pincenez contract). Resolution is
+        -- lazy and memoised per scenario: the first rep to reach grading
+        -- triggers one Scuttlerun.dry_run; subsequent reps reuse it.
 }
 
 rule RepFails {
@@ -658,6 +663,33 @@ rule InterruptRunningItem {
     requires: item.status = running
     ensures: item.status = interrupted
     ensures: item.failure_message = "Interrupted (SIGINT)"
+}
+
+-- Grading-grounding degradations mirror lint's: per-scenario stderr
+-- warnings, advisory only (exit code unaffected). Resolution is lazy —
+-- triggered when a scenario's first rep reaches grading — so scenarios
+-- whose reps all fail before grading emit no warning.
+rule WarnRunGroundingFailed {
+    when: inv: RunInvocation.status transitions_to streaming
+    for scenario in inv.selected_scenarios:
+        requires: scenario_reached_grading(inv, scenario)
+        requires: scuttlerun_resolved_config(
+            scenario_config: scenario.scenario_config,
+            base_config_path: inv.staged_view.base_config_path) = null
+        ensures: emit_stderr("Could not resolve scenario config; grading grounding degraded")
+}
+
+rule WarnRunMissingPromptContext {
+    when: inv: RunInvocation.status transitions_to streaming
+    for scenario in inv.selected_scenarios:
+        requires: scenario_reached_grading(inv, scenario)
+        requires: scuttlerun_resolved_config(
+            scenario_config: scenario.scenario_config,
+            base_config_path: inv.staged_view.base_config_path) != null
+        requires: scuttlerun_resolved_config(
+            scenario_config: scenario.scenario_config,
+            base_config_path: inv.staged_view.base_config_path).prompt = null
+        ensures: emit_stderr("Scenario has no prompt; grading context degraded")
 }
 
 -- ============================================================================
@@ -1203,6 +1235,13 @@ surface RunCommand {
         -- older directories happens at the start of the next run, not at
         -- the end of this one.
 
+    @guarantee GradingGroundedInPrompt
+        -- Each rep's grading is grounded in the scenario's resolved
+        -- (post-merge) prompt, resolved once per scenario via scuttlerun
+        -- dry-run and passed to pincenez as context — superseding the
+        -- checks file's own context field. When resolution fails the run
+        -- warns per scenario on stderr and grades ungrounded.
+
     @guarantee RunExitCodes
         -- 0 success; 3 ratchet failure; 4 no successful reps. See the
         -- shared exit code taxonomy at the top of this spec.
@@ -1334,7 +1373,9 @@ contract Scuttlerun {
         -- resolved (post-merge) session summary scuttlerun prints; null
         -- means validation failed. The list command consumes only
         -- success/failure; the lint command additionally consumes the
-        -- resolved prompt and tool list to ground pincenez lint.
+        -- resolved prompt and tool list to ground pincenez lint; the run
+        -- command consumes the resolved prompt (once per scenario) to
+        -- ground pincenez grading.
 
     @invariant TranscriptIsRaw
         -- craboodle treats the transcript as opaque and never extracts
@@ -1353,7 +1394,17 @@ contract Scuttlerun {
 contract Pincenez {
     grade: (checks_config: ChecksConfig,
             transcript: Transcript,
+            context: String?,
             grader_model_override: String) -> Grading
+
+    @guidance
+        -- context is the scenario's resolved (post-merge) prompt, resolved
+        -- once per scenario via Scuttlerun.dry_run and shared across that
+        -- scenario's reps. When present it supersedes any context field
+        -- declared inside the checks file (pincenez --context precedence).
+        -- It is omitted when scuttlerun resolution fails — pincenez then
+        -- grades with the checks file's own context, the pre-grounding
+        -- behaviour.
 }
 
 contract PincenezLint {

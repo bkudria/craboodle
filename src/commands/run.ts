@@ -8,6 +8,7 @@ import { parseTimeoutFlag, resolveRepeatsFromRawFlag } from '../config.js';
 import { cleanOldArtifacts } from '../cleanup.js';
 import { filterScenarios } from '../discovery.js';
 import { runScuttlerun, runPincenez } from '../runner.js';
+import { resolveScenarioGrounding, type ScenarioGrounding } from '../grounding.js';
 import { findMissingBinaries, formatMissingBinariesError } from '../preflight.js';
 import { executePool, type WorkItem } from '../pool.js';
 import { runStaged } from '../staged.js';
@@ -29,6 +30,24 @@ import {
   EXIT_BUDGET_EXCEEDED,
   EXIT_SIGINT,
 } from '../exit-codes.js';
+
+// Resolve the scenario's prompt once, shared across all reps; lazy so
+// scenarios whose reps never reach grading skip the dry-run entirely.
+function makeGroundingResolver(
+  scenario: { id: string; configPath: string },
+  basePath: string,
+  signal: AbortSignal,
+): () => Promise<ScenarioGrounding> {
+  let promise: Promise<ScenarioGrounding> | undefined;
+  return () =>
+    (promise ??= resolveScenarioGrounding(
+      scenario.id,
+      scenario.configPath,
+      basePath,
+      'grading',
+      signal,
+    ));
+}
 
 export interface RunOptions {
   repeats: string | undefined;
@@ -155,6 +174,8 @@ async function runCommandInner(
   for (const scenario of scenarios) {
     const checksPath = join(dirname(scenario.configPath), 'checks.yaml');
 
+    const getGrounding = makeGroundingResolver(scenario, basePath, controller.signal);
+
     for (let rep = 1; rep <= repeats; rep++) {
       workItems.push({
         scenarioId: scenario.id,
@@ -201,11 +222,13 @@ async function runCommandInner(
             if (opts.verbose) {
               process.stderr.write(`[craboodle] ${scenario.id} rep ${rep}: running pincenez\n`);
             }
+            const grounding = await getGrounding();
             const pincenezResult = await runPincenez({
               checksPath,
               outputPath,
               gradingPath,
               graderModel: opts.graderModel,
+              context: grounding.context,
               signal: controller.signal,
             });
             if (!pincenezResult.success) {

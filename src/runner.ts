@@ -26,6 +26,7 @@ export interface RunPincenezOptions {
   outputPath: string;
   gradingPath: string;
   graderModel?: string;
+  context?: string;
   signal?: AbortSignal;
 }
 
@@ -287,11 +288,14 @@ export async function runPincenezLint(
 }
 
 export async function runPincenez(options: RunPincenezOptions): Promise<SubprocessResult> {
-  const { checksPath, outputPath, gradingPath, graderModel, signal } = options;
+  const { checksPath, outputPath, gradingPath, graderModel, context, signal } = options;
 
   const args: string[] = [];
   if (graderModel) {
     args.push('--model', graderModel);
+  }
+  if (context) {
+    args.push('--context', context);
   }
   args.push(checksPath, outputPath);
 

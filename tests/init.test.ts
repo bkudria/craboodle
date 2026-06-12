@@ -449,6 +449,12 @@ describe('init', () => {
     expect(stdout).toMatch(/overrides\s+evals\.yaml|takes precedence/i);
   });
 
+  it('main --help documents that the resolved scenario prompt supersedes checks.yaml context', async () => {
+    const { stdout } = await execFileAsync(process.execPath, [CLI_PATH, '--help']);
+    expect(stdout).toMatch(/^\s*context:/m);
+    expect(stdout).toMatch(/superseded/i);
+  });
+
   describe('scaffold quality (anti-pattern / staleness / docs)', () => {
     async function scaffoldTwoComponentPlugin(): Promise<string> {
       const initDir = join(tmpDir, 'my-plugin');

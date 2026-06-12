@@ -642,6 +642,37 @@ describe('runner', () => {
       expect(args).toContain('claude-sonnet-4-6');
     });
 
+    it('forwards --context when context is provided', async () => {
+      const { runPincenez } = await import('../src/runner.js');
+
+      mockExecFileCall((cb) => cb(null, 'checks: []\npass_rate: 0\n', ''));
+
+      await runPincenez({
+        checksPath: '/path/to/checks.yaml',
+        outputPath: '/path/to/output.yaml',
+        gradingPath: join(tmpDir, 'grading.yaml'),
+        context: 'Write a haiku about the ocean',
+      });
+
+      const [, args] = mockExecFile.mock.calls[0];
+      expect(args).toContain('--context');
+      expect(args).toContain('Write a haiku about the ocean');
+    });
+
+    it('omits --context when context is absent', async () => {
+      const { runPincenez } = await import('../src/runner.js');
+
+      mockExecFileCall((cb) => cb(null, 'checks: []\npass_rate: 0\n', ''));
+
+      await runPincenez({
+        checksPath: '/path/to/checks.yaml',
+        outputPath: '/path/to/output.yaml',
+        gradingPath: join(tmpDir, 'grading.yaml'),
+      });
+
+      expect(mockExecFile.mock.calls[0][1]).not.toContain('--context');
+    });
+
     it('returns error with stderr on failure', async () => {
       const { runPincenez } = await import('../src/runner.js');
 
