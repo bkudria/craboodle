@@ -27,6 +27,10 @@ evals.yaml Schema:
     version: "1"                       # Schema version (required)
     min_pass_rate: 0.8                 # Ratchet threshold — exit 3 if any scenario
                                        #   falls below (optional, 0-1)
+    max_error_rate: 0.1                # Reliability gate — exit 4 if a scenario's
+                                       #   crash rate exceeds it (optional, 0-1;
+                                       #   active only with min_pass_rate; default 0
+                                       #   when gating: any crashed rep fails)
     max_budget_usd: 10.0               # Budget cap (optional)
     repeats: 3                         # Repetitions per scenario (optional, default: 3)
                                        #   Overridden by --repeats flag if passed
