@@ -140,6 +140,8 @@ Subset of the shared scuttlerun/pincenez/craboodle taxonomy — see [scuttlerun/
 
 The 1-vs-2 split — refusal (1) vs load failure (2) — matches `craboodle.allium` rules `RejectUnknownConfigKeys`, `RejectUnsupportedVersion`, `RejectInvalidMinPassRate` (load → 2) and `ExitListInvalid`, `ExitLintIssuesFound`, `InitRefuseExistingEvals`, `InitRefuseExistingScenarios` (refuse → 1).
 
+`craboodle run` also embeds the verdict in the stdout YAML stream as trailing `result:` / `exit_code:` fields (`pass`, `threshold_failure`, `reliability_failure`, `no_successful_reps`, or `budget_exceeded`), so the outcome stays readable even when a shell wrapper masks `$?`. A missing trailer means the run was interrupted or exited before streaming began.
+
 ## Contributing
 
 - [CONTRIBUTING.md](CONTRIBUTING.md) — Development setup, tests, commit conventions, PR workflow

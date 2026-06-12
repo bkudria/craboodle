@@ -1,4 +1,9 @@
 #!/bin/sh
 # Test stub for pincenez. See tests/stubs/scuttlerun for the pattern.
+# Prints CRABOODLE_STUB_PINCENEZ_STDOUT when set, which lets a test feed
+# craboodle a valid grading document and exercise the success paths.
 # Exits 0 unless CRABOODLE_STUB_PINCENEZ_EXIT is set.
+if [ -n "${CRABOODLE_STUB_PINCENEZ_STDOUT:-}" ]; then
+  printf '%s\n' "$CRABOODLE_STUB_PINCENEZ_STDOUT"
+fi
 exit "${CRABOODLE_STUB_PINCENEZ_EXIT:-0}"

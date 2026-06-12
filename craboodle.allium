@@ -221,6 +221,8 @@ entity RunInvocation {
 
     status: starting | discovering | streaming | completed | failed
     exit_code: Integer when status = completed | failed
+    result: pass | threshold_failure | reliability_failure | no_successful_reps | budget_exceeded
+        when status = completed
     artifact_dir: String when status = streaming | completed
     staged_view: StagedView? with invocation = this
 
@@ -751,6 +753,8 @@ rule ExitRunBudgetExceeded {
     when: inv: RunInvocation.status transitions_to completed
     requires: inv.budget_exceeded
     ensures: inv.exit_code = 5
+    ensures: inv.result = budget_exceeded
+    ensures: emit_yaml_doc({ result: "budget_exceeded", exit_code: 5 })
     ensures: emit_stderr("Budget exceeded")
     @guidance
         -- Budget exhaustion takes precedence over the ratchet and
@@ -766,6 +770,8 @@ rule ExitRunNoSuccess {
     requires: not inv.budget_exceeded
     requires: not inv.has_any_success
     ensures: inv.exit_code = 4
+    ensures: inv.result = no_successful_reps
+    ensures: emit_yaml_doc({ result: "no_successful_reps", exit_code: 4 })
 }
 
 rule ExitRunReliability {
@@ -774,6 +780,8 @@ rule ExitRunReliability {
     requires: inv.has_any_success
     requires: inv.error_gate_triggered
     ensures: inv.exit_code = 4
+    ensures: inv.result = reliability_failure
+    ensures: emit_yaml_doc({ result: "reliability_failure", exit_code: 4 })
     ensures: emit_stderr("Reliability check failed")
     @guidance
         -- Fires when a gated scenario's error_rate exceeds max_error_rate
@@ -792,6 +800,8 @@ rule ExitRunRatchet {
     requires: not inv.error_gate_triggered
     requires: inv.fail_fast_triggered
     ensures: inv.exit_code = 3
+    ensures: inv.result = threshold_failure
+    ensures: emit_yaml_doc({ result: "threshold_failure", exit_code: 3 })
     ensures: emit_stderr("Threshold check failed")
 }
 
@@ -802,6 +812,8 @@ rule ExitRunSuccess {
     requires: not inv.error_gate_triggered
     requires: not inv.fail_fast_triggered
     ensures: inv.exit_code = 0
+    ensures: inv.result = pass
+    ensures: emit_yaml_doc({ result: "pass", exit_code: 0 })
 }
 
 -- ============================================================================
@@ -1173,6 +1185,7 @@ surface RunCommand {
         invocation.artifact_dir
         invocation.scenario_results
         invocation.total_cost_usd
+        invocation.result
         invocation.exit_code
 
     contracts:
@@ -1192,10 +1205,20 @@ surface RunCommand {
         -- break point are preserved verbatim even when longer than 80
         -- columns.
 
+    @guarantee FinalVerdict
+        -- Every run that reaches completed status ends its stdout stream with
+        -- a final YAML fragment of two fields: result (a word naming the
+        -- outcome) and exit_code (mirroring the process exit code). Emitted on
+        -- success too. Absence of the trailer means the run was interrupted
+        -- (SIGINT) or exited before streaming began. The result word may be
+        -- more specific than the code: exit 4 is either no_successful_reps or
+        -- reliability_failure.
+
     @guarantee RawPassRates
         -- pass_rate and error_rate fields are fractional (0.0 .. 1.0) and are
         -- never collapsed to verdicts. The gates (min_pass_rate, max_error_rate)
-        -- only affect the process exit code, never the reported numbers.
+        -- only affect the process exit code and the final result/exit_code
+        -- trailer, never the reported per-scenario numbers.
 
     @guarantee ArtifactsPreserved
         -- The artifact directory survives the run (success or failure)
@@ -1205,7 +1228,8 @@ surface RunCommand {
 
     @guarantee RunExitCodes
         -- 0 success; 3 ratchet failure; 4 no successful reps. See the
-        -- shared exit code taxonomy at the top of this spec.
+        -- shared exit code taxonomy at the top of this spec. The same code
+        -- is mirrored in the FinalVerdict trailer on stdout.
 }
 
 surface ListCommand {
