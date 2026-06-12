@@ -85,6 +85,14 @@ describe('init', () => {
     expect(content).toMatch(/^\s*#\s*repeats:.*\b3\b/m);
   });
 
+  it('surfaces the strict max_error_rate default (0) as a commented guidance line', async () => {
+    const initDir = join(tmpDir, 'my-skill');
+    await execFileAsync(process.execPath, [CLI_PATH, 'init', initDir]);
+
+    const content = await readFile(join(initDir, 'evals.yaml'), 'utf8');
+    expect(content).toMatch(/^\s*#\s*max_error_rate:.*\b0\b/m);
+  });
+
   it('omits min_pass_rate from the parsed YAML', async () => {
     const initDir = join(tmpDir, 'my-skill');
     await execFileAsync(process.execPath, [CLI_PATH, 'init', initDir]);
@@ -447,6 +455,12 @@ describe('init', () => {
     const { stdout } = await execFileAsync(process.execPath, [CLI_PATH, 'run', '--help']);
     expect(stdout).toContain('--repeats');
     expect(stdout).toMatch(/overrides\s+evals\.yaml|takes precedence/i);
+  });
+
+  it('main --help documents max_error_rate and its strict default (0)', async () => {
+    const { stdout } = await execFileAsync(process.execPath, [CLI_PATH, '--help']);
+    expect(stdout).toContain('max_error_rate');
+    expect(stdout).toMatch(/default\s+0\b/i);
   });
 
   it('main --help documents that the resolved scenario prompt supersedes checks.yaml context', async () => {

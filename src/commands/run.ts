@@ -17,19 +17,16 @@ import { prepareRun } from '../prepare-run.js';
 import {
   averageResults,
   evaluateGate,
+  resolveRunVerdict,
   scenarioErrorRate,
   streamHeader,
   streamScenarioYaml,
   streamTotalCost,
+  streamVerdict,
   type GradingCheck,
   type ScenarioOutput,
 } from '../output.js';
-import {
-  EXIT_THRESHOLD_FAILURE,
-  EXIT_INFRA_ERROR,
-  EXIT_BUDGET_EXCEEDED,
-  EXIT_SIGINT,
-} from '../exit-codes.js';
+import { EXIT_INFRA_ERROR, EXIT_SIGINT } from '../exit-codes.js';
 
 // Resolve the scenario's prompt once, shared across all reps; lazy so
 // scenarios whose reps never reach grading skip the dry-run entirely.
@@ -359,7 +356,7 @@ async function runCommandInner(
       ) {
         if (!failFastTriggered && opts.verbose) {
           process.stderr.write(
-            `[craboodle] Fail-fast triggered: ${scenarioId} pass_rate=${scenarioOutput.pass_rate} < ${pipeline.minPassRate}\n`,
+            `[craboodle] min_pass_rate breached by ${scenarioId} (pass_rate=${scenarioOutput.pass_rate} < ${pipeline.minPassRate}) — remaining queued reps will be aborted (fail-fast)\n`,
           );
         }
         failFastTriggered = true;
@@ -378,21 +375,6 @@ async function runCommandInner(
     return;
   }
 
-  if (budgetExceeded) {
-    process.stderr.write(
-      formatErrorWithHint(
-        `Budget exceeded (max_budget_usd: ${pipeline.maxBudgetUsd})`,
-        'raise max_budget_usd in evals.yaml',
-        'craboodle --help',
-      ),
-    );
-    process.exit(EXIT_BUDGET_EXCEEDED);
-  }
-
-  if (!hasAnySuccess) {
-    process.exit(EXIT_INFRA_ERROR);
-  }
-
   // Gate the run. Reliability (error_rate) takes precedence over quality
   // (pass_rate), and both apply only when min_pass_rate opts the suite into
   // gating — otherwise the run is pure data collection.
@@ -401,7 +383,20 @@ async function runCommandInner(
     maxErrorRate: pipeline.maxErrorRate,
   });
 
-  if (gate.kind === 'reliability') {
+  const verdict = resolveRunVerdict({ budgetExceeded, hasAnySuccess, gateKind: gate.kind });
+  streamVerdict(verdict);
+
+  if (budgetExceeded) {
+    process.stderr.write(
+      formatErrorWithHint(
+        `Budget exceeded (max_budget_usd: ${pipeline.maxBudgetUsd})`,
+        'raise max_budget_usd in evals.yaml',
+        'craboodle --help',
+      ),
+    );
+  } else if (!hasAnySuccess) {
+    // No stderr detail: every rep's failure was already forwarded as it happened.
+  } else if (gate.kind === 'reliability') {
     const maxErrorRate = pipeline.maxErrorRate ?? 0;
     process.stderr.write(
       `[craboodle] Reliability check failed (max_error_rate: ${maxErrorRate}):\n`,
@@ -414,10 +409,7 @@ async function runCommandInner(
       '  Crashed reps are excluded from pass_rate; inspect the scenario errors block.\n',
     );
     process.stderr.write('  See: craboodle --help\n');
-    process.exit(EXIT_INFRA_ERROR);
-  }
-
-  if (gate.kind === 'quality') {
+  } else if (gate.kind === 'quality') {
     const minPassRate = pipeline.minPassRate;
     process.stderr.write(`[craboodle] Threshold check failed (min_pass_rate: ${minPassRate}):\n`);
     for (const f of gate.failures) {
@@ -425,6 +417,9 @@ async function runCommandInner(
     }
     process.stderr.write('  Try: re-run with -v for per-rep failure context\n');
     process.stderr.write('  See: craboodle --help\n');
-    process.exit(EXIT_THRESHOLD_FAILURE);
   }
+
+  // process.exitCode (not process.exit) so Node flushes buffered stdout —
+  // process.exit can truncate a piped stream, dropping the verdict trailer.
+  process.exitCode = verdict.exitCode;
 }

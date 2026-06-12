@@ -14,6 +14,12 @@ import type { Node, Pair } from 'yaml';
 import wrap from 'word-wrap';
 import { relative, isAbsolute } from 'node:path';
 import { z } from 'zod';
+import {
+  EXIT_SUCCESS,
+  EXIT_THRESHOLD_FAILURE,
+  EXIT_INFRA_ERROR,
+  EXIT_BUDGET_EXCEEDED,
+} from './exit-codes.js';
 
 export const LINE_WIDTH = 80;
 const ENTRY_PREFIX_WIDTH = 4;
@@ -286,6 +292,45 @@ export function evaluateGate(
   return { kind: 'pass', failures: [] };
 }
 
+export type RunResult =
+  | 'pass'
+  | 'threshold_failure'
+  | 'reliability_failure'
+  | 'no_successful_reps'
+  | 'budget_exceeded';
+
+export interface RunVerdict {
+  result: RunResult;
+  exitCode: number;
+}
+
+/**
+ * Map a completed run's terminal state to the verdict trailer. Precedence
+ * mirrors the exit logic: budget exhaustion first (the run was deliberately
+ * cut short, so no functional verdict is trustworthy), then no-successful-reps,
+ * then the gate outcome. The result word can be more specific than the exit
+ * code: exit 4 covers both no_successful_reps and reliability_failure.
+ */
+export function resolveRunVerdict(state: {
+  budgetExceeded: boolean;
+  hasAnySuccess: boolean;
+  gateKind: GateOutcome['kind'];
+}): RunVerdict {
+  if (state.budgetExceeded) {
+    return { result: 'budget_exceeded', exitCode: EXIT_BUDGET_EXCEEDED };
+  }
+  if (!state.hasAnySuccess) {
+    return { result: 'no_successful_reps', exitCode: EXIT_INFRA_ERROR };
+  }
+  if (state.gateKind === 'reliability') {
+    return { result: 'reliability_failure', exitCode: EXIT_INFRA_ERROR };
+  }
+  if (state.gateKind === 'quality') {
+    return { result: 'threshold_failure', exitCode: EXIT_THRESHOLD_FAILURE };
+  }
+  return { result: 'pass', exitCode: EXIT_SUCCESS };
+}
+
 export function writeYamlArrayItem(item: Record<string, unknown>): string {
   const doc = new Document(item);
   applyDepthAwareWrap(doc, ENTRY_PREFIX_WIDTH, LINE_WIDTH);
@@ -397,6 +442,15 @@ export function streamTotalCost(totalCostUsd: number): void {
   process.stdout.write(
     serializeTopLevel({ total_cost_usd: Math.round(totalCostUsd * 10000) / 10000 }),
   );
+}
+
+/**
+ * End the run's stdout stream with a self-describing verdict, so the outcome
+ * survives shell wrappers that mask the process exit code. Absence of the
+ * trailer means the run was interrupted or exited before streaming began.
+ */
+export function streamVerdict(verdict: RunVerdict): void {
+  process.stdout.write(serializeTopLevel({ result: verdict.result, exit_code: verdict.exitCode }));
 }
 
 // --- Lint output ---

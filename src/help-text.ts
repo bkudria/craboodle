@@ -27,6 +27,10 @@ evals.yaml Schema:
     version: "1"                       # Schema version (required)
     min_pass_rate: 0.8                 # Ratchet threshold — exit 3 if any scenario
                                        #   falls below (optional, 0-1)
+    max_error_rate: 0.1                # Reliability gate — exit 4 if a scenario's
+                                       #   crash rate exceeds it (optional, 0-1;
+                                       #   active only with min_pass_rate; default 0
+                                       #   when gating: any crashed rep fails)
     max_budget_usd: 10.0               # Budget cap (optional)
     repeats: 3                         # Repetitions per scenario (optional, default: 3)
                                        #   Overridden by --repeats flag if passed
@@ -96,10 +100,15 @@ Output Format:
         agent_cost_usd: 0.0234
         grading_cost_usd: 0.006
     total_cost_usd: 0.0294
+    result: pass
+    exit_code: 0
 
   Passing checks are compact (check + pass_rate). Failing checks
   include per-rep evidence. pass_rate is a fraction (0.0-1.0), never binary.
   cost_usd includes both agent (scuttlerun) and grading (pincenez) costs.
+  The stream always ends with result + exit_code naming the run outcome
+  (mirroring the process exit code); if they are missing, the run was
+  interrupted or crashed before completing.
 
 Examples:
   # Scaffold an evals.yaml at the skill / plugin root. Mode is auto-detected:

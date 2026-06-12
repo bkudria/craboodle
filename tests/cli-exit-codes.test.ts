@@ -208,6 +208,78 @@ describe('cli exit codes (unified taxonomy)', () => {
     });
   });
 
+  describe('run verdict trailer', () => {
+    const gradingYaml = (pass: boolean, costUsd?: number) =>
+      stringify({
+        checks: [{ id: 'check-a', check: 'alpha check', pass, evidence: 'stubbed' }],
+        pass_rate: pass ? 1 : 0,
+        ...(costUsd !== undefined ? { cost_usd: costUsd } : {}),
+      });
+
+    it('ends stdout with result: pass / exit_code: 0 on success', async () => {
+      await writeEvals();
+      await writeAlpha();
+      const { code, stdout } = await runAndCaptureAll(['run', '--repeats', '1', tmpDir], {
+        CRABOODLE_STUB_PINCENEZ_STDOUT: gradingYaml(true),
+      });
+      expect(code).toBe(0);
+      expect(stdout.endsWith('result: pass\nexit_code: 0\n')).toBe(true);
+    });
+
+    it('ends stdout with threshold_failure / 3 and keeps the stderr detail', async () => {
+      await writeEvals({ version: '1', min_pass_rate: 1, scenarios: { base: {} } });
+      await writeAlpha();
+      const { code, stdout, stderr } = await runAndCaptureAll(['run', '--repeats', '1', tmpDir], {
+        CRABOODLE_STUB_PINCENEZ_STDOUT: gradingYaml(false),
+      });
+      expect(code).toBe(3);
+      expect(stdout.endsWith('result: threshold_failure\nexit_code: 3\n')).toBe(true);
+      expect(stderr).toContain('Threshold check failed');
+    });
+
+    it('verbose stderr names the min_pass_rate breach, not the fail-fast mechanism', async () => {
+      await writeEvals({ version: '1', min_pass_rate: 1, scenarios: { base: {} } });
+      await writeAlpha();
+      const { code, stderr } = await runAndCaptureAll(
+        ['run', '--repeats', '1', '--verbose', tmpDir],
+        { CRABOODLE_STUB_PINCENEZ_STDOUT: gradingYaml(false) },
+      );
+      expect(code).toBe(3);
+      expect(stderr).toContain(
+        'min_pass_rate breached by alpha (pass_rate=0 < 1) — remaining queued reps will be aborted (fail-fast)',
+      );
+      expect(stderr).not.toContain('Fail-fast triggered');
+    });
+
+    it('ends stdout with no_successful_reps / 4 when every rep fails', async () => {
+      await writeEvals();
+      await writeAlpha();
+      const { code, stdout } = await runAndCaptureAll(['run', '--repeats', '1', tmpDir], {
+        CRABOODLE_STUB_SCUTTLERUN_EXIT: '5',
+      });
+      expect(code).toBe(4);
+      expect(stdout.endsWith('result: no_successful_reps\nexit_code: 4\n')).toBe(true);
+    });
+
+    it('ends stdout with budget_exceeded / 5 and keeps the stderr detail', async () => {
+      await writeEvals({ version: '1', max_budget_usd: 1, scenarios: { base: {} } });
+      await writeAlpha();
+      const { code, stdout, stderr } = await runAndCaptureAll(['run', '--repeats', '2', tmpDir], {
+        CRABOODLE_STUB_PINCENEZ_STDOUT: gradingYaml(true, 999),
+      });
+      expect(code).toBe(5);
+      expect(stdout.endsWith('result: budget_exceeded\nexit_code: 5\n')).toBe(true);
+      expect(stderr).toContain('Budget exceeded');
+    });
+
+    it('emits no trailer when the run exits before streaming begins', async () => {
+      await writeEvals();
+      const { code, stdout } = await runAndCaptureAll(['run', tmpDir]);
+      expect(code).toBe(4);
+      expect(stdout).not.toContain('result:');
+    });
+  });
+
   describe('lint scenarios_total reflects successful invocations only', () => {
     it('lint: scenarios_total is 0 when all pincenez invocations fail', async () => {
       await writeEvals();
