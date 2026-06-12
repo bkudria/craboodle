@@ -727,6 +727,43 @@ checks_with_issues: 0
     });
   });
 
+  describe('parseDryRunSummary', () => {
+    it('extracts tools and prompt from scuttlerun dry-run YAML', async () => {
+      const { parseDryRunSummary } = await import('../src/output.js');
+
+      const yaml = `model: claude-haiku-4-5
+tools:
+  - Read
+  - Write
+  - TaskCreate
+effort: high
+max_turns: 50
+prompt: Write a haiku about autumn
+`;
+
+      const result = parseDryRunSummary(yaml);
+      expect(result).toEqual({
+        tools: ['Read', 'Write', 'TaskCreate'],
+        prompt: 'Write a haiku about autumn',
+      });
+    });
+
+    it('omits fields that are absent or of the wrong shape', async () => {
+      const { parseDryRunSummary } = await import('../src/output.js');
+
+      expect(parseDryRunSummary('model: claude-haiku-4-5\n')).toEqual({});
+      expect(parseDryRunSummary('tools: not-a-list\nprompt: 42\n')).toEqual({});
+      expect(parseDryRunSummary('tools:\n  - Read\n  - 7\n')).toEqual({});
+    });
+
+    it('returns an empty result for malformed or empty input', async () => {
+      const { parseDryRunSummary } = await import('../src/output.js');
+
+      expect(parseDryRunSummary('')).toEqual({});
+      expect(parseDryRunSummary(':::not yaml\n\t')).toEqual({});
+    });
+  });
+
   describe('streamTotalCost', () => {
     it('writes total_cost_usd to stdout', async () => {
       const { streamTotalCost } = await import('../src/output.js');

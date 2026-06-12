@@ -437,6 +437,35 @@ export function parseLintResult(yaml: string): LintCheckOutput[] {
   }));
 }
 
+// Extracted from `scuttlerun --dry-run` stdout: the resolved (post-merge)
+// session config. Used to ground pincenez lint in the scenario's effective
+// tool list and prompt.
+export interface DryRunSummary {
+  tools?: string[];
+  prompt?: string;
+}
+
+export function parseDryRunSummary(yaml: string): DryRunSummary {
+  let parsed: unknown;
+  try {
+    parsed = parse(yaml);
+  } catch {
+    return {};
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    return {};
+  }
+  const { tools, prompt } = parsed as { tools?: unknown; prompt?: unknown };
+  const result: DryRunSummary = {};
+  if (Array.isArray(tools) && tools.every((t) => typeof t === 'string')) {
+    result.tools = tools as string[];
+  }
+  if (typeof prompt === 'string') {
+    result.prompt = prompt;
+  }
+  return result;
+}
+
 export function streamLintScenarioYaml(scenario: LintScenarioOutput): void {
   const issueChecks = scenario.checks.filter((c) => c.issues.length > 0);
   if (issueChecks.length === 0) {

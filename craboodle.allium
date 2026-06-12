@@ -47,7 +47,6 @@ config {
 
 external entity ScuttlerunConfig {
     path: String
-    prompt_context: String?
 }
 
 external entity ChecksConfig {
@@ -86,6 +85,14 @@ value LintedCheck {
 value LintIssue {
     anti_pattern: String
     suggestion: String
+}
+
+-- The resolved (post-merge) session summary scuttlerun prints on a
+-- successful dry_run. craboodle consumes only these two fields; the rest
+-- of the summary is opaque.
+value ResolvedSessionConfig {
+    tools: List<String>?
+    prompt: String?
 }
 
 value RepFailureEvidence {
@@ -933,35 +940,54 @@ rule BeginLintStreaming {
 }
 
 -- Per-scenario lint invocations run concurrently up to invocation.concurrency.
--- The scenario's prompt (from scenario.yaml) is passed as orientation context
--- so pincenez can flag checks that are tautological given the prompt.
+-- Each scenario's effective config is first resolved via scuttlerun dry_run
+-- (the same invocation shape as list and run, against the staged base), and
+-- the resolved prompt and tool list ground pincenez lint: the prompt enables
+-- tautology detection, the tool list grounds tool-availability judgments.
 -- Invocations that fail are logged to stderr but do not create a result;
 -- if no invocation succeeds, the run exits 4 (see ExitLintNoInvocations).
 rule LintInvokePincenez {
     when: inv: LintInvocation.status transitions_to streaming
     for scenario in inv.selected_scenarios:
+        let resolved = scuttlerun_resolved_config(
+            scenario_config: scenario.scenario_config,
+            base_config_path: inv.staged_view.base_config_path)
         ensures: LintScenarioResult.created(
             invocation: inv,
             scenario: scenario,
             checks: pincenez_lint_checks(
                 checks_config: scenario.checks_config,
-                context: scenario.scenario_config.prompt_context,
+                context: resolved?.prompt,
+                available_tools: resolved?.tools,
                 grader_model_override: inv.grader_model_override),
             checks_total: pincenez_lint_total(scenario.checks_config),
             checks_with_issues: pincenez_lint_issue_count(scenario.checks_config)
         )
 }
 
--- The lint context contract is fixed: pincenez always receives
--- scenario.scenario_config.prompt_context. When a scenario has no
--- prompt, pincenez's tautology detection silently degrades, so the
--- spec requires a per-scenario stderr warning to surface the
--- degradation rather than letting it pass unnoticed. Exit code is
--- unaffected; the warning is advisory.
+-- Grounding degradations are surfaced as per-scenario stderr warnings
+-- rather than passing unnoticed. Exit code is unaffected; the warnings
+-- are advisory. A failed resolution degrades all grounding (no context,
+-- no tool list); a resolved config without a prompt degrades only
+-- tautology detection.
+rule WarnLintResolutionFailed {
+    when: inv: LintInvocation.status transitions_to streaming
+    for scenario in inv.selected_scenarios:
+        requires: scuttlerun_resolved_config(
+            scenario_config: scenario.scenario_config,
+            base_config_path: inv.staged_view.base_config_path) = null
+        ensures: emit_stderr("Could not resolve scenario config; lint grounding degraded")
+}
+
 rule WarnLintMissingPromptContext {
     when: inv: LintInvocation.status transitions_to streaming
     for scenario in inv.selected_scenarios:
-        requires: scenario.scenario_config.prompt_context = null
+        requires: scuttlerun_resolved_config(
+            scenario_config: scenario.scenario_config,
+            base_config_path: inv.staged_view.base_config_path) != null
+        requires: scuttlerun_resolved_config(
+            scenario_config: scenario.scenario_config,
+            base_config_path: inv.staged_view.base_config_path).prompt = null
         ensures: emit_stderr("Scenario has no prompt; tautology detection degraded")
 }
 
@@ -1292,7 +1318,14 @@ contract Scuttlerun {
           agent_model_override: String) -> Transcript
 
     dry_run: (scenario_config: ScuttlerunConfig,
-              base_config: ScuttlerunConfig) -> Boolean
+              base_config: ScuttlerunConfig) -> ResolvedSessionConfig?
+
+    @guidance
+        -- dry_run validates the merged config and, on success, yields the
+        -- resolved (post-merge) session summary scuttlerun prints; null
+        -- means validation failed. The list command consumes only
+        -- success/failure; the lint command additionally consumes the
+        -- resolved prompt and tool list to ground pincenez lint.
 
     @invariant TranscriptIsRaw
         -- craboodle treats the transcript as opaque and never extracts
@@ -1316,8 +1349,15 @@ contract Pincenez {
 
 contract PincenezLint {
     lint: (checks_config: ChecksConfig,
-           context: String,
+           context: String?,
+           available_tools: List<String>?,
            grader_model_override: String) -> List<LintedCheck>
+
+    @guidance
+        -- context is the scenario's resolved prompt; available_tools is the
+        -- resolved (post-merge) tool list. Both are omitted when scuttlerun
+        -- resolution fails — pincenez then lints with degraded grounding
+        -- (no tautology detection, no availability judgments).
 }
 
 -- ============================================================================

@@ -385,6 +385,33 @@ describe('runner', () => {
       expect(args).toContain('Write a function that adds two numbers');
     });
 
+    it('forwards --available-tools as a comma-joined list when provided', async () => {
+      const { runPincenezLint } = await import('../src/runner.js');
+
+      mockExecFileCall((cb) => cb(null, 'checks: []\n', ''));
+
+      await runPincenezLint({
+        checksPath: '/path/to/checks.yaml',
+        availableTools: ['Read', 'Skill', 'TaskCreate'],
+      });
+
+      const [, args] = mockExecFile.mock.calls[0];
+      expect(args).toContain('--available-tools');
+      expect(args).toContain('Read,Skill,TaskCreate');
+    });
+
+    it('omits --available-tools when the list is absent or empty', async () => {
+      const { runPincenezLint } = await import('../src/runner.js');
+
+      mockExecFileCall((cb) => cb(null, 'checks: []\n', ''));
+      await runPincenezLint({ checksPath: '/path/to/checks.yaml' });
+      expect(mockExecFile.mock.calls[0][1]).not.toContain('--available-tools');
+
+      mockExecFileCall((cb) => cb(null, 'checks: []\n', ''));
+      await runPincenezLint({ checksPath: '/path/to/checks.yaml', availableTools: [] });
+      expect(mockExecFile.mock.calls[1][1]).not.toContain('--available-tools');
+    });
+
     it('returns error with stderr on failure', async () => {
       const { runPincenezLint } = await import('../src/runner.js');
 
