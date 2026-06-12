@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { writeFile, mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
-import { filterScenarios, type ScenarioRef } from '../src/discovery.js';
+import { coversComponentKey, filterScenarios, type ScenarioRef } from '../src/discovery.js';
 import { makeTmpDir } from './_fixtures.js';
 
 describe('discovery', () => {
@@ -153,6 +153,38 @@ describe('discovery', () => {
 
     expect(scenarios).toHaveLength(1);
     expect(scenarios[0].id).toBe('real');
+  });
+});
+
+describe('coversComponentKey', () => {
+  it('matches the key exactly', () => {
+    expect(coversComponentKey('skill-alpha', 'skill-alpha')).toBe(true);
+  });
+
+  it('matches a dash-suffixed prefix', () => {
+    expect(coversComponentKey('skill-alpha-tests', 'skill-alpha')).toBe(true);
+    expect(coversComponentKey('skill-alpha-placeholder', 'skill-alpha')).toBe(true);
+  });
+
+  it('does not match across a dash boundary', () => {
+    expect(coversComponentKey('skill-alphabet', 'skill-alpha')).toBe(false);
+  });
+
+  it('matches singleton keys exactly and by dash prefix', () => {
+    expect(coversComponentKey('hooks', 'hooks')).toBe(true);
+    expect(coversComponentKey('hooks-deny-write', 'hooks')).toBe(true);
+    expect(coversComponentKey('hooksmith', 'hooks')).toBe(false);
+    expect(coversComponentKey('mcp-servers-placeholder', 'mcp-servers')).toBe(true);
+  });
+
+  it('matches the composition key', () => {
+    expect(coversComponentKey('composition', 'composition')).toBe(true);
+    expect(coversComponentKey('composition-smoke', 'composition')).toBe(true);
+  });
+
+  it('does not match unrelated ids', () => {
+    expect(coversComponentKey('agent-alpha', 'skill-alpha')).toBe(false);
+    expect(coversComponentKey('regression-baseline', 'skill-alpha')).toBe(false);
   });
 });
 

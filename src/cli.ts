@@ -111,7 +111,7 @@ program
 program
   .command('init <dir>')
   .description(
-    'Scaffold evals.yaml at a skill/plugin root (plugin mode also scaffolds per-component placeholders)',
+    'Scaffold evals.yaml at a skill/plugin root, incrementally: plugin mode adds per-component placeholders, skipping components that already have suites',
   )
   .action(async (dir: string) => {
     await initCommand(dir);

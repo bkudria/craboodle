@@ -25,6 +25,14 @@ export async function discoverScenarios(
   return scenarios;
 }
 
+// A scenario directory covers a component when its id is the component's
+// coverage key (`<type>-<id>` for named components, the literal type for
+// singletons) or extends it past a dash boundary (`<key>-*`). The boundary
+// matters: `skill-alphabet` must not cover `skill-alpha`.
+export function coversComponentKey(dirId: string, key: string): boolean {
+  return dirId === key || dirId.startsWith(key + '-');
+}
+
 function matchPattern(id: string, pattern: string): boolean {
   if (!pattern.includes('*')) return id === pattern;
   // Escape regex metacharacters except `*`, then translate `*` to `.*`.
