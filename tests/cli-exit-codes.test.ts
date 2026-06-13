@@ -272,6 +272,18 @@ describe('cli exit codes (unified taxonomy)', () => {
       expect(stderr).toContain('Budget exceeded');
     });
 
+    it('ends stdout with budget_exceeded / 5 when crashed reps’ partial transcripts carry the cost', async () => {
+      await writeEvals({ version: '1', max_budget_usd: 1, scenarios: { base: {} } });
+      await writeAlpha();
+      const { code, stdout, stderr } = await runAndCaptureAll(['run', '--repeats', '2', tmpDir], {
+        CRABOODLE_STUB_SCUTTLERUN_STDOUT: 'cost_usd: 999\n',
+        CRABOODLE_STUB_SCUTTLERUN_EXIT: '5',
+      });
+      expect(code).toBe(5);
+      expect(stdout.endsWith('result: budget_exceeded\nexit_code: 5\n')).toBe(true);
+      expect(stderr).toContain('Budget exceeded');
+    });
+
     it('emits no trailer when the run exits before streaming begins', async () => {
       await writeEvals();
       const { code, stdout } = await runAndCaptureAll(['run', tmpDir]);

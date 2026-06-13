@@ -63,6 +63,7 @@ describe('loadStageBResult', () => {
     expect(result.rep).toBe(3);
     expect(result.transcriptPath).toBe(outputPath);
     expect(result.message).toMatch(/grading\.yaml/);
+    expect(result.costUsd).toBe(0.0123);
   });
 
   it('returns pincenez-stage error when grading.yaml is malformed YAML', async () => {
@@ -77,6 +78,7 @@ describe('loadStageBResult', () => {
     expect(result.stage).toBe('pincenez');
     expect(result.transcriptPath).toBe(outputPath);
     expect(result.message).toMatch(/grading\.yaml/);
+    expect(result.costUsd).toBe(0.0123);
   });
 
   it('returns success with costUsd null when output.yaml is missing', async () => {
@@ -105,5 +107,114 @@ describe('loadStageBResult', () => {
     expect(result.stage).toBe('pincenez');
     expect(result.rep).toBe(2);
     expect(result.message).toMatch(/grading\.yaml/);
+    expect(result.costUsd).toBe(0.0123);
+  });
+
+  it('returns error with costUsd null when the transcript is also missing', async () => {
+    const { loadStageBResult } = await import('../src/stage-b-load.js');
+
+    const result = await loadStageBResult({ gradingPath, outputPath, rep: 1 });
+
+    expect(result.type).toBe('error');
+    if (result.type !== 'error') return;
+    expect(result.costUsd).toBeNull();
+  });
+});
+
+describe('readTranscriptCost', () => {
+  let tmpDir: string;
+  let transcriptPath: string;
+
+  beforeEach(async () => {
+    tmpDir = await makeTmpDir('read-transcript-cost');
+    transcriptPath = join(tmpDir, 'output.yaml');
+  });
+
+  afterEach(async () => {
+    await rm(tmpDir, { recursive: true });
+  });
+
+  it('returns the cost_usd value from a transcript', async () => {
+    const { readTranscriptCost } = await import('../src/stage-b-load.js');
+    await writeFile(transcriptPath, VALID_TRANSCRIPT, 'utf8');
+
+    expect(await readTranscriptCost(transcriptPath)).toBe(0.0123);
+  });
+
+  it('returns null for an undefined path', async () => {
+    const { readTranscriptCost } = await import('../src/stage-b-load.js');
+
+    expect(await readTranscriptCost(undefined)).toBeNull();
+  });
+
+  it('returns null for a nonexistent path', async () => {
+    const { readTranscriptCost } = await import('../src/stage-b-load.js');
+
+    expect(await readTranscriptCost(transcriptPath)).toBeNull();
+  });
+
+  it('returns null when the transcript has no cost_usd key', async () => {
+    const { readTranscriptCost } = await import('../src/stage-b-load.js');
+    await writeFile(transcriptPath, 'result: ok\n', 'utf8');
+
+    expect(await readTranscriptCost(transcriptPath)).toBeNull();
+  });
+});
+
+describe('repOutcomeCost', () => {
+  it('sums agent and grading cost for a success outcome', async () => {
+    const { repOutcomeCost } = await import('../src/stage-b-load.js');
+
+    expect(
+      repOutcomeCost({
+        type: 'success',
+        grading: [],
+        costUsd: 0.3,
+        gradingCostUsd: 0.2,
+        transcriptPath: '/tmp/t.yaml',
+      }),
+    ).toBe(0.5);
+  });
+
+  it('returns 0 for a success outcome with unknown costs', async () => {
+    const { repOutcomeCost } = await import('../src/stage-b-load.js');
+
+    expect(
+      repOutcomeCost({
+        type: 'success',
+        grading: [],
+        costUsd: null,
+        gradingCostUsd: null,
+        transcriptPath: '/tmp/t.yaml',
+      }),
+    ).toBe(0);
+  });
+
+  it('returns the agent cost for an error outcome', async () => {
+    const { repOutcomeCost } = await import('../src/stage-b-load.js');
+
+    expect(
+      repOutcomeCost({
+        type: 'error',
+        rep: 1,
+        stage: 'scuttlerun',
+        message: 'crashed',
+        costUsd: 0.7,
+      }),
+    ).toBe(0.7);
+  });
+
+  it('returns 0 for an error outcome with unknown cost', async () => {
+    const { repOutcomeCost } = await import('../src/stage-b-load.js');
+
+    expect(
+      repOutcomeCost({
+        type: 'error',
+        rep: 1,
+        stage: 'scuttlerun',
+        message: 'crashed',
+        costUsd: null,
+      }),
+    ).toBe(0);
   });
 });

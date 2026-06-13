@@ -107,6 +107,7 @@ value RepError {
     error: String
     exit_code: Integer?
     transcript: String?
+    agent_cost_usd: Decimal?                 -- the failed rep's agent cost parsed from its transcript; present when the transcript carries one
 }
 
 -- ============================================================================
