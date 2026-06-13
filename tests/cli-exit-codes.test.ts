@@ -385,4 +385,51 @@ describe('cli exit codes (unified taxonomy)', () => {
       expect(stderr).toContain('no prompt');
     });
   });
+
+  describe('lint nondeterminism disclosure', () => {
+    // craboodle's lint output mirrors pincenez's: checks[].issues[] per scenario.
+    const lintYaml = (withIssue: boolean) =>
+      stringify({
+        checks: [
+          {
+            id: 'check-a',
+            check: 'alpha check',
+            issues: withIssue
+              ? [{ anti_pattern: 'vague', suggestion: 'name a concrete outcome' }]
+              : [],
+          },
+        ],
+      });
+
+    it('lint: writes a nondeterminism advisory to stderr when issues are found', async () => {
+      await writeEvals();
+      await writeAlpha();
+      const { code, stdout, stderr } = await runAndCaptureAll(['lint', tmpDir], {
+        CRABOODLE_STUB_PINCENEZ_STDOUT: lintYaml(true),
+      });
+      // Exit contract unchanged: issues found → exit 1, totals still on stdout.
+      expect(code).toBe(1);
+      expect(stdout).toContain('checks_with_issues: 1');
+      // The advisory explains why a re-run on identical input can flip the exit code.
+      expect(stderr).toMatch(/advisory/i);
+      expect(stderr).toMatch(/non-deterministic|re-run/i);
+    });
+
+    it('lint: writes no nondeterminism advisory when there are zero issues', async () => {
+      await writeEvals();
+      await writeAlpha();
+      const { code, stdout, stderr } = await runAndCaptureAll(['lint', tmpDir], {
+        CRABOODLE_STUB_PINCENEZ_STDOUT: lintYaml(false),
+      });
+      expect(code).toBe(0);
+      expect(stdout).toContain('checks_with_issues: 0');
+      expect(stderr).not.toMatch(/advisory/i);
+    });
+
+    it('lint --help: discloses that findings are advisory and non-deterministic', async () => {
+      const { stdout } = await runAndCaptureAll(['lint', '--help']);
+      expect(stdout).toMatch(/advisory/i);
+      expect(stdout).toMatch(/non-deterministic|re-run/i);
+    });
+  });
 });

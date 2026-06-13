@@ -1345,6 +1345,16 @@ surface LintCommand {
         -- scenarios with at least one issue; aggregate totals always
         -- reflect every check.
 
+    @guarantee LintNondeterminismAdvisory
+        -- When issues are found (checks_with_issues > 0), an advisory is
+        -- written to stderr noting that lint findings are advisory and
+        -- non-deterministic: each check is a single un-seeded LLM call, so
+        -- re-running identical input may add or drop issues (and thus flip
+        -- the exit code). It is operator-facing context only — it does not
+        -- change the exit code or the stdout YAML. The same caveat appears
+        -- in `craboodle lint --help`; the canonical statement lives in
+        -- `pincenez lint --help`.
+
     @guarantee LintTotalsFooter
         -- After the per-scenario blocks, two summary mappings are emitted:
         -- first {scenarios_total, scenarios_with_issues}, then
