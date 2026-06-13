@@ -140,6 +140,8 @@ Subset of the shared scuttlerun/pincenez/craboodle taxonomy — see [scuttlerun/
 | 5    | Budget exhausted (`max_budget_usd`)                                                |
 | 130  | Interrupted (SIGINT)                                                               |
 
+A scuttlerun **rep** that exhausts its budget mid-run does not raise `5` — `5` is craboodle's own `max_budget_usd` cap on the whole run. The SDK reports such a rep as a runtime error (`"Reached maximum budget"` in the scenario's `errors` block), so it crashes and feeds the `4` reliability gate (`max_error_rate`) instead.
+
 The 1-vs-2 split — refusal (1) vs load failure (2) — matches `craboodle.allium` rules `RejectUnknownConfigKeys`, `RejectUnsupportedVersion`, `RejectInvalidMinPassRate` (load → 2) and `ExitListInvalid`, `ExitLintIssuesFound` (refuse → 1). `init` is incremental (rule `InitScaffoldMissing`): it skips existing artifacts rather than refusing, and exits 0.
 
 `craboodle run` also embeds the verdict in the stdout YAML stream as trailing `result:` / `exit_code:` fields (`pass`, `threshold_failure`, `reliability_failure`, `no_successful_reps`, or `budget_exceeded`), so the outcome stays readable even when a shell wrapper masks `$?`. A missing trailer means the run was interrupted or exited before streaming began.
