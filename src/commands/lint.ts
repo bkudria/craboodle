@@ -103,6 +103,7 @@ async function lintCommandInner(
     scenarios_with_issues: 0,
     checks_total: 0,
     checks_with_issues: 0,
+    cost_usd: 0,
   };
   let hasAnySuccess = false;
 
@@ -138,12 +139,13 @@ async function lintCommandInner(
       }
 
       hasAnySuccess = true;
-      const checks = parseLintResult(result.stdout);
+      const { checks, costUsd } = parseLintResult(result.stdout);
       const withIssues = checks.filter((a) => a.issues.length > 0).length;
 
       totals.scenarios_total += 1;
       totals.checks_total += checks.length;
       totals.checks_with_issues += withIssues;
+      totals.cost_usd += costUsd ?? 0;
       if (withIssues > 0) {
         totals.scenarios_with_issues += 1;
       }

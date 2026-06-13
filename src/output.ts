@@ -478,17 +478,27 @@ export interface LintTotals {
   scenarios_with_issues: number;
   checks_total: number;
   checks_with_issues: number;
+  cost_usd: number;
 }
 
-export function parseLintResult(yaml: string): LintCheckOutput[] {
+export interface LintResult {
+  checks: LintCheckOutput[];
+  costUsd: number | null;
+}
+
+export function parseLintResult(yaml: string): LintResult {
   const parsed = parse(yaml) as {
     checks: Array<{ id: string; check: string; issues: LintIssue[] }>;
+    cost_usd?: number;
   };
-  return parsed.checks.map((a) => ({
-    id: a.id,
-    check: a.check,
-    issues: a.issues ?? [],
-  }));
+  return {
+    checks: parsed.checks.map((a) => ({
+      id: a.id,
+      check: a.check,
+      issues: a.issues ?? [],
+    })),
+    costUsd: parsed.cost_usd ?? null,
+  };
 }
 
 // Extracted from `scuttlerun --dry-run` stdout: the resolved (post-merge)
@@ -575,4 +585,10 @@ export function streamLintTotals(totals: LintTotals): void {
       checks_with_issues: totals.checks_with_issues,
     }),
   );
+  if (totals.cost_usd > 0) {
+    process.stdout.write('\n');
+    process.stdout.write(
+      serializeTopLevel({ total_cost_usd: Math.round(totals.cost_usd * 10000) / 10000 }),
+    );
+  }
 }

@@ -740,13 +740,13 @@ checks_with_issues: 1
 
       const result = parseLintResult(yaml);
 
-      expect(result).toHaveLength(2);
-      expect(result[0]).toEqual({
+      expect(result.checks).toHaveLength(2);
+      expect(result.checks[0]).toEqual({
         id: 'check-0',
         check: 'Output contains a validation function',
         issues: [],
       });
-      expect(result[1]).toEqual({
+      expect(result.checks[1]).toEqual({
         id: 'check-1',
         check: 'Handles edge cases',
         issues: [
@@ -767,7 +767,38 @@ checks_with_issues: 0
 `;
 
       const result = parseLintResult(yaml);
-      expect(result[0].issues).toEqual([]);
+      expect(result.checks[0].issues).toEqual([]);
+    });
+
+    it('surfaces cost_usd from the lint summary', async () => {
+      const { parseLintResult } = await import('../src/output.js');
+
+      const yaml = `checks:
+  - id: check-0
+    check: "test"
+    issues: []
+checks_total: 1
+checks_with_issues: 0
+cost_usd: 0.0123
+`;
+
+      const result = parseLintResult(yaml);
+      expect(result.costUsd).toBe(0.0123);
+    });
+
+    it('returns null costUsd when the summary omits cost_usd', async () => {
+      const { parseLintResult } = await import('../src/output.js');
+
+      const yaml = `checks:
+  - id: check-0
+    check: "test"
+    issues: []
+checks_total: 1
+checks_with_issues: 0
+`;
+
+      const result = parseLintResult(yaml);
+      expect(result.costUsd).toBeNull();
     });
   });
 
@@ -982,6 +1013,7 @@ prompt: Write a haiku about autumn
         scenarios_with_issues: 1,
         checks_total: 10,
         checks_with_issues: 2,
+        cost_usd: 0,
       });
 
       expect(written).toContain('scenarios_total: 3');
@@ -990,6 +1022,34 @@ prompt: Write a haiku about autumn
       expect(written).toContain('checks_with_issues: 2');
       // Blank line separates scenario totals from check totals
       expect(written).toMatch(/scenarios_with_issues: 1\n\nchecks_total: 10/);
+    });
+
+    it('emits total_cost_usd when lint cost is nonzero', async () => {
+      const { streamLintTotals } = await import('../src/output.js');
+
+      streamLintTotals({
+        scenarios_total: 2,
+        scenarios_with_issues: 0,
+        checks_total: 5,
+        checks_with_issues: 0,
+        cost_usd: 0.0246,
+      });
+
+      expect(written).toContain('total_cost_usd: 0.0246');
+    });
+
+    it('omits total_cost_usd when lint cost is zero', async () => {
+      const { streamLintTotals } = await import('../src/output.js');
+
+      streamLintTotals({
+        scenarios_total: 2,
+        scenarios_with_issues: 0,
+        checks_total: 5,
+        checks_with_issues: 0,
+        cost_usd: 0,
+      });
+
+      expect(written).not.toContain('total_cost_usd');
     });
   });
 
