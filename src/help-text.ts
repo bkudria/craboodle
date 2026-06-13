@@ -34,6 +34,10 @@ evals.yaml Schema:
     max_budget_usd: 10.0               # Budget cap (optional)
     repeats: 3                         # Repetitions per scenario (optional, default: 3)
                                        #   Overridden by --repeats flag if passed
+    timeout: 600                       # Per-scenario session timeout in
+                                       #   seconds (optional; default:
+                                       #   scuttlerun's). CLI --timeout >
+                                       #   this > scenarios.base.timeout
     artifact_retention_days: 7         # tmp-dir GC window (optional, default: 7;
                                        #   0 disables cleanup)
 

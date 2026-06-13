@@ -99,6 +99,14 @@ describe('init', () => {
     expect(content).toMatch(/^\s*#\s*max_error_rate:.*\b0\b/m);
   });
 
+  it('surfaces the timeout key as a commented guidance line', async () => {
+    const initDir = join(tmpDir, 'my-skill');
+    await execFileAsync(process.execPath, [CLI_PATH, 'init', initDir]);
+
+    const content = await readFile(join(initDir, 'evals.yaml'), 'utf8');
+    expect(content).toMatch(/^\s*#\s*timeout:/m);
+  });
+
   it('omits min_pass_rate from the parsed YAML', async () => {
     const initDir = join(tmpDir, 'my-skill');
     await execFileAsync(process.execPath, [CLI_PATH, 'init', initDir]);
@@ -467,6 +475,12 @@ describe('init', () => {
     const { stdout } = await execFileAsync(process.execPath, [CLI_PATH, '--help']);
     expect(stdout).toContain('max_error_rate');
     expect(stdout).toMatch(/default\s+0\b/i);
+  });
+
+  it('main --help documents the top-level timeout key and its precedence', async () => {
+    const { stdout } = await execFileAsync(process.execPath, [CLI_PATH, '--help']);
+    expect(stdout).toMatch(/^\s*timeout:/m);
+    expect(stdout).toMatch(/scenarios\.base\.timeout/);
   });
 
   it('main --help documents that the resolved scenario prompt supersedes checks.yaml context', async () => {

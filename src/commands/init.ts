@@ -337,6 +337,7 @@ function renderEvalsYaml(mode: 'skill' | 'plugin' | 'generic'): string {
     `# max_error_rate:     # default: 0 when gating — any crashed rep fails (active only with min_pass_rate)\n` +
     `# max_budget_usd:     # default: unset (no cap)\n` +
     `# repeats: 3          # default: 3\n` +
+    `# timeout: 600        # default: scuttlerun's; --timeout flag overrides\n` +
     `# artifact_retention_days: 7   # default: 7 (0 disables cleanup)\n` +
     `\n` +
     `scenarios:\n` +
