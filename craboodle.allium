@@ -650,6 +650,15 @@ rule RepFails {
         -- (SIGINT) carry no diagnostic and forward nothing. The forwarding
         -- itself is an operator-facing side effect below the structured
         -- state this rule models.
+        --
+        -- When scuttlerun exits non-zero having written nothing to stderr
+        -- but a partial transcript to stdout (e.g. budget/max-turns/SIGINT
+        -- exits, where the diagnostic lives in the streamed transcript, not
+        -- stderr), failure_message points the operator at that captured
+        -- transcript — the same file named by transcript_path — rather than
+        -- collapsing to the opaque exec-failure string ("Command failed
+        -- (exit N): scuttlerun …"). That exec-failure string survives only
+        -- when neither stream produced output (e.g. the binary is missing).
 }
 
 -- A running rep observes invocation.interrupt_requested (set when the

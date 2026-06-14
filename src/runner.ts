@@ -197,7 +197,12 @@ export async function runScuttlerun(options: RunScuttlerunOptions): Promise<Subp
       success: false,
       error: {
         stage: 'scuttlerun',
-        message: isAbortError(error) ? 'Interrupted (SIGINT)' : error.stderr || error.message,
+        message: isAbortError(error)
+          ? 'Interrupted (SIGINT)'
+          : error.stderr ||
+            (transcriptPath !== undefined
+              ? 'scuttlerun exited without stderr; see transcript'
+              : error.message),
         ...(exitCode !== undefined ? { exitCode } : {}),
         ...(transcriptPath !== undefined ? { transcriptPath } : {}),
       },
