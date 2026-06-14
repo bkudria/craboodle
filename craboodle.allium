@@ -196,8 +196,9 @@ entity PluginComponents {
 -- except scenarios_path. scenarios.base is materialised into the staged
 -- view as .craboodle-base.yaml so scuttlerun can be invoked with a pair of
 -- file paths (its existing two-config-file API). The basename of the
--- staged root is preserved from eval_root so self-referential
--- project.skills: [.] resolves cleanly. Staged views are GC'd by the same
+-- staged root is preserved from eval_root, and self-referential
+-- project.skills: [.] and project.plugins: [.] are both rewritten into the
+-- staged root, so each resolves cleanly. Staged views are GC'd by the same
 -- retention window as artifact_dir.
 entity StagedView {
     path: String                            -- <tmpdir>/<staged_view_prefix>X/<basename(eval_root.path)>
@@ -544,8 +545,10 @@ rule BeginRunStreaming {
         -- as <basename>/.craboodle-base.yaml. Scuttlerun is then invoked with
         -- (.craboodle-base.yaml, scenario.yaml), and its first-config-file's
         -- directory rule means the staged root becomes its working project
-        -- root. Self-referential project.skills: [.] resolves to the staged
-        -- root, whose basename is preserved from eval_root.path.
+        -- root. Self-referential project.skills: [.] and project.plugins: [.]
+        -- are both rewritten into the staged root, whose basename is preserved
+        -- from eval_root.path, so the plugin self-reference resolves there
+        -- without depending on scuttlerun's first-config-file anchor.
         --
         -- When inv.timeout is non-null it is overlaid as a top-level
         -- `timeout:` field on the materialised .craboodle-base.yaml,

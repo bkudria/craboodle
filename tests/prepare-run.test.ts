@@ -178,6 +178,87 @@ describe('prepareRun', () => {
     expect(written.project.skills).toEqual([stagedRoot]);
   });
 
+  it("rewrites a plugin of '.' to the staged root", async () => {
+    const root = await makeRoot('plugged', {
+      evalsYaml: {
+        version: '1',
+        scenarios: { base: { project: { plugins: ['.'] } } },
+      },
+      scenarios: { only: { prompt: 'hi' } },
+    });
+
+    const { basePath, stagedRoot } = await call(root);
+    const written = parse(await readFile(basePath, 'utf8')) as {
+      project: { plugins: string[] };
+    };
+    expect(written.project.plugins).toEqual([stagedRoot]);
+  });
+
+  it('rewrites a relative plugin path to an absolute path inside the staged root', async () => {
+    const root = await makeRoot('plugged', {
+      evalsYaml: {
+        version: '1',
+        scenarios: { base: { project: { plugins: ['./sub-plugin', 'sub-plugin-2'] } } },
+      },
+      scenarios: { only: { prompt: 'hi' } },
+    });
+    await mkdir(join(root, 'sub-plugin'));
+    await mkdir(join(root, 'sub-plugin-2'));
+
+    const { basePath, stagedRoot } = await call(root);
+    const written = parse(await readFile(basePath, 'utf8')) as {
+      project: { plugins: string[] };
+    };
+    expect(written.project.plugins).toEqual([
+      join(stagedRoot, 'sub-plugin'),
+      join(stagedRoot, 'sub-plugin-2'),
+    ]);
+  });
+
+  it('passes absolute-out-of-root and ~ plugin paths through unchanged', async () => {
+    const root = await makeRoot('plugged', {
+      evalsYaml: { version: '1', scenarios: { base: {} } },
+      scenarios: { only: { prompt: 'hi' } },
+    });
+    const outside = await makeTmpDir('prepare-run', 'outside');
+    try {
+      await writeFile(
+        join(root, 'evals.yaml'),
+        stringify({
+          version: '1',
+          scenarios: {
+            base: { project: { plugins: [outside, '~/some/plugin'] } },
+          },
+        }),
+      );
+
+      const { basePath } = await call(root);
+      const written = parse(await readFile(basePath, 'utf8')) as {
+        project: { plugins: string[] };
+      };
+      expect(written.project.plugins).toEqual([outside, '~/some/plugin']);
+    } finally {
+      await rm(outside, { recursive: true, force: true });
+    }
+  });
+
+  it('rewrites both project.skills and project.plugins when a base carries both', async () => {
+    const root = await makeRoot('both', {
+      evalsYaml: {
+        version: '1',
+        scenarios: { base: { project: { skills: ['.'], plugins: ['.'] } } },
+      },
+      scenarios: { only: { prompt: 'hi' } },
+    });
+
+    const { basePath, stagedRoot } = await call(root);
+    const written = parse(await readFile(basePath, 'utf8')) as {
+      project: { skills: string[]; plugins: string[] };
+    };
+    expect(written.project.skills).toEqual([stagedRoot]);
+    expect(written.project.plugins).toEqual([stagedRoot]);
+  });
+
   it('rewrites a relative skill path to an absolute path inside the staged root', async () => {
     const root = await makeRoot('rooty', {
       evalsYaml: {
