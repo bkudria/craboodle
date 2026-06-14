@@ -33,8 +33,8 @@ export interface PreparedRun {
 
 /**
  * Stage a filtered view of `root`, materialise the scuttlerun base config inside
- * the staged dir with skill paths rewritten to point at the staged tree, and
- * discover scenarios from the original root.
+ * the staged dir with skill and plugin paths rewritten to point at the staged
+ * tree, and discover scenarios from the original root.
  *
  * Caller is responsible for invoking scuttlerun with the returned `basePath`.
  * The staged dir is kept on disk so the user can inspect it; cleanup is by
@@ -50,7 +50,7 @@ export async function prepareRun(root: string, options?: PrepareRunOptions): Pro
   // scenarios.base.timeout. When neither is set, scenarios.base.timeout (or
   // scuttlerun's own default) applies.
   const resolvedTimeout = resolveTimeout(options?.cliTimeout, config.timeout);
-  const rewrittenBase = rewriteSkillPaths(config.scenariosBase, resolvedRoot, stagedRoot);
+  const rewrittenBase = rewriteProjectPaths(config.scenariosBase, resolvedRoot, stagedRoot);
   const finalBase =
     resolvedTimeout !== undefined ? { ...rewrittenBase, timeout: resolvedTimeout } : rewrittenBase;
   const basePath = join(stagedRoot, '.craboodle-base.yaml');
@@ -77,32 +77,37 @@ export async function prepareRun(root: string, options?: PrepareRunOptions): Pro
 }
 
 /**
- * Walk `base` looking for `project.skills`. Rewrite each entry so paths that
- * point into the original root become paths into the staged dir; other paths
- * (~, absolute-out-of-root) pass through unchanged.
+ * Walk `base` looking for `project.skills` and `project.plugins`. Rewrite each
+ * entry so paths that point into the original root become paths into the staged
+ * dir; other paths (~, absolute-out-of-root) pass through unchanged. Rewriting
+ * plugins as well as skills makes a `project.plugins: [.]` self-reference an
+ * absolute staged path, so it no longer depends on scuttlerun resolving relative
+ * plugin paths against the staged base config's directory.
  */
-function rewriteSkillPaths(
+function rewriteProjectPaths(
   base: Record<string, unknown>,
   originalRoot: string,
   stagedRoot: string,
 ): Record<string, unknown> {
-  // Shallow clone — only the `project.skills` array is rewritten; everything
-  // else is shared. Callers should not mutate the result.
+  // Shallow clone — only the `project.skills` / `project.plugins` arrays are
+  // rewritten; everything else is shared. Callers should not mutate the result.
   if (!isPlainObject(base.project)) return base;
-  const skills = (base.project as Record<string, unknown>).skills;
-  if (!Array.isArray(skills)) return base;
+  const project = base.project as Record<string, unknown>;
 
-  const rewritten = skills.map((entry) =>
-    typeof entry === 'string' ? rewriteSkillEntry(entry, originalRoot, stagedRoot) : entry,
-  );
+  const overrides: Record<string, unknown> = {};
+  for (const key of ['skills', 'plugins'] as const) {
+    const entries = project[key];
+    if (!Array.isArray(entries)) continue;
+    overrides[key] = entries.map((entry) =>
+      typeof entry === 'string' ? rewriteRootRelativeEntry(entry, originalRoot, stagedRoot) : entry,
+    );
+  }
+  if (Object.keys(overrides).length === 0) return base;
 
-  return {
-    ...base,
-    project: { ...(base.project as Record<string, unknown>), skills: rewritten },
-  };
+  return { ...base, project: { ...project, ...overrides } };
 }
 
-function rewriteSkillEntry(entry: string, originalRoot: string, stagedRoot: string): string {
+function rewriteRootRelativeEntry(entry: string, originalRoot: string, stagedRoot: string): string {
   if (entry.startsWith('~')) return entry;
   if (!isAbsolute(entry)) {
     // Relative paths resolve against the original root, then become absolute

@@ -18,7 +18,8 @@ Directory Structure:
 
   At run time craboodle stages a filtered view of <root> into $TMPDIR
   (excluding the scenarios dir) and invokes scuttlerun against the staged
-  view, so \`project.skills: [.]\` cleanly self-references the skill / plugin.
+  view, so a self-reference — \`project.skills: [.]\` for a skill root,
+  \`project.plugins: [.]\` for a plugin root — cleanly resolves to the staged view.
 
 evals.yaml Schema:
   Single config file at <root>. Holds pipeline knobs at top level and a
@@ -48,8 +49,10 @@ evals.yaml Schema:
           - Write
           - Bash
         project:
-          skills:
-            - .                        # self-reference for standalone skills
+          skills:                      # for a skill root (next to SKILL.md)
+            - .                        #   self-reference to the staged root
+          plugins:                     # for a plugin root (.claude-plugin/plugin.json)
+            - .                        #   self-reference to the staged root
           claude_md: |
             Use relative paths. Do not use absolute paths.
 
