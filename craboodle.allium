@@ -339,6 +339,7 @@ entity LintInvocation {
     scenarios_with_issues: results_with_issues.count
     checks_total: sum_integers(lint_results.checks_total)
     checks_with_issues: total_issues
+    total_cost_usd: sum_decimals(lint_results.cost_usd)
 
     transitions status {
         starting -> discovering
@@ -444,6 +445,7 @@ entity LintScenarioResult {
     checks: List<LintedCheck>
     checks_total: Integer
     checks_with_issues: Integer
+    cost_usd: Decimal
 }
 
 -- ============================================================================
@@ -1011,7 +1013,8 @@ rule LintInvokePincenez {
                 available_tools: resolved?.tools,
                 grader_model_override: inv.grader_model_override),
             checks_total: pincenez_lint_total(scenario.checks_config),
-            checks_with_issues: pincenez_lint_issue_count(scenario.checks_config)
+            checks_with_issues: pincenez_lint_issue_count(scenario.checks_config),
+            cost_usd: pincenez_lint_cost(scenario.checks_config)
         )
 }
 
@@ -1057,6 +1060,14 @@ rule CompleteLint {
     when: inv: LintInvocation.all_lint_invocations_done becomes true
     requires: inv.status = streaming
     ensures: inv.status = completed
+}
+
+-- After the count footers, the aggregate lint cost is emitted when nonzero,
+-- mirroring the run command's StreamTotalCost.
+rule StreamLintTotalCost {
+    when: inv: LintInvocation.status transitions_to completed
+    requires: inv.total_cost_usd > 0
+    ensures: emit_yaml_doc({ total_cost_usd: round4(inv.total_cost_usd) })
 }
 
 rule ExitLintNoInvocations {
@@ -1329,6 +1340,7 @@ surface LintCommand {
         invocation.scenarios_with_issues
         invocation.checks_total
         invocation.checks_with_issues
+        invocation.total_cost_usd
         invocation.exit_code
 
     contracts:
@@ -1350,7 +1362,8 @@ surface LintCommand {
         -- first {scenarios_total, scenarios_with_issues}, then
         -- {checks_total, checks_with_issues}. Both reflect every linted
         -- scenario and check, including those without issues that were
-        -- omitted from the per-scenario blocks.
+        -- omitted from the per-scenario blocks. A trailing {total_cost_usd}
+        -- mapping follows when the aggregate lint cost is nonzero.
 
     @guarantee LintExitCodes
         -- 0 clean; 1 issues found; 4 no scenarios, empty filter, or zero
