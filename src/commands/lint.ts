@@ -173,6 +173,10 @@ async function lintCommandInner(
   }
 
   if (totals.checks_with_issues > 0) {
+    process.stderr.write(
+      '[craboodle] note: lint findings are advisory and non-deterministic — each check is a ' +
+        'single un-seeded LLM call, so re-running may add or drop issues (see `pincenez lint --help`)\n',
+    );
     process.exit(EXIT_CONFIG_ERROR);
   }
 }

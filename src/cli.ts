@@ -94,6 +94,11 @@ program
   )
   .option('--grader-model <model>', 'Override pincenez model for linting')
   .option('-v, --verbose', 'Verbose logging (to stderr)')
+  .addHelpText(
+    'after',
+    '\nFindings are advisory and non-deterministic: each check is a single un-seeded LLM\n' +
+      'call, so re-running may add or drop issues (see `pincenez lint --help`).',
+  )
   .action(async (root: string, cmdOpts: Record<string, string>) => {
     try {
       await lintCommand(root, {
