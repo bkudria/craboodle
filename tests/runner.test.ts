@@ -291,6 +291,29 @@ describe('runner', () => {
       expect(content).toBe(partial);
     });
 
+    it('points to the transcript when scuttlerun exits non-zero with stdout but empty stderr', async () => {
+      const { runScuttlerun } = await import('../src/runner.js');
+
+      const partial = 'session: abc\nconversation:\n  - user: hi\n';
+      const error = new Error('Command failed') as Error & { code: number };
+      error.code = 7;
+      mockExecFileCall((cb) => cb(error, partial, ''));
+
+      const outputPath = join(tmpDir, 'output.yaml');
+      const result = await runScuttlerun({
+        scenarioPath: '/path/to/scenario.yaml',
+        basePath: null,
+        outputPath,
+      });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.message).toContain('transcript');
+        expect(result.error.message).not.toContain('Command failed');
+        expect(result.error.transcriptPath).toBe(outputPath);
+      }
+    });
+
     it('omits transcriptPath when scuttlerun exits non-zero with empty stdout', async () => {
       const { runScuttlerun } = await import('../src/runner.js');
 
