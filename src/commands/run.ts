@@ -12,7 +12,12 @@ import { resolveScenarioGrounding, type ScenarioGrounding } from '../grounding.j
 import { findMissingBinaries, formatMissingBinariesError } from '../preflight.js';
 import { executePool, type WorkItem } from '../pool.js';
 import { runStaged } from '../staged.js';
-import { loadStageBResult } from '../stage-b-load.js';
+import {
+  loadStageBResult,
+  readTranscriptCost,
+  repOutcomeCost,
+  type RepOutcome,
+} from '../stage-b-load.js';
 import { prepareRun } from '../prepare-run.js';
 import {
   averageResults,
@@ -55,23 +60,6 @@ export interface RunOptions {
   scenarios?: string;
   verbose?: boolean;
 }
-
-type RepOutcome =
-  | {
-      type: 'success';
-      grading: GradingCheck[];
-      costUsd: number | null;
-      gradingCostUsd: number | null;
-      transcriptPath: string;
-    }
-  | {
-      type: 'error';
-      rep: number;
-      stage: string;
-      message: string;
-      exitCode?: number;
-      transcriptPath?: string;
-    };
 
 export async function runCommand(root: string, opts: RunOptions): Promise<void> {
   const controller = new AbortController();
@@ -203,6 +191,7 @@ async function runCommandInner(
                   rep,
                   stage: scuttlerunResult.error.stage,
                   message: scuttlerunResult.error.message,
+                  costUsd: await readTranscriptCost(scuttlerunResult.error.transcriptPath),
                   ...(scuttlerunResult.error.exitCode !== undefined
                     ? { exitCode: scuttlerunResult.error.exitCode }
                     : {}),
@@ -234,6 +223,7 @@ async function runCommandInner(
                 rep,
                 stage: pincenezResult.error.stage,
                 message: pincenezResult.error.message,
+                costUsd: await readTranscriptCost(outputPath),
                 ...(pincenezResult.error.exitCode !== undefined
                   ? { exitCode: pincenezResult.error.exitCode }
                   : {}),
@@ -261,13 +251,7 @@ async function runCommandInner(
 
   await executePool(workItems, workItems.length, {
     budgetUsd: pipeline.maxBudgetUsd,
-    costOf: (outcome: RepOutcome) => {
-      if (outcome.type !== 'success') return 0;
-      let cost = 0;
-      if (outcome.costUsd !== null) cost += outcome.costUsd;
-      if (outcome.gradingCostUsd !== null) cost += outcome.gradingCostUsd;
-      return cost;
-    },
+    costOf: repOutcomeCost,
     shouldAbort: () => failFastTriggered,
     isInterrupted: () => isInterrupted(),
     onBudgetExceeded: () => {
@@ -276,9 +260,10 @@ async function runCommandInner(
     onScenarioComplete: (scenarioId, repResults) => {
       const successfulGradings: GradingCheck[][] = [];
       const repTranscripts: string[] = [];
-      const errors: Array<{ rep: number; stage: string; error: string }> = [];
+      const errors: NonNullable<ScenarioOutput['errors']> = [];
       let agentCost = 0;
       let gradingCost = 0;
+      const round4 = (n: number) => Math.round(n * 10000) / 10000;
 
       for (const result of repResults) {
         if (result.type === 'success') {
@@ -294,12 +279,16 @@ async function runCommandInner(
               gradingCost += outcome.gradingCostUsd;
             }
           } else {
+            if (outcome.costUsd !== null) {
+              agentCost += outcome.costUsd;
+            }
             errors.push({
               rep: outcome.rep,
               stage: outcome.stage,
               error: outcome.message,
               ...(outcome.exitCode !== undefined ? { exit_code: outcome.exitCode } : {}),
               ...(outcome.transcriptPath ? { transcript: outcome.transcriptPath } : {}),
+              ...(outcome.costUsd !== null ? { agent_cost_usd: round4(outcome.costUsd) } : {}),
             });
           }
         } else {
@@ -314,7 +303,6 @@ async function runCommandInner(
       let scenarioOutput: ScenarioOutput;
 
       const totalScenarioCost = agentCost + gradingCost;
-      const round4 = (n: number) => Math.round(n * 10000) / 10000;
       const costFields = {
         ...(totalScenarioCost > 0 ? { cost_usd: round4(totalScenarioCost) } : {}),
         ...(agentCost > 0 ? { agent_cost_usd: round4(agentCost) } : {}),

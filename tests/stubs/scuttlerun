@@ -5,6 +5,8 @@
 # simulate scuttlerun failing for a specific scenario. Optional hooks (all
 # off by default): CRABOODLE_STUB_SCUTTLERUN_ARGS_FILE records each
 # invocation's args (newline-separated, '===' between invocations);
+# CRABOODLE_STUB_SCUTTLERUN_STDOUT emits transcript stdout on real runs
+# (combined with _EXIT, simulates a crash that leaves a partial transcript);
 # CRABOODLE_STUB_SCUTTLERUN_DRYRUN_STDOUT / _DRYRUN_EXIT control --dry-run
 # invocations separately from real runs.
 if [ -n "${CRABOODLE_STUB_SCUTTLERUN_ARGS_FILE:-}" ]; then
@@ -14,4 +16,5 @@ if [ "${1:-}" = "--dry-run" ]; then
   printf '%s' "${CRABOODLE_STUB_SCUTTLERUN_DRYRUN_STDOUT:-}"
   exit "${CRABOODLE_STUB_SCUTTLERUN_DRYRUN_EXIT:-0}"
 fi
+printf '%s' "${CRABOODLE_STUB_SCUTTLERUN_STDOUT:-}"
 exit "${CRABOODLE_STUB_SCUTTLERUN_EXIT:-0}"

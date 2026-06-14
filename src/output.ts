@@ -129,6 +129,7 @@ export interface ScenarioOutput {
     error: string;
     exit_code?: number;
     transcript?: string;
+    agent_cost_usd?: number;
   }>;
 }
 
