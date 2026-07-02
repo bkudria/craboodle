@@ -30,7 +30,7 @@ describe('evals-config', () => {
         artifact_retention_days: 14,
         scenarios: {
           path: 'tests',
-          base: { model: 'claude-sonnet-4-6', tools: ['Read', 'Write'] },
+          base: { model: 'claude-sonnet-5', tools: ['Read', 'Write'] },
         },
       });
 
@@ -43,7 +43,7 @@ describe('evals-config', () => {
       expect(config.artifactRetentionDays).toBe(14);
       expect(config.scenariosPath).toBe('tests');
       expect(config.scenariosBase).toEqual({
-        model: 'claude-sonnet-4-6',
+        model: 'claude-sonnet-5',
         tools: ['Read', 'Write'],
       });
     });
