@@ -195,12 +195,12 @@ describe('runner', () => {
         scenarioPath: '/path/to/scenario.yaml',
         basePath: null,
         outputPath: join(tmpDir, 'output.yaml'),
-        agentModel: 'claude-sonnet-4-6',
+        agentModel: 'claude-sonnet-5',
       });
 
       const [, args] = mockExecFile.mock.calls[0];
       expect(args).toContain('--model');
-      expect(args).toContain('claude-sonnet-4-6');
+      expect(args).toContain('claude-sonnet-5');
     });
 
     it('returns error with stderr on non-zero exit', async () => {
@@ -423,12 +423,12 @@ describe('runner', () => {
 
       await runPincenezLint({
         checksPath: '/path/to/checks.yaml',
-        graderModel: 'claude-sonnet-4-6',
+        graderModel: 'claude-sonnet-5',
       });
 
       const [, args] = mockExecFile.mock.calls[0];
       expect(args).toContain('--model');
-      expect(args).toContain('claude-sonnet-4-6');
+      expect(args).toContain('claude-sonnet-5');
     });
 
     it('forwards --context when context is provided', async () => {
@@ -533,7 +533,7 @@ describe('runner', () => {
     it('invokes scuttlerun --dry-run with base and scenario config', async () => {
       const { listScuttlerunConfig } = await import('../src/runner.js');
 
-      mockExecFileCall((cb) => cb(null, 'model: claude-sonnet-4-6\n', ''));
+      mockExecFileCall((cb) => cb(null, 'model: claude-sonnet-5\n', ''));
 
       const result = await listScuttlerunConfig({
         scenarioPath: '/path/to/scenario.yaml',
@@ -553,7 +553,7 @@ describe('runner', () => {
     it('returns stdout on success', async () => {
       const { listScuttlerunConfig } = await import('../src/runner.js');
 
-      const configYaml = 'model: claude-sonnet-4-6\ntools:\n  - Read\n';
+      const configYaml = 'model: claude-sonnet-5\ntools:\n  - Read\n';
       mockExecFileCall((cb) => cb(null, configYaml, ''));
 
       const result = await listScuttlerunConfig({
@@ -657,12 +657,12 @@ describe('runner', () => {
         checksPath: '/path/to/checks.yaml',
         outputPath: '/path/to/output.yaml',
         gradingPath: join(tmpDir, 'grading.yaml'),
-        graderModel: 'claude-sonnet-4-6',
+        graderModel: 'claude-sonnet-5',
       });
 
       const [, args] = mockExecFile.mock.calls[0];
       expect(args).toContain('--model');
-      expect(args).toContain('claude-sonnet-4-6');
+      expect(args).toContain('claude-sonnet-5');
     });
 
     it('forwards --context when context is provided', async () => {

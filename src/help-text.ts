@@ -47,7 +47,7 @@ evals.yaml Schema:
                                        #   single dir name, default: "evals")
       base:                            # required; scuttlerun config applied to every
                                        #   scenario. Arbitrary scuttlerun keys allowed.
-        model: claude-sonnet-4-6
+        model: claude-sonnet-5
         tools:
           - Read
           - Write
@@ -67,7 +67,7 @@ scenario.yaml Schema:
       Write a function that validates email addresses.
 
     # Any other scuttlerun config keys (model, tools, user, project, etc.)
-    model: claude-sonnet-4-6
+    model: claude-sonnet-5
     user:
       persona: "A developer who wants thorough validation"
 
@@ -138,13 +138,13 @@ Examples:
   craboodle run ./my-skill
 
   # Override model and repetition count
-  craboodle run ./my-skill --agent-model claude-sonnet-4-6 --repeats 5
+  craboodle run ./my-skill --agent-model claude-sonnet-5 --repeats 5
 
   # Run a single scenario by ID
   craboodle run ./my-skill --scenario email-validator
 
   # Use a stronger grader model
-  craboodle run ./my-skill --grader-model claude-sonnet-4-6
+  craboodle run ./my-skill --grader-model claude-sonnet-5
 
   # CI quality gate with yq
   craboodle run ./my-skill | yq '.scenarios[].pass_rate'
