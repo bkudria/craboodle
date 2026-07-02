@@ -41,6 +41,12 @@ evals.yaml Schema:
                                        #   this > scenarios.base.timeout
     artifact_retention_days: 7         # tmp-dir GC window (optional, default: 7;
                                        #   0 disables cleanup)
+    auth: auto                         # Credential preference forwarded to
+                                       #   scuttlerun and pincenez: auto |
+                                       #   subscription | api-key (optional;
+                                       #   their default is auto — prefer a
+                                       #   Claude subscription when present).
+                                       #   Overridden by --auth flag if passed
 
     scenarios:
       path: evals                      # subdir holding scenario folders (optional,

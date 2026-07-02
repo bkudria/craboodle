@@ -15,6 +15,8 @@ export interface PluginInfo {
   components: PluginComponents;
 }
 
+export type AuthMode = 'auto' | 'subscription' | 'api-key';
+
 export interface EvalsConfig {
   version: string;
   minPassRate?: number;
@@ -23,6 +25,7 @@ export interface EvalsConfig {
   repeats?: number;
   artifactRetentionDays?: number;
   timeout?: number;
+  auth?: AuthMode;
   scenariosPath: string;
   scenariosBase: Record<string, unknown>;
   mode: EvalsRootMode;
@@ -38,8 +41,11 @@ const KNOWN_TOP_LEVEL_KEYS = [
   'repeats',
   'artifact_retention_days',
   'timeout',
+  'auth',
   'scenarios',
 ];
+
+const AUTH_MODES: readonly string[] = ['auto', 'subscription', 'api-key'];
 const KNOWN_SCENARIOS_KEYS = ['path', 'base'];
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -91,6 +97,14 @@ function validateRepeats(raw: unknown): number | undefined {
     throw new Error('repeats must be a positive integer');
   }
   return raw;
+}
+
+function validateAuth(raw: unknown): AuthMode | undefined {
+  if (raw === undefined) return undefined;
+  if (typeof raw !== 'string' || !AUTH_MODES.includes(raw)) {
+    throw new Error('auth must be one of: auto, subscription, api-key');
+  }
+  return raw as AuthMode;
 }
 
 function validateTimeout(raw: unknown): number | undefined {
@@ -168,6 +182,7 @@ export async function loadEvalsConfig(root: string): Promise<EvalsConfig> {
   const repeats = validateRepeats(raw.repeats);
   const artifactRetentionDays = validateArtifactRetentionDays(raw.artifact_retention_days);
   const timeout = validateTimeout(raw.timeout);
+  const auth = validateAuth(raw.auth);
 
   if (raw.scenarios === undefined) {
     throw new Error('evals.yaml missing required "scenarios" block');
@@ -229,6 +244,7 @@ export async function loadEvalsConfig(root: string): Promise<EvalsConfig> {
     repeats,
     artifactRetentionDays,
     timeout,
+    auth,
     scenariosPath,
     scenariosBase,
     mode,

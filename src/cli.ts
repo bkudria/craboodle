@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 import { formatCommandError } from './errors.js';
 import { HELP_TEXT } from './help-text.js';
-import { parseConcurrency } from './cli-utils.js';
+import { parseAuth, parseConcurrency } from './cli-utils.js';
 import { runCommand } from './commands/run.js';
 import { listCommand } from './commands/list.js';
 import { lintCommand } from './commands/lint.js';
@@ -49,6 +49,11 @@ program
   )
   .option('--agent-model <model>', 'Override scuttlerun model for all scenarios')
   .option('--grader-model <model>', 'Override pincenez model for all checks')
+  .option(
+    '--auth <mode>',
+    'Credential preference forwarded to scuttlerun and pincenez: auto (subscription when present), subscription, or api-key (overrides evals.yaml auth)',
+    parseAuth,
+  )
   .option('-v, --verbose', 'Verbose logging (to stderr)')
   .action(async (root: string, cmdOpts: Record<string, string>) => {
     try {
@@ -58,6 +63,7 @@ program
         timeout: cmdOpts.timeout,
         agentModel: cmdOpts.agentModel,
         graderModel: cmdOpts.graderModel,
+        auth: cmdOpts.auth,
         scenarios: cmdOpts.scenarios,
         verbose: !!cmdOpts.verbose,
       });
@@ -93,6 +99,11 @@ program
     'Filter scenarios by ID (exact, glob, or comma-separated)',
   )
   .option('--grader-model <model>', 'Override pincenez model for linting')
+  .option(
+    '--auth <mode>',
+    'Credential preference forwarded to pincenez: auto (subscription when present), subscription, or api-key (overrides evals.yaml auth)',
+    parseAuth,
+  )
   .option('-v, --verbose', 'Verbose logging (to stderr)')
   .addHelpText(
     'after',
@@ -104,6 +115,7 @@ program
       await lintCommand(root, {
         concurrency: parseInt(cmdOpts.concurrency, 10),
         graderModel: cmdOpts.graderModel,
+        auth: cmdOpts.auth,
         scenarios: cmdOpts.scenarios,
         verbose: !!cmdOpts.verbose,
       });

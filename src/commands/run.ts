@@ -57,6 +57,7 @@ export interface RunOptions {
   timeout?: string;
   agentModel?: string;
   graderModel?: string;
+  auth?: string;
   scenarios?: string;
   verbose?: boolean;
 }
@@ -149,6 +150,9 @@ async function runCommandInner(
   // Determine repeats: CLI flag > evals.yaml > DEFAULT_REPEATS
   const repeats = resolveRepeatsFromRawFlag(opts.repeats, pipeline.repeats);
 
+  // Credential preference forwarded to both tools: CLI flag > evals.yaml
+  const auth = opts.auth ?? pipeline.auth;
+
   const scuttleLimit = pLimit(opts.concurrency);
   const pincenezLimit = pLimit(opts.concurrency);
 
@@ -181,6 +185,7 @@ async function runCommandInner(
               basePath,
               outputPath,
               agentModel: opts.agentModel,
+              auth,
               signal: controller.signal,
             });
             if (!scuttlerunResult.success) {
@@ -215,6 +220,7 @@ async function runCommandInner(
               gradingPath,
               graderModel: opts.graderModel,
               context: grounding.context,
+              auth,
               signal: controller.signal,
             });
             if (!pincenezResult.success) {

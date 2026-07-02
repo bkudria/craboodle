@@ -30,7 +30,7 @@ For each scenario, craboodle runs scuttlerun N times, grades each run with pince
 
 - **Node.js 20 or later** (see `engines.node` in [package.json](package.json); CI tests on 20, 22, 24; [`.nvmrc`](.nvmrc) pins 24 for development).
 - **[scuttlerun](https://github.com/bkudria/scuttlerun)** and **[pincenez](https://github.com/bkudria/pincenez)** installed and on `PATH`. craboodle invokes them as subprocesses.
-- **`ANTHROPIC_API_KEY`** exported in your environment. craboodle never reads or logs it; scuttlerun and pincenez do (see [SECURITY.md](SECURITY.md)).
+- **Anthropic credentials** — a Claude subscription (Claude Code login or `CLAUDE_CODE_OAUTH_TOKEN`) or an `ANTHROPIC_API_KEY` exported in your environment. craboodle never reads or logs credentials; scuttlerun and pincenez consume them (see [SECURITY.md](SECURITY.md)). Both tools prefer the subscription when one is present; force a mode with `--auth auto|subscription|api-key` or an `auth:` key in `evals.yaml` (CLI wins), which craboodle forwards to both.
 
 ### Install
 
@@ -122,7 +122,7 @@ Only directories matching the `craboodle-run-` or `craboodle-staged-` prefixes a
 
 **`The engine "node" is incompatible with this module`** during `npm install -g craboodle` — craboodle requires Node ≥ 20 (`engines.node` in package.json). Use a version manager: `nvm install 24 && nvm use 24`, or `fnm use 24`, then retry.
 
-**Scuttlerun or pincenez fails with an auth error** — both subprocesses call the Anthropic API and need `ANTHROPIC_API_KEY` in the environment. craboodle doesn't read or forward the key itself; export it in your shell (`export ANTHROPIC_API_KEY=…`) before running.
+**Scuttlerun or pincenez fails with an auth error** — both subprocesses call Claude and need credentials in the environment: a Claude subscription (Claude Code login or `CLAUDE_CODE_OAUTH_TOKEN`) or an exported `ANTHROPIC_API_KEY`. craboodle doesn't read credentials itself; the subprocesses inherit your shell environment. If the wrong credential is being picked up, force one with `--auth subscription` or `--auth api-key`.
 
 **`No scenarios found`** — craboodle expects `<root>/evals/<scenario-id>/scenario.yaml` files (the `evals/` subdirectory name is configurable via `scenarios.path` in `evals.yaml`). Scaffold a starter `evals.yaml` with `craboodle init <root>`, or check that your scenarios live under `evals/`.
 

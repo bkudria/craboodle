@@ -7,3 +7,12 @@ export function parseConcurrency(value: string): number {
   }
   return n;
 }
+
+export function parseAuth(value: string): string {
+  if (!['auto', 'subscription', 'api-key'].includes(value)) {
+    throw new InvalidArgumentError(
+      `must be auto, subscription, or api-key (got ${JSON.stringify(value)})`,
+    );
+  }
+  return value;
+}
