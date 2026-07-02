@@ -203,6 +203,39 @@ describe('runner', () => {
       expect(args).toContain('claude-sonnet-5');
     });
 
+    it('forwards --auth when auth is provided', async () => {
+      const { runScuttlerun } = await import('../src/runner.js');
+
+      mockExecFileCall((cb) => cb(null, 'session: abc\n', ''));
+
+      await runScuttlerun({
+        scenarioPath: '/path/to/scenario.yaml',
+        basePath: null,
+        outputPath: join(tmpDir, 'output.yaml'),
+        auth: 'subscription',
+      });
+
+      const [, args] = mockExecFile.mock.calls[0];
+      const authIndex = (args as string[]).indexOf('--auth');
+      expect(authIndex).toBeGreaterThanOrEqual(0);
+      expect((args as string[])[authIndex + 1]).toBe('subscription');
+    });
+
+    it('omits --auth when auth is not provided', async () => {
+      const { runScuttlerun } = await import('../src/runner.js');
+
+      mockExecFileCall((cb) => cb(null, 'session: abc\n', ''));
+
+      await runScuttlerun({
+        scenarioPath: '/path/to/scenario.yaml',
+        basePath: null,
+        outputPath: join(tmpDir, 'output.yaml'),
+      });
+
+      const [, args] = mockExecFile.mock.calls[0];
+      expect(args).not.toContain('--auth');
+    });
+
     it('returns error with stderr on non-zero exit', async () => {
       const { runScuttlerun } = await import('../src/runner.js');
 
@@ -429,6 +462,22 @@ describe('runner', () => {
       const [, args] = mockExecFile.mock.calls[0];
       expect(args).toContain('--model');
       expect(args).toContain('claude-sonnet-5');
+    });
+
+    it('forwards --auth when auth is provided', async () => {
+      const { runPincenezLint } = await import('../src/runner.js');
+
+      mockExecFileCall((cb) => cb(null, 'checks: []\n', ''));
+
+      await runPincenezLint({
+        checksPath: '/path/to/checks.yaml',
+        auth: 'api-key',
+      });
+
+      const [, args] = mockExecFile.mock.calls[0];
+      const authIndex = (args as string[]).indexOf('--auth');
+      expect(authIndex).toBeGreaterThanOrEqual(0);
+      expect((args as string[])[authIndex + 1]).toBe('api-key');
     });
 
     it('forwards --context when context is provided', async () => {
@@ -663,6 +712,24 @@ describe('runner', () => {
       const [, args] = mockExecFile.mock.calls[0];
       expect(args).toContain('--model');
       expect(args).toContain('claude-sonnet-5');
+    });
+
+    it('forwards --auth when auth is provided', async () => {
+      const { runPincenez } = await import('../src/runner.js');
+
+      mockExecFileCall((cb) => cb(null, 'checks: []\npass_rate: 0\n', ''));
+
+      await runPincenez({
+        checksPath: '/path/to/checks.yaml',
+        outputPath: '/path/to/output.yaml',
+        gradingPath: join(tmpDir, 'grading.yaml'),
+        auth: 'subscription',
+      });
+
+      const [, args] = mockExecFile.mock.calls[0];
+      const authIndex = (args as string[]).indexOf('--auth');
+      expect(authIndex).toBeGreaterThanOrEqual(0);
+      expect((args as string[])[authIndex + 1]).toBe('subscription');
     });
 
     it('forwards --context when context is provided', async () => {

@@ -18,6 +18,7 @@ export interface RunScuttlerunOptions {
   basePath: string | null;
   outputPath: string;
   agentModel?: string;
+  auth?: string;
   signal?: AbortSignal;
 }
 
@@ -27,6 +28,7 @@ export interface RunPincenezOptions {
   gradingPath: string;
   graderModel?: string;
   context?: string;
+  auth?: string;
   signal?: AbortSignal;
 }
 
@@ -164,7 +166,7 @@ function forwardFailureStderr(error: Error & { stderr?: string; code?: string | 
 }
 
 export async function runScuttlerun(options: RunScuttlerunOptions): Promise<SubprocessResult> {
-  const { scenarioPath, basePath, outputPath, agentModel, signal } = options;
+  const { scenarioPath, basePath, outputPath, agentModel, auth, signal } = options;
 
   const args: string[] = [];
   if (basePath) {
@@ -174,6 +176,9 @@ export async function runScuttlerun(options: RunScuttlerunOptions): Promise<Subp
 
   if (agentModel) {
     args.push('--model', agentModel);
+  }
+  if (auth) {
+    args.push('--auth', auth);
   }
 
   try {
@@ -250,6 +255,7 @@ export interface RunPincenezLintOptions {
   graderModel?: string;
   context?: string;
   availableTools?: string[];
+  auth?: string;
   signal?: AbortSignal;
 }
 
@@ -260,11 +266,14 @@ export type LintSubprocessResult =
 export async function runPincenezLint(
   options: RunPincenezLintOptions,
 ): Promise<LintSubprocessResult> {
-  const { checksPath, graderModel, context, availableTools, signal } = options;
+  const { checksPath, graderModel, context, availableTools, auth, signal } = options;
 
   const args: string[] = ['lint'];
   if (graderModel) {
     args.push('--model', graderModel);
+  }
+  if (auth) {
+    args.push('--auth', auth);
   }
   if (context) {
     args.push('--context', context);
@@ -293,11 +302,14 @@ export async function runPincenezLint(
 }
 
 export async function runPincenez(options: RunPincenezOptions): Promise<SubprocessResult> {
-  const { checksPath, outputPath, gradingPath, graderModel, context, signal } = options;
+  const { checksPath, outputPath, gradingPath, graderModel, context, auth, signal } = options;
 
   const args: string[] = [];
   if (graderModel) {
     args.push('--model', graderModel);
+  }
+  if (auth) {
+    args.push('--auth', auth);
   }
   if (context) {
     args.push('--context', context);

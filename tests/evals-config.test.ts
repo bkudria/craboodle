@@ -142,6 +142,36 @@ describe('evals-config', () => {
       await expect(loadEvalsConfig(tmpDir)).rejects.toThrow(/scenarios\.path/);
     });
 
+    it('parses a valid auth value', async () => {
+      const { loadEvalsConfig } = await import('../src/config.js');
+      await writeEvals({ version: '1', auth: 'subscription', scenarios: { base: {} } });
+      const config = await loadEvalsConfig(tmpDir);
+      expect(config.auth).toBe('subscription');
+    });
+
+    it('leaves auth undefined when omitted', async () => {
+      const { loadEvalsConfig } = await import('../src/config.js');
+      await writeEvals({ version: '1', scenarios: { base: {} } });
+      const config = await loadEvalsConfig(tmpDir);
+      expect(config.auth).toBeUndefined();
+    });
+
+    it('throws on an invalid auth value', async () => {
+      const { loadEvalsConfig } = await import('../src/config.js');
+      await writeEvals({ version: '1', auth: 'oauth', scenarios: { base: {} } });
+      await expect(loadEvalsConfig(tmpDir)).rejects.toThrow(
+        'auth must be one of: auto, subscription, api-key',
+      );
+    });
+
+    it('throws on a non-string auth value', async () => {
+      const { loadEvalsConfig } = await import('../src/config.js');
+      await writeEvals({ version: '1', auth: 3, scenarios: { base: {} } });
+      await expect(loadEvalsConfig(tmpDir)).rejects.toThrow(
+        'auth must be one of: auto, subscription, api-key',
+      );
+    });
+
     it('throws on invalid min_pass_rate type', async () => {
       const { loadEvalsConfig } = await import('../src/config.js');
       await writeEvals({ version: '1', min_pass_rate: 'high', scenarios: { base: {} } });

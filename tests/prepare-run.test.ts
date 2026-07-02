@@ -356,6 +356,7 @@ describe('prepareRun', () => {
         max_error_rate: 0.2,
         repeats: 7,
         artifact_retention_days: 14,
+        auth: 'subscription',
         scenarios: { base: {} },
       },
       scenarios: { only: { prompt: 'hi' } },
@@ -367,6 +368,7 @@ describe('prepareRun', () => {
       minPassRate: 0.5,
       maxBudgetUsd: 2.0,
       maxErrorRate: 0.2,
+      auth: 'subscription',
       repeats: 7,
       artifactRetentionDays: 14,
     });

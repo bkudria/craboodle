@@ -1,7 +1,7 @@
 import { writeFile } from 'node:fs/promises';
 import { isAbsolute, join, resolve, sep } from 'node:path';
 import { stringify } from 'yaml';
-import { loadEvalsConfig, resolveTimeout, type PluginInfo } from './config.js';
+import { type AuthMode, loadEvalsConfig, resolveTimeout, type PluginInfo } from './config.js';
 import { discoverScenarios, type ScenarioRef } from './discovery.js';
 import { stageEvalsRoot } from './staged-view.js';
 
@@ -26,6 +26,7 @@ export interface PreparedRun {
     repeats?: number;
     artifactRetentionDays?: number;
     timeout?: number;
+    auth?: AuthMode;
   };
   /** Parsed manifest + enumerated components; present iff plugin mode. */
   plugin?: PluginInfo;
@@ -70,6 +71,7 @@ export async function prepareRun(root: string, options?: PrepareRunOptions): Pro
       maxErrorRate: config.maxErrorRate,
       repeats: config.repeats,
       artifactRetentionDays: config.artifactRetentionDays,
+      auth: config.auth,
       ...(resolvedTimeout !== undefined ? { timeout: resolvedTimeout } : {}),
     },
     ...(config.plugin ? { plugin: config.plugin } : {}),

@@ -17,6 +17,7 @@ import { EXIT_CONFIG_ERROR, EXIT_INFRA_ERROR, EXIT_SIGINT } from '../exit-codes.
 export interface LintOptions {
   concurrency: number;
   graderModel?: string;
+  auth?: string;
   scenarios?: string;
   verbose?: boolean;
 }
@@ -128,6 +129,7 @@ async function lintCommandInner(
         graderModel: opts.graderModel,
         context: grounding.context,
         availableTools: grounding.availableTools,
+        auth: opts.auth ?? prepared.pipeline.auth,
         signal: controller.signal,
       });
 

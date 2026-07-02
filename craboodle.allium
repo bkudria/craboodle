@@ -111,6 +111,24 @@ value RepError {
 }
 
 -- ============================================================================
+-- Enumerations
+-- ============================================================================
+
+-- The operator's credential preference. Set by --auth on the run and lint
+-- commands, or by the top-level `auth:` key in evals.yaml (the flag wins).
+-- api_key corresponds to the `api-key` token used in both the CLI flag and
+-- evals.yaml. craboodle never reads, resolves or interprets credentials
+-- itself: it treats the mode as an opaque preference and forwards it verbatim
+-- to scuttlerun and pincenez, which each resolve the actual credential (see
+-- the Scuttlerun / Pincenez contracts). When no preference is set, no --auth
+-- is forwarded and the tools apply their own default (auto, prefer-subscription).
+enum AuthMode {
+    auto                          -- defer to the tools' default resolution
+  | subscription                  -- forward a subscription preference
+  | api_key                       -- forward an API-key preference
+}
+
+-- ============================================================================
 -- Actor
 -- ============================================================================
 
@@ -158,6 +176,7 @@ entity EvalsConfig {
     repeats_override: Integer?
     artifact_retention_days_override: Integer?
     timeout_override: Integer?              -- per-scenario scuttlerun session timeout (seconds)
+    auth: AuthMode?                         -- credential preference forwarded to scuttlerun/pincenez; absent = tools' own default
     scenarios_path: String                  -- defaults to config.default_scenarios_path
     scenarios_base: ScuttlerunConfig        -- opaque to craboodle; passed to scuttlerun
 }
@@ -220,6 +239,7 @@ entity RunInvocation {
     scenario_filter: String?
     agent_model_override: String?
     grader_model_override: String?
+    auth: AuthMode?                         -- resolved credential preference (CLI flag > evals.yaml); null = no --auth forwarded
 
     status: starting | discovering | streaming | completed | failed
     exit_code: Integer when status = completed | failed
@@ -320,6 +340,7 @@ entity LintInvocation {
     scenario_filter: String?
     concurrency: Integer
     grader_model_override: String?
+    auth: AuthMode?                         -- resolved credential preference (CLI flag > evals.yaml); null = no --auth forwarded
 
     status: starting | discovering | streaming | completed | failed
     exit_code: Integer when status = completed | failed
@@ -456,7 +477,8 @@ entity LintScenarioResult {
 
 rule StartRun {
     when: RunInvoked(operator, evals_dir, raw_repeats?, raw_concurrency?,
-                     raw_timeout?, scenario_filter?, agent_model?, grader_model?)
+                     raw_timeout?, scenario_filter?, agent_model?, grader_model?,
+                     raw_auth?)
     let dir = eval_root_at(evals_dir)
     let effective_repeats =
         raw_repeats
@@ -465,6 +487,9 @@ rule StartRun {
     let effective_timeout =
         raw_timeout
         ?? dir.evals_config.timeout_override
+    let effective_auth =
+        raw_auth
+        ?? dir.evals_config.auth
     ensures: RunInvocation.created(
         operator: operator,
         eval_root: dir,
@@ -474,6 +499,7 @@ rule StartRun {
         scenario_filter: scenario_filter,
         agent_model_override: agent_model,
         grader_model_override: grader_model,
+        auth: effective_auth,
         status: starting
     )
     @guidance
@@ -956,14 +982,18 @@ rule ExitListSuccess {
 
 rule StartLint {
     when: LintInvoked(operator, evals_dir, raw_concurrency?, scenario_filter?,
-                      grader_model?)
+                      grader_model?, raw_auth?)
     let dir = eval_root_at(evals_dir)
+    let effective_auth =
+        raw_auth
+        ?? dir.evals_config.auth
     ensures: LintInvocation.created(
         operator: operator,
         eval_root: dir,
         scenario_filter: scenario_filter,
         concurrency: raw_concurrency ?? config.default_concurrency,
         grader_model_override: grader_model,
+        auth: effective_auth,
         status: starting
     )
 }
@@ -1195,9 +1225,26 @@ rule RejectUnknownConfigKeys {
         -- Load fails with exit 2; the rejecting invocation never reaches
         -- the state machine above. Recognised top-level keys are: version,
         -- min_pass_rate, max_error_rate, max_budget_usd, repeats,
-        -- artifact_retention_days, timeout, scenarios. Inside scenarios: path,
-        -- base. The base block itself is not validated by craboodle; that
-        -- contract belongs to scuttlerun.
+        -- artifact_retention_days, timeout, auth, scenarios. Inside scenarios:
+        -- path, base. The base block itself is not validated by craboodle;
+        -- that contract belongs to scuttlerun.
+}
+
+-- auth is optional. A present value that is not one of the three accepted
+-- tokens (auto, subscription, api-key) fails the load with exit 2, the same
+-- error/exit path as the other evals.yaml validation failures. The check
+-- reads the raw file because a well-typed AuthMode can hold only valid
+-- values; an invalid token is rejected before it could be assigned.
+rule RejectInvalidAuth {
+    when: cfg: EvalsConfig.created
+    requires: evals_yaml_auth_invalid(cfg.eval_root.path)
+    @guidance
+        -- Load fails with exit 2 with message
+        -- "auth must be one of: auto, subscription, api-key". An absent auth
+        -- key is valid and leaves resolution to the --auth flag or the tools'
+        -- own default. craboodle does not interpret the value further; it is
+        -- forwarded unchanged (see CredentialForwarding and the Scuttlerun /
+        -- Pincenez contracts).
 }
 
 rule RejectUnsupportedVersion {
@@ -1237,7 +1284,8 @@ surface RunCommand {
 
     provides:
         RunInvoked(operator, evals_dir, raw_repeats?, raw_concurrency?,
-                   raw_timeout?, scenario_filter?, agent_model?, grader_model?)
+                   raw_timeout?, scenario_filter?, agent_model?, grader_model?,
+                   raw_auth?)
 
     exposes:
         invocation.artifact_dir
@@ -1295,6 +1343,20 @@ surface RunCommand {
         -- 0 success; 3 ratchet failure; 4 no successful reps. See the
         -- shared exit code taxonomy at the top of this spec. The same code
         -- is mirrored in the FinalVerdict trailer on stdout.
+
+    @guarantee CredentialForwarding
+        -- The operator's credential preference (--auth auto|subscription|api-key,
+        -- or the evals.yaml top-level `auth:` key; the flag wins) is forwarded
+        -- verbatim as --auth <mode> to every scuttlerun run and every pincenez
+        -- grade invocation. When neither is set, no --auth is forwarded and each
+        -- tool applies its own default (auto, prefer-subscription). craboodle
+        -- never reads, resolves or interprets credentials itself. The scuttlerun
+        -- dry-run used to ground grading makes no API calls and receives no
+        -- --auth. An invalid --auth value is rejected by the CLI (exit 1, a
+        -- message naming the valid modes) before the run begins, mirroring
+        -- --concurrency; an invalid evals.yaml `auth:` value fails the load
+        -- (exit 2). Credential preference never affects cost reporting or the
+        -- max_budget_usd gate.
 }
 
 surface ListCommand {
@@ -1345,7 +1407,7 @@ surface LintCommand {
 
     provides:
         LintInvoked(operator, evals_dir, raw_concurrency?, scenario_filter?,
-                    grader_model?)
+                    grader_model?, raw_auth?)
 
     exposes:
         invocation.lint_results
@@ -1391,6 +1453,18 @@ surface LintCommand {
     @guarantee LintExitCodes
         -- 0 clean; 1 issues found; 4 no scenarios, empty filter, or zero
         -- lint invocations succeeded.
+
+    @guarantee CredentialForwarding
+        -- The operator's credential preference (--auth auto|subscription|api-key,
+        -- or the evals.yaml top-level `auth:` key; the flag wins) is forwarded
+        -- verbatim as --auth <mode> to every pincenez lint invocation. When
+        -- neither is set, no --auth is forwarded and pincenez applies its own
+        -- default (auto, prefer-subscription). craboodle never reads, resolves
+        -- or interprets credentials itself. The scuttlerun dry-run used to
+        -- ground the lint judge makes no API calls and receives no --auth. An
+        -- invalid --auth value is rejected by the CLI (exit 1, a message naming
+        -- the valid modes) before the lint begins, mirroring --concurrency; an
+        -- invalid evals.yaml `auth:` value fails the load (exit 2).
 }
 
 surface InitCommand {
@@ -1431,7 +1505,8 @@ surface InitCommand {
 contract Scuttlerun {
     run: (scenario_config: ScuttlerunConfig,
           base_config: ScuttlerunConfig,
-          agent_model_override: String) -> Transcript
+          agent_model_override: String,
+          auth: AuthMode?) -> Transcript
 
     dry_run: (scenario_config: ScuttlerunConfig,
               base_config: ScuttlerunConfig) -> ResolvedSessionConfig?
@@ -1444,11 +1519,22 @@ contract Scuttlerun {
         -- resolved prompt and tool list to ground pincenez lint; the run
         -- command consumes the resolved prompt (once per scenario) to
         -- ground pincenez grading.
+        --
+        -- auth is the resolved credential preference (RunInvocation.auth).
+        -- When non-null it is forwarded verbatim as --auth <mode>; when null
+        -- no --auth is passed and scuttlerun applies its own default. Only
+        -- run carries auth: dry_run makes no API calls, so the grounding
+        -- invocation is never given a credential preference.
 
     @invariant TranscriptIsRaw
         -- craboodle treats the transcript as opaque and never extracts
         -- or transforms it. It is handed straight to pincenez as the
         -- grading subject.
+
+    @invariant CredentialsAreScuttlerunsConcern
+        -- craboodle never reads, resolves, stores or interprets any
+        -- credential. It forwards only the operator's opaque mode preference;
+        -- scuttlerun performs all credential detection and selection.
 
     @invariant ConfigMergeIsScuttlerunsConcern
         -- craboodle materialises scenarios.base from evals.yaml as
@@ -1463,7 +1549,8 @@ contract Pincenez {
     grade: (checks_config: ChecksConfig,
             transcript: Transcript,
             context: String?,
-            grader_model_override: String) -> Grading
+            grader_model_override: String,
+            auth: AuthMode?) -> Grading
 
     @guidance
         -- context is the scenario's resolved (post-merge) prompt, resolved
@@ -1473,19 +1560,32 @@ contract Pincenez {
         -- It is omitted when scuttlerun resolution fails — pincenez then
         -- grades with the checks file's own context, the pre-grounding
         -- behaviour.
+        --
+        -- auth is the resolved credential preference (RunInvocation.auth).
+        -- When non-null it is forwarded verbatim as --auth <mode>; when null
+        -- no --auth is passed and pincenez applies its own default. craboodle
+        -- forwards the same preference to scuttlerun and pincenez; it never
+        -- resolves the credential itself.
 }
 
 contract PincenezLint {
     lint: (checks_config: ChecksConfig,
            context: String?,
            available_tools: List<String>?,
-           grader_model_override: String) -> List<LintedCheck>
+           grader_model_override: String,
+           auth: AuthMode?) -> List<LintedCheck>
 
     @guidance
         -- context is the scenario's resolved prompt; available_tools is the
         -- resolved (post-merge) tool list. Both are omitted when scuttlerun
         -- resolution fails — pincenez then lints with degraded grounding
         -- (no tautology detection, no availability judgments).
+        --
+        -- auth is the resolved credential preference (LintInvocation.auth).
+        -- When non-null it is forwarded verbatim as --auth <mode>; when null
+        -- no --auth is passed and pincenez applies its own default. The
+        -- scuttlerun dry-run that produces context and available_tools makes
+        -- no API calls and receives no auth.
 }
 
 -- ============================================================================
