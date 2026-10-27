@@ -294,11 +294,7 @@ export function evaluateGate(
 }
 
 export type RunResult =
-  | 'pass'
-  | 'threshold_failure'
-  | 'reliability_failure'
-  | 'no_successful_reps'
-  | 'budget_exceeded';
+  'pass' | 'threshold_failure' | 'reliability_failure' | 'no_successful_reps' | 'budget_exceeded';
 
 export interface RunVerdict {
   result: RunResult;

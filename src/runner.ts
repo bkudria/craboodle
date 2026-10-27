@@ -260,8 +260,7 @@ export interface RunPincenezLintOptions {
 }
 
 export type LintSubprocessResult =
-  | { success: true; stdout: string }
-  | { success: false; error: RepError };
+  { success: true; stdout: string } | { success: false; error: RepError };
 
 export async function runPincenezLint(
   options: RunPincenezLintOptions,
