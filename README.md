@@ -29,7 +29,7 @@ For each scenario, craboodle runs scuttlerun N times, grades each run with pince
 ### Prerequisites
 
 - **Node.js 20 or later** (see `engines.node` in [package.json](package.json); CI tests on 20, 22, 24; [`.nvmrc`](.nvmrc) pins 24 for development).
-- **[scuttlerun](https://github.com/bkudria/scuttlerun)** and **[pincenez](https://github.com/bkudria/pincenez)** installed and on `PATH`. craboodle invokes them as subprocesses.
+- **[scuttlerun](https://github.com/bkudria/scuttlerun) 0.4.0+** and **[pincenez](https://github.com/bkudria/pincenez) 0.2.0+** installed and on `PATH`. craboodle invokes them as subprocesses; older versions reject the `--auth` flag it forwards.
 - **Anthropic credentials** — a Claude subscription (Claude Code login or `CLAUDE_SDK_OAUTH_TOKEN`) or an `ANTHROPIC_API_KEY` exported in your environment. craboodle never reads or logs credentials; scuttlerun and pincenez consume them (see [SECURITY.md](SECURITY.md)). Both tools prefer the subscription when one is present; force a mode with `--auth auto|subscription|api-key` or an `auth:` key in `evals.yaml` (CLI wins), which craboodle forwards to both. Note that `CLAUDE_CODE_OAUTH_TOKEN` is never used: scuttlerun and pincenez strip it so a stray export cannot override `claude /login` credentials, and they exit with a usage error if it is the only credential available.
 
 ### Install
