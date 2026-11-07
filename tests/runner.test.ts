@@ -522,6 +522,31 @@ describe('runner', () => {
       expect(mockExecFile.mock.calls[1][1]).not.toContain('--available-tools');
     });
 
+    it('forwards --transcript-legend when a legend is provided', async () => {
+      const { runPincenezLint } = await import('../src/runner.js');
+
+      mockExecFileCall((cb) => cb(null, 'checks: []\n', ''));
+
+      await runPincenezLint({
+        checksPath: '/path/to/checks.yaml',
+        transcriptLegend: 'footer:\n  timed_out: hit timeout\n',
+      });
+
+      const [, args] = mockExecFile.mock.calls[0];
+      const i = args.indexOf('--transcript-legend');
+      expect(i).toBeGreaterThan(-1);
+      expect(args[i + 1]).toBe('footer:\n  timed_out: hit timeout\n');
+      expect(args.at(-1)).toBe('/path/to/checks.yaml');
+    });
+
+    it('omits --transcript-legend when no legend is provided', async () => {
+      const { runPincenezLint } = await import('../src/runner.js');
+
+      mockExecFileCall((cb) => cb(null, 'checks: []\n', ''));
+      await runPincenezLint({ checksPath: '/path/to/checks.yaml' });
+      expect(mockExecFile.mock.calls[0][1]).not.toContain('--transcript-legend');
+    });
+
     it('returns error with stderr on failure', async () => {
       const { runPincenezLint } = await import('../src/runner.js');
 

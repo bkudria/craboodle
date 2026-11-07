@@ -46,6 +46,25 @@ describe('resolveScenarioGrounding', () => {
     });
   });
 
+  it('returns the transcript legend from scuttlerun dry-run', async () => {
+    mockListConfig.mockResolvedValue({
+      success: true,
+      stdout: 'prompt: Write a haiku\nlegend:\n  footer:\n    timed_out: hit timeout\n',
+    });
+
+    const grounding = await resolveScenarioGrounding(
+      'my-scenario',
+      '/root/evals/my-scenario/scenario.yaml',
+      '/staged/.craboodle-base.yaml',
+      'lint',
+    );
+
+    expect(grounding).toEqual({
+      context: 'Write a haiku',
+      transcriptLegend: 'footer:\n  timed_out: hit timeout\n',
+    });
+  });
+
   it('returns prompt-only grounding when the summary has no tools', async () => {
     mockListConfig.mockResolvedValue({
       success: true,

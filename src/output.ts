@@ -9,6 +9,7 @@ import {
   isDocument,
   YAMLMap,
   YAMLSeq,
+  stringify,
 } from 'yaml';
 import type { Node, Pair } from 'yaml';
 import wrap from 'word-wrap';
@@ -500,10 +501,11 @@ export function parseLintResult(yaml: string): LintResult {
 
 // Extracted from `scuttlerun --dry-run` stdout: the resolved (post-merge)
 // session config. Used to ground pincenez lint in the scenario's effective
-// tool list and prompt.
+// tool list and prompt, and in the legend of the transcript it will produce.
 export interface DryRunSummary {
   tools?: string[];
   prompt?: string;
+  transcriptLegend?: string;
 }
 
 export function parseDryRunSummary(yaml: string): DryRunSummary {
@@ -516,13 +518,20 @@ export function parseDryRunSummary(yaml: string): DryRunSummary {
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
     return {};
   }
-  const { tools, prompt } = parsed as { tools?: unknown; prompt?: unknown };
+  const { tools, prompt, legend } = parsed as {
+    tools?: unknown;
+    prompt?: unknown;
+    legend?: unknown;
+  };
   const result: DryRunSummary = {};
   if (Array.isArray(tools) && tools.every((t) => typeof t === 'string')) {
     result.tools = tools as string[];
   }
   if (typeof prompt === 'string') {
     result.prompt = prompt;
+  }
+  if (typeof legend === 'object' && legend !== null && !Array.isArray(legend)) {
+    result.transcriptLegend = stringify(legend);
   }
   return result;
 }

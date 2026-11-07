@@ -129,6 +129,7 @@ async function lintCommandInner(
         graderModel: opts.graderModel,
         context: grounding.context,
         availableTools: grounding.availableTools,
+        transcriptLegend: grounding.transcriptLegend,
         auth: opts.auth ?? prepared.pipeline.auth,
         signal: controller.signal,
       });
