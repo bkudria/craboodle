@@ -36,9 +36,11 @@ ordered by priority.
   lives next to its consumer (fabrica's evals) with only the facts that
   design leans on, and two of the listed facts are model behaviour or need a
   scripted second turn. Facts about what a hook printed can now be graded
-  from `hook:` entries, and whether the hooked call went through from its
-  `result:` entry (scuttlerun 0.6.0+), whose `is_error` is true when a
-  PreToolUse hook blocks it; facts about a hook's input still need its log.
+  from `hook:` entries, and whether a PreToolUse hook blocked the call from
+  its `result:` entry (scuttlerun 0.6.0+), whose `is_error` is true when it
+  does. A call that went through has a result entry only if it is a Bash,
+  AskUserQuestion or ExitPlanMode call, and a timeout or interrupt can leave
+  any call without one. Facts about a hook's input still need its log.
   The header provenance entry in scuttlerun's IDEAS.md is what lets such a
   run state which CLI version the facts held for.
 - **Build before `npm publish`.** The release workflow's publish job runs
