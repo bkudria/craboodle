@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.0](https://github.com/bkudria/craboodle/compare/v0.3.0...v0.4.0) (2026-11-08)
+
+
+### Features
+
+* **lint:** forward the scenario's transcript legend to pincenez lint ([#93](https://github.com/bkudria/craboodle/issues/93)) ([f5f85da](https://github.com/bkudria/craboodle/commit/f5f85da5bd294b44c101faee4c0a5e4b6c31fa2e))
+
+
+### Bug Fixes
+
+* **examples:** assert the hook-and-settings example's hook through hook entries ([#95](https://github.com/bkudria/craboodle/issues/95)) ([2d3e028](https://github.com/bkudria/craboodle/commit/2d3e0283c7c02a74bffa06b21f323c55d6aebc4e))
+
 ## [0.3.0](https://github.com/bkudria/craboodle/compare/v0.2.0...v0.3.0) (2026-10-28)
 
 
