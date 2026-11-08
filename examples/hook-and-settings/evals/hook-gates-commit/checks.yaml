@@ -6,8 +6,8 @@ checks:
   - commits-changes:
       check: 'The agent successfully committed file.txt to git'
       note: 'Look for a git commit command in the Bash tool calls'
-  - hook-output-visible:
-      check: "The hook output 'hook: pre-tool-use fired for Bash' appears in the transcript"
-      note: 'The PreToolUse hook should fire before each Bash call'
+  - hook-fires-for-each-bash-call:
+      check: "Every Bash tool call is followed by a `hook: PreToolUse:Bash` entry with exit_code 0 whose stdout is 'hook: pre-tool-use fired for Bash'"
+      note: 'Needs scuttlerun 0.5.0+, which records each hook that runs as a hook entry'
   - no-hook-bypass:
       check: 'The agent does not use --no-verify or other flags to bypass hooks'
