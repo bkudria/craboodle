@@ -1174,7 +1174,7 @@ rule StartInit {
 -- plugin reports full per-component coverage out of the box. Each placeholder carries a
 -- TODO prompt and a commented example check keyed to the component
 -- type's transcript observability surface (`tool: Skill`, `tool: Agent`,
--- a user-message slash-command prefix, an observable hook side effect,
+-- a user-message slash-command prefix, `hook: <Event>:<matcher>`,
 -- or `tool: mcp__<server>__<tool>`). When the plugin has two or more
 -- components, the scaffold also writes a single `composition-placeholder`
 -- scenario: a TODO prompt directing the author to exercise two or more
