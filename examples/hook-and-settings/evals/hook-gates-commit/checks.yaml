@@ -5,7 +5,7 @@ context: |
 checks:
   - commits-changes:
       check: 'The agent successfully committed file.txt to git'
-      note: 'Look for a git commit command in the Bash tool calls'
+      note: "Decide from the result entry of the Bash call that ran git commit (is_error false), not from hook entries. Needs scuttlerun 0.6.0+, which records every Bash call's result"
   - hook-fires-for-each-bash-call:
       check: "Every Bash tool call is followed by a `hook: PreToolUse:Bash` entry with exit_code 0 whose stdout is 'hook: pre-tool-use fired for Bash'"
       note: 'Needs scuttlerun 0.5.0+, which records each hook that runs as a hook entry'
