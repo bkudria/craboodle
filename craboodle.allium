@@ -1037,8 +1037,10 @@ rule BeginLintStreaming {
 -- Per-scenario lint invocations run concurrently up to invocation.concurrency.
 -- Each scenario's effective config is first resolved via scuttlerun dry_run
 -- (the same invocation shape as list and run, against the staged base), and
--- the resolved prompt and tool list ground pincenez lint: the prompt enables
--- tautology detection, the tool list grounds tool-availability judgments.
+-- the resolved prompt, tool list and transcript legend ground pincenez lint:
+-- the prompt enables tautology detection, the tool list grounds
+-- tool-availability judgments, and the legend says what the scenario's
+-- transcript will record.
 -- Invocations that fail are logged to stderr but do not create a result;
 -- if no invocation succeeds, the run exits 4 (see ExitLintNoInvocations).
 rule LintInvokePincenez {
@@ -1054,6 +1056,7 @@ rule LintInvokePincenez {
                 checks_config: scenario.checks_config,
                 context: resolved?.prompt,
                 available_tools: resolved?.tools,
+                transcript_legend: resolved?.legend,
                 grader_model_override: inv.grader_model_override),
             checks_total: pincenez_lint_total(scenario.checks_config),
             checks_with_issues: pincenez_lint_issue_count(scenario.checks_config),
@@ -1572,19 +1575,26 @@ contract PincenezLint {
     lint: (checks_config: ChecksConfig,
            context: String?,
            available_tools: List<String>?,
+           transcript_legend: String?,
            grader_model_override: String,
            auth: AuthMode?) -> List<LintedCheck>
 
     @guidance
         -- context is the scenario's resolved prompt; available_tools is the
-        -- resolved (post-merge) tool list. Both are omitted when scuttlerun
-        -- resolution fails — pincenez then lints with degraded grounding
-        -- (no tautology detection, no availability judgments).
+        -- resolved (post-merge) tool list; transcript_legend is the legend:
+        -- block of scuttlerun's dry-run summary, re-serialized as YAML and
+        -- forwarded as --transcript-legend, so lint knows what the
+        -- scenario's transcript records without craboodle or pincenez
+        -- keeping a copy of the format. Each is omitted when scuttlerun
+        -- resolution fails or the summary lacks it (an older scuttlerun
+        -- prints no legend) — pincenez then lints with degraded grounding
+        -- (no tautology detection, no availability judgments, no claims
+        -- about what the transcript records).
         --
         -- auth is the resolved credential preference (LintInvocation.auth).
         -- When non-null it is forwarded verbatim as --auth <mode>; when null
         -- no --auth is passed and pincenez applies its own default. The
-        -- scuttlerun dry-run that produces context and available_tools makes
+        -- scuttlerun dry-run that produces this grounding makes
         -- no API calls and receives no auth.
 }
 

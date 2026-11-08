@@ -11,6 +11,8 @@ const execFileAsync = promisify(execFile);
 
 const CLI_PATH = join(dirname(fileURLToPath(import.meta.url)), '..', 'dist', 'cli.js');
 
+const LINT_YAML = 'checks:\n  - id: check-a\n    check: "alpha check"\n    issues: []\n';
+
 const GRADING_YAML =
   'checks:\n  - id: check-a\n    check: "alpha check"\n    pass: true\n    evidence: "ok"\npass_rate: 1.0\n';
 
@@ -98,5 +100,20 @@ describe('run grading grounding', () => {
 
     const pincenezArgs = await readFile(pincenezArgsFile, 'utf8');
     expect(pincenezArgs).not.toContain('--context');
+  });
+
+  it('forwards the dry-run transcript legend to pincenez lint', async () => {
+    const { code } = await runAndCapture(['lint', tmpDir], {
+      CRABOODLE_STUB_SCUTTLERUN_DRYRUN_STDOUT:
+        'prompt: Write a haiku about crabs\nlegend:\n  not recorded: tool results\n',
+      CRABOODLE_STUB_PINCENEZ_ARGS_FILE: pincenezArgsFile,
+      CRABOODLE_STUB_PINCENEZ_STDOUT: LINT_YAML,
+    });
+    expect(code).toBe(0);
+
+    const lines = (await readFile(pincenezArgsFile, 'utf8')).split('\n');
+    const i = lines.indexOf('--transcript-legend');
+    expect(i).toBeGreaterThan(-1);
+    expect(lines[i + 1]).toBe('not recorded: tool results');
   });
 });

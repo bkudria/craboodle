@@ -831,6 +831,27 @@ prompt: Write a haiku about autumn
       expect(parseDryRunSummary('tools:\n  - Read\n  - 7\n')).toEqual({});
     });
 
+    it('extracts the transcript legend as YAML text', async () => {
+      const { parseDryRunSummary } = await import('../src/output.js');
+      const { parse } = await import('yaml');
+
+      const result = parseDryRunSummary(
+        'prompt: hi\nlegend:\n  tool fields:\n    Bash: command\n  not recorded: tool results\n',
+      );
+      expect(typeof result.transcriptLegend).toBe('string');
+      expect(parse(result.transcriptLegend as string)).toEqual({
+        'tool fields': { Bash: 'command' },
+        'not recorded': 'tool results',
+      });
+    });
+
+    it('omits a legend that is not a mapping', async () => {
+      const { parseDryRunSummary } = await import('../src/output.js');
+
+      expect(parseDryRunSummary('legend: just text\n')).toEqual({});
+      expect(parseDryRunSummary('legend:\n  - a\n')).toEqual({});
+    });
+
     it('returns an empty result for malformed or empty input', async () => {
       const { parseDryRunSummary } = await import('../src/output.js');
 

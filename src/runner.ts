@@ -255,6 +255,7 @@ export interface RunPincenezLintOptions {
   graderModel?: string;
   context?: string;
   availableTools?: string[];
+  transcriptLegend?: string;
   auth?: string;
   signal?: AbortSignal;
 }
@@ -265,7 +266,8 @@ export type LintSubprocessResult =
 export async function runPincenezLint(
   options: RunPincenezLintOptions,
 ): Promise<LintSubprocessResult> {
-  const { checksPath, graderModel, context, availableTools, auth, signal } = options;
+  const { checksPath, graderModel, context, availableTools, transcriptLegend, auth, signal } =
+    options;
 
   const args: string[] = ['lint'];
   if (graderModel) {
@@ -279,6 +281,9 @@ export async function runPincenezLint(
   }
   if (availableTools && availableTools.length > 0) {
     args.push('--available-tools', availableTools.join(','));
+  }
+  if (transcriptLegend) {
+    args.push('--transcript-legend', transcriptLegend);
   }
   args.push(checksPath);
 

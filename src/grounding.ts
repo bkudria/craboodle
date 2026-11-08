@@ -4,6 +4,7 @@ import { parseDryRunSummary } from './output.js';
 export interface ScenarioGrounding {
   context?: string;
   availableTools?: string[];
+  transcriptLegend?: string;
 }
 
 export type GroundingPurpose = 'lint' | 'grading';
@@ -43,5 +44,8 @@ export async function resolveScenarioGrounding(
   return {
     ...(summary.prompt !== undefined ? { context: summary.prompt } : {}),
     ...(summary.tools !== undefined ? { availableTools: summary.tools } : {}),
+    ...(summary.transcriptLegend !== undefined
+      ? { transcriptLegend: summary.transcriptLegend }
+      : {}),
   };
 }
