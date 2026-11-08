@@ -47,3 +47,12 @@ ordered by priority.
   from `hook:` entries; facts about a hook's input still need its log. The
   header provenance entry in scuttlerun's IDEAS.md is what lets such a run
   state which CLI version the facts held for.
+- **Build before `npm publish`.** The release workflow's publish job runs
+  `npm publish` right after `npm ci`, so `dist/` exists only once
+  `prepublishOnly` builds it. npm checks `bin` before that script runs: the
+  0.4.0 publish logged "No bin file found at dist/cli.js" and that
+  `bin[craboodle]` "was invalid and removed". The published tarball kept `bin`
+  and an executable `dist/cli.js` (checked by downloading it), so the warning
+  is noise today, but it would hide a real loss of the command if npm began
+  enforcing it. Shape: an `npm run build` step before `npm publish` in
+  `release-please.yml`.
