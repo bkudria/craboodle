@@ -7,22 +7,14 @@ might come next. Entries come from a hand-driven probe of Claude Code hooks on
 scuttlerun's IDEAS.md holds the transcript changes these depend on. Not
 ordered by priority.
 
-- **Fix the hook-and-settings example.** Its scenario carries the note
-  "PreToolUse hooks may not fire in all Agent SDK modes", its check asserts
-  the hook's echo "appears in the transcript", which scuttlerun never carries
-  and the pincenez judge is told to fail, and the `init` hooks placeholder
-  says to assert against side effects. Settings-defined hooks do fire under
-  the TypeScript SDK: fabrica's suite registers SessionStart, PreToolUse and
-  PostToolUse hooks through `project.settings`, and every scenario passed
-  with them active. Phase 1 now: delete the note, have the hook append to a
-  file under `$CLAUDE_PROJECT_DIR`, point the check's `note` at it (the judge
-  reads it; see pincenez's file-reading entry). Phase 2 once scuttlerun emits
-  `hook:` entries: assert on them (fired for every Bash call, exit_code 0,
-  output present) and change the `init` placeholder to say so. This example
-  is the only end-to-end proof of the hook channel, since the vitest suite
-  cannot exercise the SDK; keep it to one rep in CI. The same stale caveat
-  sits in the claude-code-evals skill's config-type-patterns reference, an
-  edit under skillcraft's gate.
+- **Retire the stale hook caveat in the claude-code-evals skill.** The
+  hook-and-settings example now asserts on `hook:` entries (scuttlerun
+  0.5.0+), and its "PreToolUse hooks may not fire in all Agent SDK modes"
+  note is gone. The same caveat still sits in the claude-code-evals skill's
+  config-type-patterns reference; settings and plugin hooks do fire under the
+  TypeScript SDK. The edit is under skillcraft's gate. The example remains
+  the only end-to-end proof of the hook channel, since the vitest suite cannot
+  exercise the SDK; keep it to one rep in CI.
 - **Regrading kept transcripts.** Iterating on check wording re-ran whole
   sessions; the hand loop that avoided it (find the newest run dir under
   /var/folders by `ls -dt`, two retries on an aliased ls, then pincenez per
@@ -51,5 +43,7 @@ ordered by priority.
   regression on a commit, so it does not belong in examples; if kept, it
   lives next to its consumer (fabrica's evals) with only the facts that
   design leans on, and two of the listed facts are model behaviour or need a
-  scripted second turn. The header provenance entry in scuttlerun's IDEAS.md
-  is what lets such a run state which CLI version the facts held for.
+  scripted second turn. Facts about what a hook printed can now be graded
+  from `hook:` entries; facts about a hook's input still need its log. The
+  header provenance entry in scuttlerun's IDEAS.md is what lets such a run
+  state which CLI version the facts held for.

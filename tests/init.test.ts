@@ -301,7 +301,8 @@ describe('init', () => {
       join(initDir, 'evals', 'hooks-placeholder', 'checks.yaml'),
       'utf8',
     );
-    expect(checksRaw).toMatch(/side effect|blocked|mutated/i);
+    expect(checksRaw).toMatch(/^#\s+-\s+hook-ran:/m);
+    expect(checksRaw).toContain('`hook: <Event>:<matcher>`');
   });
 
   it('plugin mode: scaffolds an mcp-servers-placeholder when .mcp.json exists', async () => {

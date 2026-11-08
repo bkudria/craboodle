@@ -74,16 +74,14 @@ function renderPlaceholderScenario(
         `#   max_turns: 4\n`,
       checksYaml:
         `# Placeholder checks for hooks. Uncomment and edit.\n` +
-        `# Hooks are observed via their side effects on the transcript and the project tree:\n` +
-        `#   - a tool call that would otherwise have happened is blocked (PreToolUse deny)\n` +
-        `#   - a tool call's input was mutated before execution\n` +
-        `#   - a file the hook owns was written / updated\n` +
-        `# There is no direct \`tool: hook\` entry — assert against the observable result.\n` +
+        `# Each hook that runs surfaces in the transcript as a \`hook: <Event>:<matcher>\` entry\n` +
+        `# (e.g. \`hook: PreToolUse:Bash\`) with its outcome, exit_code, stdout and stderr; a\n` +
+        `# PreToolUse or PostToolUse entry follows the tool call it answered.\n` +
         `checks: []\n` +
         `# checks:\n` +
-        `#   - hook-side-effect-observed:\n` +
-        `#       check: 'TODO: describe the observable side effect the hook should produce'\n` +
-        `#       note: 'Plugin-component check: hooks are observed by their side effects, not direct tool calls'\n`,
+        `#   - hook-ran:\n` +
+        `#       check: 'A \`hook: <Event>:<matcher>\` entry with exit_code 0 appears in the transcript (replace <Event> and <matcher> with the hook you expect)'\n` +
+        `#       note: 'Plugin-component check: verifies the hook ran and what it printed'\n`,
     };
   }
   if (componentType === 'command') {
