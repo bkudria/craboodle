@@ -7,14 +7,6 @@ might come next. Entries come from a hand-driven probe of Claude Code hooks on
 scuttlerun's IDEAS.md holds the transcript changes these depend on. Not
 ordered by priority.
 
-- **Retire the stale hook caveat in the claude-code-evals skill.** The
-  hook-and-settings example now asserts on `hook:` entries (scuttlerun
-  0.5.0+), and its "PreToolUse hooks may not fire in all Agent SDK modes"
-  note is gone. The same caveat still sits in the claude-code-evals skill's
-  config-type-patterns reference; settings and plugin hooks do fire under the
-  TypeScript SDK. The edit is under skillcraft's gate. The example remains
-  the only end-to-end proof of the hook channel, since the vitest suite cannot
-  exercise the SDK; keep it to one rep in CI.
 - **Regrading kept transcripts.** Iterating on check wording re-ran whole
   sessions; the hand loop that avoided it (find the newest run dir under
   /var/folders by `ls -dt`, two retries on an aliased ls, then pincenez per
@@ -44,9 +36,13 @@ ordered by priority.
   lives next to its consumer (fabrica's evals) with only the facts that
   design leans on, and two of the listed facts are model behaviour or need a
   scripted second turn. Facts about what a hook printed can now be graded
-  from `hook:` entries; facts about a hook's input still need its log. The
-  header provenance entry in scuttlerun's IDEAS.md is what lets such a run
-  state which CLI version the facts held for.
+  from `hook:` entries, and whether a PreToolUse hook blocked the call from
+  its `result:` entry (scuttlerun 0.6.0+), whose `is_error` is true when it
+  does. A call that went through has a result entry only if it is a Bash,
+  AskUserQuestion or ExitPlanMode call, and a timeout or interrupt can leave
+  any call without one. Facts about a hook's input still need its log.
+  The header provenance entry in scuttlerun's IDEAS.md is what lets such a
+  run state which CLI version the facts held for.
 - **Build before `npm publish`.** The release workflow's publish job runs
   `npm publish` right after `npm ci`, so `dist/` exists only once
   `prepublishOnly` builds it. npm checks `bin` before that script runs: the
