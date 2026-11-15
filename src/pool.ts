@@ -82,10 +82,10 @@ export async function executePool<T>(
 
   const skipDecision = (): PoolSkip | undefined => {
     if (options?.isInterrupted?.()) return new PoolSkip('interrupted', 'Interrupted (SIGINT)');
+    if (options?.shouldAbort?.()) return new PoolSkip('fail_fast', 'Aborted (fail-fast)');
     if (budgetExceeded) {
       return new PoolSkip('budget', `Budget exceeded ($${totalCost.toFixed(4)} > $${budgetUsd})`);
     }
-    if (options?.shouldAbort?.()) return new PoolSkip('fail_fast', 'Aborted (fail-fast)');
     return undefined;
   };
   const admit = (): void => {

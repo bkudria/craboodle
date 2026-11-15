@@ -103,7 +103,7 @@ value RepFailureEvidence {
 
 value RepError {
     rep: Integer
-    stage: scuttlerun | pincenez | fail_fast | budget
+    stage: scuttlerun | pincenez | fail_fast | budget | interrupted
     error: String
     exit_code: Integer?
     transcript: String?

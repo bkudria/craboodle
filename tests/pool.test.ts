@@ -486,6 +486,20 @@ describe('pool', () => {
         });
       });
 
+      it('labels the skip fail_fast when both fail-fast and the budget have tripped', async () => {
+        const { executePool } = await import('../src/pool.js');
+        let abort = false;
+        const { workItems } = tripThenAdmit(() => (abort = true));
+
+        const results = await executePool(workItems, workItems.length, {
+          budgetUsd: 0.5,
+          costOf: (data: { cost: number }) => data.cost,
+          shouldAbort: () => abort,
+        });
+
+        expect(results.get('s2')?.[0]).toMatchObject({ type: 'error', reason: 'fail_fast' });
+      });
+
       it('lets the item run when nothing has tripped', async () => {
         const { executePool } = await import('../src/pool.js');
         const { workItems, laterWorkRan } = tripThenAdmit(() => {});

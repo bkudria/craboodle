@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { writeFile, mkdir, readFile, rm } from 'node:fs/promises';
+import { writeFile, mkdir, readdir, rm } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { makeTmpDir } from './_fixtures.js';
 import { fileURLToPath } from 'node:url';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { stringify } from 'yaml';
+import { parse, stringify } from 'yaml';
 
 const execFileAsync = promisify(execFile);
 
@@ -285,9 +285,10 @@ describe('cli exit codes (unified taxonomy)', () => {
     });
 
     describe('reps still queued for a session slot', () => {
-      // With --concurrency 1 and a 0.3s session, rep N's slot opens at about
-      // N*0.3s while each grading finishes within milliseconds of its session,
-      // so by the third slot the first rep's outcome is known.
+      // With --concurrency 1 and a 0.3s session, the k-th session slot opens
+      // at about (k-1)*0.3s. Each session is graded well within the next
+      // session's 0.3s, so by the third slot the first outcome is known and
+      // only two sessions start.
       const SLOW_SESSION = '0.3';
 
       async function writeScenario(id: string) {
@@ -299,43 +300,42 @@ describe('cli exit codes (unified taxonomy)', () => {
         );
       }
 
-      async function sessionCount(argsFile: string): Promise<number> {
-        const blocks = (await readFile(argsFile, 'utf8')).split('===\n');
-        return blocks.filter((b) => b.trim() !== '' && !b.startsWith('--dry-run\n')).length;
+      // A rep's dir is created before its slot is acquired, but output.yaml
+      // is written only by a session that ran.
+      async function sessionCount(stdout: string): Promise<number> {
+        const { artifact_dir: artifactDir } = parse(stdout) as { artifact_dir: string };
+        const files = await readdir(artifactDir, { recursive: true });
+        return files.filter((f) => f.endsWith('output.yaml')).length;
       }
 
       it('skips them once max_budget_usd is exceeded, without starting their sessions', async () => {
         await writeEvals({ version: '1', max_budget_usd: 1, scenarios: { base: {} } });
         await writeAlpha();
-        const argsFile = join(tmpDir, 'scuttlerun-args');
         const { code, stdout } = await runAndCaptureAll(
           ['run', '--repeats', '3', '--concurrency', '1', tmpDir],
           {
             CRABOODLE_STUB_SCUTTLERUN_STDOUT: 'cost_usd: 999\n',
             CRABOODLE_STUB_SCUTTLERUN_SLEEP: SLOW_SESSION,
-            CRABOODLE_STUB_SCUTTLERUN_ARGS_FILE: argsFile,
             CRABOODLE_STUB_PINCENEZ_STDOUT: gradingYaml(true),
           },
         );
         expect(code).toBe(5);
-        expect(await sessionCount(argsFile)).toBe(2);
+        expect(await sessionCount(stdout)).toBe(2);
         expect(stdout).toContain('stage: budget');
       });
 
       it('aborts them once a scenario breaches min_pass_rate, without starting their sessions', async () => {
         await writeEvals({ version: '1', min_pass_rate: 1, scenarios: { base: {} } });
         for (const id of ['alpha', 'beta', 'gamma']) await writeScenario(id);
-        const argsFile = join(tmpDir, 'scuttlerun-args');
         const { code, stdout } = await runAndCaptureAll(
           ['run', '--repeats', '1', '--concurrency', '1', tmpDir],
           {
             CRABOODLE_STUB_SCUTTLERUN_SLEEP: SLOW_SESSION,
-            CRABOODLE_STUB_SCUTTLERUN_ARGS_FILE: argsFile,
             CRABOODLE_STUB_PINCENEZ_STDOUT: gradingYaml(false),
           },
         );
         expect(code).toBe(3);
-        expect(await sessionCount(argsFile)).toBe(2);
+        expect(await sessionCount(stdout)).toBe(2);
         expect(stdout).toContain('stage: fail_fast');
       });
     });
