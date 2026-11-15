@@ -235,8 +235,8 @@ describe('cli regrade', () => {
       alpha: [
         { rep: 2 },
         { rep: 5 },
-        { rep: 7, grading: false },
-        { rep: 8, grading: 'pass_rate: 1\n' },
+        { rep: 7, transcript: transcript(PROMPT, 0.07), grading: false },
+        { rep: 8, transcript: transcript(PROMPT, 0.08), grading: 'pass_rate: 1\n' },
         { rep: 9, transcript: false, grading: false },
       ],
     });
@@ -282,42 +282,70 @@ describe('cli regrade', () => {
       'rep-8',
       'rep-9',
     ]);
+    for (const rep of [7, 8]) {
+      const copied = join(doc.artifact_dir, 'alpha', `rep-${rep}`, 'output.yaml');
+      expect(await readFile(copied, 'utf8')).toBe(
+        await readFile(join(source, 'alpha', `rep-${rep}`, 'output.yaml'), 'utf8'),
+      );
+    }
+    expect(await readdir(join(doc.artifact_dir, 'alpha', 'rep-9'))).toEqual([]);
 
-    const second = await regrade([root, doc.artifact_dir]);
+    const second = await regrade(['--concurrency', '1', root, doc.artifact_dir]);
 
+    // The first regrade copied rep 8's transcript but not its invalid
+    // grading, so from there rep 8 was never graded.
+    const firstRun = (rep: number) => join(doc.artifact_dir, 'alpha', `rep-${rep}`);
     const again = parse(second.stdout).scenarios[0].alpha;
-    expect(again.errors.map((e: { rep: number; stage: string }) => [e.rep, e.stage])).toEqual([
-      [7, 'source'],
-      [8, 'source'],
-      [9, 'source'],
+    expect(again.errors).toEqual([
+      {
+        rep: 7,
+        stage: 'source',
+        error: `source rep was not graded (no grading.yaml): ${firstRun(7)}`,
+        transcript: 'alpha/rep-7/output.yaml',
+      },
+      {
+        rep: 8,
+        stage: 'source',
+        error: `source rep was not graded (no grading.yaml): ${firstRun(8)}`,
+        transcript: 'alpha/rep-8/output.yaml',
+      },
+      {
+        rep: 9,
+        stage: 'source',
+        error: `source rep has no transcript (no output.yaml): ${firstRun(9)}`,
+      },
     ]);
     expect(again.error_rate).toBe(0.6);
   });
-  it('reports a transcript it cannot copy as a source error for that rep', async () => {
-    await writeSourceRun(source, { alpha: [{ rep: 1 }, { rep: 2 }] });
-    const unreadable = join(source, 'alpha', 'rep-2', 'output.yaml');
-    await chmod(unreadable, 0o000);
+  // chmod cannot make a file unreadable to root.
+  it.skipIf(process.getuid?.() === 0)(
+    'reports a transcript it cannot copy as a source error for that rep',
+    async () => {
+      await writeSourceRun(source, { alpha: [{ rep: 1 }, { rep: 2 }] });
+      const unreadable = join(source, 'alpha', 'rep-2', 'output.yaml');
+      await chmod(unreadable, 0o000);
 
-    try {
-      const { stdout } = await regrade([root, source]);
+      try {
+        const { stdout } = await regrade([root, source]);
 
-      const alpha = parse(stdout).scenarios[0].alpha;
-      expect(alpha.pass_rate).toBe(1);
-      expect(alpha.errors).toEqual([
-        {
-          rep: 2,
-          stage: 'source',
-          error: expect.stringMatching(
-            new RegExp(
-              `^could not copy the source transcript \\(.+\\): ${join(source, 'alpha', 'rep-2')}$`,
+        const alpha = parse(stdout).scenarios[0].alpha;
+        expect(alpha.pass_rate).toBe(1);
+        expect(alpha.errors).toEqual([
+          {
+            rep: 2,
+            stage: 'source',
+            error: expect.stringMatching(
+              new RegExp(
+                `^could not copy the source transcript \\(.+\\): ${join(source, 'alpha', 'rep-2')}$`,
+              ),
             ),
-          ),
-        },
-      ]);
-    } finally {
-      await chmod(unreadable, 0o644);
-    }
-  });
+          },
+        ]);
+      } finally {
+        await chmod(unreadable, 0o644);
+      }
+    },
+  );
 
   it('exits no_successful_reps, with a stderr line per rep, when no source rep was graded', async () => {
     await writeSourceRun(source, {
@@ -373,6 +401,41 @@ describe('cli regrade', () => {
     ]);
     expect(await pincenezCalls()).toHaveLength(1);
   });
+  it('keeps an ungraded source rep a source error when a budget cut skips the rest', async () => {
+    await writeRoot({ evals: { max_budget_usd: 0.1 } });
+    await writeSourceRun(source, { alpha: [{ rep: 1 }, { rep: 2 }, { rep: 3, grading: false }] });
+
+    const { code, stdout } = await regrade(['--concurrency', '1', root, source], {
+      CRABOODLE_STUB_PINCENEZ_STDOUT: grading({ costUsd: 0.2 }),
+    });
+
+    expect(code).toBe(5);
+    const errors = parse(stdout).scenarios[0].alpha.errors;
+    expect(errors).toEqual([
+      expect.objectContaining({
+        rep: 3,
+        stage: 'source',
+        error: `source rep was not graded (no grading.yaml): ${join(source, 'alpha', 'rep-3')}`,
+      }),
+      expect.objectContaining({ rep: 2, stage: 'budget' }),
+    ]);
+    expect(await pincenezCalls()).toHaveLength(1);
+  });
+
+  it('grades up to --concurrency reps at once', async () => {
+    await writeSourceRun(source, { alpha: [{ rep: 1 }, { rep: 2 }] });
+    const barrier = join(workDir, 'barrier');
+    await mkdir(barrier);
+
+    const { code, stdout } = await regrade(['--concurrency', '2', root, source], {
+      CRABOODLE_STUB_PINCENEZ_BARRIER: barrier,
+      CRABOODLE_STUB_PINCENEZ_BARRIER_COUNT: '2',
+    });
+
+    expect(code).toBe(0);
+    expect(parse(stdout).scenarios[0].alpha).not.toHaveProperty('errors');
+  });
+
   it('grounds grading as run does: resolved prompt, grader model and auth', async () => {
     await writeSourceRun(source, { alpha: [{ rep: 1 }] });
 
