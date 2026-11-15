@@ -20,17 +20,15 @@ import {
 } from '../stage-b-load.js';
 import { prepareRun } from '../prepare-run.js';
 import {
-  averageResults,
   evaluateGate,
   resolveRunVerdict,
-  scenarioErrorRate,
   streamHeader,
   streamScenarioYaml,
   streamTotalCost,
   streamVerdict,
-  type GradingCheck,
   type ScenarioOutput,
 } from '../output.js';
+import { summarizeScenario } from '../scenario-summary.js';
 import { EXIT_INFRA_ERROR, EXIT_SIGINT } from '../exit-codes.js';
 
 // Resolve the scenario's prompt once, shared across all reps; lazy so
@@ -267,78 +265,8 @@ async function runCommandInner(
       budgetExceeded = true;
     },
     onScenarioComplete: (scenarioId, repResults) => {
-      const successfulGradings: GradingCheck[][] = [];
-      const repTranscripts: string[] = [];
-      const errors: NonNullable<ScenarioOutput['errors']> = [];
-      let agentCost = 0;
-      let gradingCost = 0;
-      const round4 = (n: number) => Math.round(n * 10000) / 10000;
-
-      for (const result of repResults) {
-        if (result.type === 'success') {
-          const outcome = result.data;
-          if (outcome.type === 'success') {
-            successfulGradings.push(outcome.grading);
-            repTranscripts.push(outcome.transcriptPath);
-            hasAnySuccess = true;
-            if (outcome.costUsd !== null) {
-              agentCost += outcome.costUsd;
-            }
-            if (outcome.gradingCostUsd !== null) {
-              gradingCost += outcome.gradingCostUsd;
-            }
-          } else {
-            if (outcome.costUsd !== null) {
-              agentCost += outcome.costUsd;
-            }
-            errors.push({
-              rep: outcome.rep,
-              stage: outcome.stage,
-              error: outcome.message,
-              ...(outcome.exitCode !== undefined ? { exit_code: outcome.exitCode } : {}),
-              ...(outcome.transcriptPath ? { transcript: outcome.transcriptPath } : {}),
-              ...(outcome.costUsd !== null ? { agent_cost_usd: round4(outcome.costUsd) } : {}),
-            });
-          }
-        } else {
-          errors.push({
-            rep: result.rep,
-            stage: result.reason ?? 'unknown',
-            error: result.error,
-          });
-        }
-      }
-
-      let scenarioOutput: ScenarioOutput;
-
-      const totalScenarioCost = agentCost + gradingCost;
-      const costFields = {
-        ...(totalScenarioCost > 0 ? { cost_usd: round4(totalScenarioCost) } : {}),
-        ...(agentCost > 0 ? { agent_cost_usd: round4(agentCost) } : {}),
-        ...(gradingCost > 0 ? { grading_cost_usd: round4(gradingCost) } : {}),
-      };
-      const errorRate = scenarioErrorRate(successfulGradings.length, errors);
-
-      if (successfulGradings.length === 0) {
-        scenarioOutput = {
-          id: scenarioId,
-          checks: [],
-          pass_rate: null,
-          error_rate: errorRate,
-          ...costFields,
-          errors,
-        };
-      } else {
-        const averaged = averageResults(successfulGradings, repTranscripts);
-        scenarioOutput = {
-          id: scenarioId,
-          checks: averaged.checks,
-          pass_rate: averaged.pass_rate,
-          error_rate: errorRate,
-          ...costFields,
-          ...(errors.length > 0 ? { errors } : {}),
-        };
-      }
+      const { output: scenarioOutput, anySuccess } = summarizeScenario(scenarioId, repResults);
+      hasAnySuccess ||= anySuccess;
 
       scenarioOutputs.push(scenarioOutput);
       streamScenarioYaml(scenarioOutput, { artifactDir });
