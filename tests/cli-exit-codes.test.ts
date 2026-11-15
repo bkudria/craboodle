@@ -300,12 +300,16 @@ describe('cli exit codes (unified taxonomy)', () => {
         );
       }
 
-      // A rep's dir is created before its slot is acquired, but output.yaml
-      // is written only by a session that ran.
-      async function sessionCount(stdout: string): Promise<number> {
+      // output.yaml is written only by a session that ran; a rep the pool
+      // skipped leaves no rep dir at all, so a later regrade never mistakes
+      // it for a crashed rep.
+      async function artifacts(stdout: string): Promise<{ repDirs: string[]; sessions: number }> {
         const { artifact_dir: artifactDir } = parse(stdout) as { artifact_dir: string };
         const files = await readdir(artifactDir, { recursive: true });
-        return files.filter((f) => f.endsWith('output.yaml')).length;
+        return {
+          repDirs: files.filter((f) => /rep-\d+$/.test(f)).sort(),
+          sessions: files.filter((f) => f.endsWith('output.yaml')).length,
+        };
       }
 
       it('skips them once max_budget_usd is exceeded, without starting their sessions', async () => {
@@ -320,7 +324,10 @@ describe('cli exit codes (unified taxonomy)', () => {
           },
         );
         expect(code).toBe(5);
-        expect(await sessionCount(stdout)).toBe(2);
+        expect(await artifacts(stdout)).toEqual({
+          repDirs: [join('alpha', 'rep-1'), join('alpha', 'rep-2')],
+          sessions: 2,
+        });
         expect(stdout).toContain('stage: budget');
       });
 
@@ -335,7 +342,10 @@ describe('cli exit codes (unified taxonomy)', () => {
           },
         );
         expect(code).toBe(3);
-        expect(await sessionCount(stdout)).toBe(2);
+        expect(await artifacts(stdout)).toEqual({
+          repDirs: [join('alpha', 'rep-1'), join('beta', 'rep-1')],
+          sessions: 2,
+        });
         expect(stdout).toContain('stage: fail_fast');
       });
     });

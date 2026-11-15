@@ -171,15 +171,15 @@ async function runCommandInner(
         rep,
         fn: async (admit): Promise<RepOutcome> => {
           const repDir = join(artifactDir, scenario.id, `rep-${rep}`);
-          await mkdir(repDir, { recursive: true });
-
           const outputPath = join(repDir, 'output.yaml');
           const gradingPath = join(repDir, 'grading.yaml');
 
           const stageA = async (): Promise<StageAResult> => {
             // The pool starts every item at once; a rep is dispatched only
             // when it gets its session slot, so that is where it is skipped.
+            // A skipped rep leaves no rep dir behind.
             admit();
+            await mkdir(repDir, { recursive: true });
             if (opts.verbose) {
               process.stderr.write(`[craboodle] ${scenario.id} rep ${rep}: running scuttlerun\n`);
             }
