@@ -11,7 +11,23 @@ function requireGet<K, V>(map: Map<K, V>, key: K, label: string): V {
 export interface WorkItem<T> {
   scenarioId: string;
   rep: number;
-  fn: () => Promise<T>;
+  /**
+   * `admit` throws when the pool would no longer start new work. An item that
+   * waits on its own limits before doing work calls it once that wait is over,
+   * so the skip decision is taken when the work really begins.
+   */
+  fn: (admit: () => void) => Promise<T>;
+}
+
+type SkipReason = 'fail_fast' | 'budget' | 'interrupted';
+
+class PoolSkip extends Error {
+  constructor(
+    readonly reason: SkipReason,
+    message: string,
+  ) {
+    super(message);
+  }
 }
 
 export type WorkResult<T> =
@@ -20,7 +36,7 @@ export type WorkResult<T> =
       type: 'error';
       rep: number;
       error: string;
-      reason?: 'fail_fast' | 'budget' | 'interrupted';
+      reason?: SkipReason;
     };
 
 export interface PoolOptions<T> {
@@ -64,34 +80,38 @@ export async function executePool<T>(
   const budgetUsd = options?.budgetUsd;
   const costOf = options?.costOf;
 
+  const skipDecision = (): PoolSkip | undefined => {
+    if (options?.isInterrupted?.()) return new PoolSkip('interrupted', 'Interrupted (SIGINT)');
+    if (options?.shouldAbort?.()) return new PoolSkip('fail_fast', 'Aborted (fail-fast)');
+    if (budgetExceeded) {
+      return new PoolSkip('budget', `Budget exceeded ($${totalCost.toFixed(4)} > $${budgetUsd})`);
+    }
+    return undefined;
+  };
+  const admit = (): void => {
+    const skip = skipDecision();
+    if (skip) throw skip;
+  };
+  const recordSkip = (item: WorkItem<T>, skip: PoolSkip): void => {
+    requireGet(results, item.scenarioId, 'executePool').push({
+      type: 'error',
+      rep: item.rep,
+      error: skip.message,
+      reason: skip.reason,
+    });
+    onItemDone?.(item.scenarioId);
+  };
+
   const promises = workItems.map((item) =>
     limit(async () => {
-      const interrupted = options?.isInterrupted?.() ?? false;
-      if (budgetExceeded || interrupted || options?.shouldAbort?.()) {
-        let reason: 'fail_fast' | 'budget' | 'interrupted';
-        let error: string;
-        if (interrupted) {
-          reason = 'interrupted';
-          error = 'Interrupted (SIGINT)';
-        } else if (budgetExceeded) {
-          reason = 'budget';
-          error = `Budget exceeded ($${totalCost.toFixed(4)} > $${budgetUsd})`;
-        } else {
-          reason = 'fail_fast';
-          error = 'Aborted (fail-fast)';
-        }
-        requireGet(results, item.scenarioId, 'executePool').push({
-          type: 'error',
-          rep: item.rep,
-          error,
-          reason,
-        });
-        onItemDone?.(item.scenarioId);
+      const skip = skipDecision();
+      if (skip) {
+        recordSkip(item, skip);
         return;
       }
 
       try {
-        const data = await item.fn();
+        const data = await item.fn(admit);
         requireGet(results, item.scenarioId, 'executePool').push({
           type: 'success',
           rep: item.rep,
@@ -110,6 +130,10 @@ export async function executePool<T>(
           }
         }
       } catch (err: unknown) {
+        if (err instanceof PoolSkip) {
+          recordSkip(item, err);
+          return;
+        }
         requireGet(results, item.scenarioId, 'executePool').push({
           type: 'error',
           rep: item.rep,

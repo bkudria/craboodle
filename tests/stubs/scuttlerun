@@ -8,13 +8,17 @@
 # CRABOODLE_STUB_SCUTTLERUN_STDOUT emits transcript stdout on real runs
 # (combined with _EXIT, simulates a crash that leaves a partial transcript);
 # CRABOODLE_STUB_SCUTTLERUN_DRYRUN_STDOUT / _DRYRUN_EXIT control --dry-run
-# invocations separately from real runs.
+# invocations separately from real runs; CRABOODLE_STUB_SCUTTLERUN_SLEEP
+# delays each real run by that many seconds before it prints and exits.
 if [ -n "${CRABOODLE_STUB_SCUTTLERUN_ARGS_FILE:-}" ]; then
   printf '%s\n' "$@" '===' >> "$CRABOODLE_STUB_SCUTTLERUN_ARGS_FILE"
 fi
 if [ "${1:-}" = "--dry-run" ]; then
   printf '%s' "${CRABOODLE_STUB_SCUTTLERUN_DRYRUN_STDOUT:-}"
   exit "${CRABOODLE_STUB_SCUTTLERUN_DRYRUN_EXIT:-0}"
+fi
+if [ -n "${CRABOODLE_STUB_SCUTTLERUN_SLEEP:-}" ]; then
+  sleep "$CRABOODLE_STUB_SCUTTLERUN_SLEEP"
 fi
 printf '%s' "${CRABOODLE_STUB_SCUTTLERUN_STDOUT:-}"
 exit "${CRABOODLE_STUB_SCUTTLERUN_EXIT:-0}"

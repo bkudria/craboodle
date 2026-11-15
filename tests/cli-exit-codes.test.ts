@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { writeFile, mkdir, rm } from 'node:fs/promises';
+import { writeFile, mkdir, readdir, rm } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { makeTmpDir } from './_fixtures.js';
 import { fileURLToPath } from 'node:url';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { stringify } from 'yaml';
+import { parse, stringify } from 'yaml';
 
 const execFileAsync = promisify(execFile);
 
@@ -282,6 +282,72 @@ describe('cli exit codes (unified taxonomy)', () => {
       expect(code).toBe(5);
       expect(stdout.endsWith('result: budget_exceeded\nexit_code: 5\n')).toBe(true);
       expect(stderr).toContain('Budget exceeded');
+    });
+
+    describe('reps still queued for a session slot', () => {
+      // With --concurrency 1 and a 0.3s session, the k-th session slot opens
+      // at about (k-1)*0.3s. Each session is graded well within the next
+      // session's 0.3s, so by the third slot the first outcome is known and
+      // only two sessions start.
+      const SLOW_SESSION = '0.3';
+
+      async function writeScenario(id: string) {
+        await mkdir(join(tmpDir, 'evals', id), { recursive: true });
+        await writeFile(join(tmpDir, 'evals', id, 'scenario.yaml'), stringify({ prompt: 'p\n' }));
+        await writeFile(
+          join(tmpDir, 'evals', id, 'checks.yaml'),
+          stringify({ checks: [{ 'check-a': { check: 'alpha check', note: 'note' } }] }),
+        );
+      }
+
+      // output.yaml is written only by a session that ran; a rep the pool
+      // skipped leaves no rep dir at all, so a later regrade never mistakes
+      // it for a crashed rep.
+      async function artifacts(stdout: string): Promise<{ repDirs: string[]; sessions: number }> {
+        const { artifact_dir: artifactDir } = parse(stdout) as { artifact_dir: string };
+        const files = await readdir(artifactDir, { recursive: true });
+        return {
+          repDirs: files.filter((f) => /rep-\d+$/.test(f)).sort(),
+          sessions: files.filter((f) => f.endsWith('output.yaml')).length,
+        };
+      }
+
+      it('skips them once max_budget_usd is exceeded, without starting their sessions', async () => {
+        await writeEvals({ version: '1', max_budget_usd: 1, scenarios: { base: {} } });
+        await writeAlpha();
+        const { code, stdout } = await runAndCaptureAll(
+          ['run', '--repeats', '3', '--concurrency', '1', tmpDir],
+          {
+            CRABOODLE_STUB_SCUTTLERUN_STDOUT: 'cost_usd: 999\n',
+            CRABOODLE_STUB_SCUTTLERUN_SLEEP: SLOW_SESSION,
+            CRABOODLE_STUB_PINCENEZ_STDOUT: gradingYaml(true),
+          },
+        );
+        expect(code).toBe(5);
+        expect(await artifacts(stdout)).toEqual({
+          repDirs: [join('alpha', 'rep-1'), join('alpha', 'rep-2')],
+          sessions: 2,
+        });
+        expect(stdout).toContain('stage: budget');
+      });
+
+      it('aborts them once a scenario breaches min_pass_rate, without starting their sessions', async () => {
+        await writeEvals({ version: '1', min_pass_rate: 1, scenarios: { base: {} } });
+        for (const id of ['alpha', 'beta', 'gamma']) await writeScenario(id);
+        const { code, stdout } = await runAndCaptureAll(
+          ['run', '--repeats', '1', '--concurrency', '1', tmpDir],
+          {
+            CRABOODLE_STUB_SCUTTLERUN_SLEEP: SLOW_SESSION,
+            CRABOODLE_STUB_PINCENEZ_STDOUT: gradingYaml(false),
+          },
+        );
+        expect(code).toBe(3);
+        expect(await artifacts(stdout)).toEqual({
+          repDirs: [join('alpha', 'rep-1'), join('beta', 'rep-1')],
+          sessions: 2,
+        });
+        expect(stdout).toContain('stage: fail_fast');
+      });
     });
 
     it('emits no trailer when the run exits before streaming begins', async () => {
