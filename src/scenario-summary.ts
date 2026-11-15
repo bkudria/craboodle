@@ -20,6 +20,7 @@ export function summarizeScenario(
 ): { output: ScenarioOutput; anySuccess: boolean } {
   const successfulGradings: GradingCheck[][] = [];
   const repTranscripts: string[] = [];
+  const repNumbers: number[] = [];
   const errors: NonNullable<ScenarioOutput['errors']> = [];
   let agentCost = 0;
   let gradingCost = 0;
@@ -30,6 +31,7 @@ export function summarizeScenario(
       if (outcome.type === 'success') {
         successfulGradings.push(outcome.grading);
         repTranscripts.push(outcome.transcriptPath);
+        repNumbers.push(result.rep);
         if (outcome.costUsd !== null) {
           agentCost += outcome.costUsd;
         }
@@ -81,7 +83,7 @@ export function summarizeScenario(
     };
   }
 
-  const averaged = averageResults(successfulGradings, repTranscripts);
+  const averaged = averageResults(successfulGradings, repTranscripts, repNumbers);
   return {
     anySuccess,
     output: {

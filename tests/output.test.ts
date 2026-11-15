@@ -142,6 +142,14 @@ cost_usd: 0.0042
       expect(result.pass_rate).toBe(0);
     });
 
+    it('keeps a check whose text is empty', async () => {
+      const { averageResults } = await import('../src/output.js');
+
+      const result = averageResults([[{ id: 'a1', check: '', pass: true, evidence: 'ok' }]]);
+
+      expect(result.checks).toEqual([{ check: '', pass_rate: 1 }]);
+    });
+
     it('computes pass_rate for a single rep', async () => {
       const { averageResults } = await import('../src/output.js');
 
@@ -346,6 +354,41 @@ cost_usd: 0.0042
       expect(result.checks[0].failures).toEqual([
         { rep: 2, evidence: 'missing X', transcript: 'session: two\n' },
       ]);
+    });
+
+    it('labels failures with the rep numbers given, not their position among gradings', async () => {
+      const { averageResults } = await import('../src/output.js');
+
+      const repGradings = [
+        [{ id: 'a1', check: 'test', pass: false, evidence: 'first' }],
+        [{ id: 'a1', check: 'test', pass: false, evidence: 'second' }],
+      ];
+
+      const result = averageResults(repGradings, ['t2', 't5'], [2, 5]);
+
+      expect(result.checks[0].failures).toEqual([
+        { rep: 2, evidence: 'first', transcript: 't2' },
+        { rep: 5, evidence: 'second', transcript: 't5' },
+      ]);
+    });
+
+    it('names the given rep numbers when check ids differ between reps', async () => {
+      const { averageResults } = await import('../src/output.js');
+      const warn = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+
+      averageResults(
+        [
+          [{ id: 'a1', check: 'test', pass: true, evidence: 'ok' }],
+          [{ id: 'b1', check: 'other', pass: true, evidence: 'ok' }],
+        ],
+        undefined,
+        [2, 5],
+      );
+
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('rep 5 check ids differ from rep 2'),
+      );
+      warn.mockRestore();
     });
   });
 

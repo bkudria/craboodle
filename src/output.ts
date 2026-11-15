@@ -164,13 +164,19 @@ export function parseGrading(yaml: string): GradingResult {
   };
 }
 
+/**
+ * `repNumbers[i]` is the rep that produced `repGradings[i]`; without it, reps
+ * are numbered by position.
+ */
 export function averageResults(
   repGradings: GradingCheck[][],
   repTranscripts?: string[],
+  repNumbers?: number[],
 ): { checks: CheckOutput[]; pass_rate: number } {
   if (repGradings.length === 0) {
     return { checks: [], pass_rate: 0 };
   }
+  const repLabel = (i: number) => repNumbers?.[i] ?? i + 1;
 
   const idOrder: string[] = [];
   const idToCheck = new Map<string, string>();
@@ -193,7 +199,7 @@ export function averageResults(
       if (missing.length > 0) parts.push(`missing: ${missing.join(', ')}`);
       if (extra.length > 0) parts.push(`extra: ${extra.join(', ')}`);
       process.stderr.write(
-        `[craboodle] rep ${rep + 1} check ids differ from rep 1 — ${parts.join('; ')}\n`,
+        `[craboodle] rep ${repLabel(rep)} check ids differ from rep ${repLabel(0)} — ${parts.join('; ')}\n`,
       );
     }
   }
@@ -202,7 +208,7 @@ export function averageResults(
 
   for (const id of idOrder) {
     const check = idToCheck.get(id);
-    if (!check) {
+    if (check === undefined) {
       throw new Error(`internal: idOrder includes id "${id}" missing from idToCheck`);
     }
     let passSum = 0;
@@ -214,7 +220,7 @@ export function averageResults(
         passSum += 1;
       } else {
         failures.push({
-          rep: rep + 1,
+          rep: repLabel(rep),
           evidence: result?.evidence ?? '(check missing from this rep)',
           ...(repTranscripts?.[rep] ? { transcript: repTranscripts[rep] } : {}),
         });

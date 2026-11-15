@@ -47,6 +47,14 @@ describe('summarizeScenario', () => {
     });
   });
 
+  it('labels a failing check with the rep it failed in when an earlier rep was not graded', () => {
+    const { output } = summarizeScenario('alpha', [failed(1), graded(2, false)]);
+
+    expect(output.checks[0].failures).toEqual([
+      { rep: 2, evidence: 'rep 2', transcript: '/art/alpha/rep-2/output.yaml' },
+    ]);
+  });
+
   it('sums agent and grading cost across reps, rounded to four places', () => {
     const { output } = summarizeScenario('alpha', [
       graded(1, true, { agent: 0.11111, grading: 0.02 }),
