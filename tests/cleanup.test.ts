@@ -1,14 +1,23 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { tmpdir } from 'node:os';
-import { mkdir, rm, stat, utimes } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, stat, symlink, utimes } from 'node:fs/promises';
 import { join } from 'node:path';
 
 describe('cleanOldArtifacts', () => {
+  // cleanOldArtifacts sweeps $TMPDIR, so each test gets a private one: no
+  // other process's dirs are swept, and the counts are exact.
+  const originalTmpdir = process.env.TMPDIR;
   let tmpDir: string;
-  // We test in the real tmpdir since that's where cleanOldArtifacts looks
 
   beforeEach(async () => {
-    tmpDir = tmpdir();
+    tmpDir = await mkdtemp(join(tmpdir(), 'craboodle-cleanup-test-'));
+    process.env.TMPDIR = tmpDir;
+  });
+
+  afterEach(async () => {
+    if (originalTmpdir === undefined) delete process.env.TMPDIR;
+    else process.env.TMPDIR = originalTmpdir;
+    await rm(tmpDir, { recursive: true });
   });
 
   async function createOldDir(name: string, daysOld: number): Promise<string> {
@@ -31,7 +40,7 @@ describe('cleanOldArtifacts', () => {
 
     try {
       const cleaned = await cleanOldArtifacts(7);
-      expect(cleaned).toBeGreaterThanOrEqual(1);
+      expect(cleaned).toBe(1);
       await expect(stat(oldDir)).rejects.toThrow();
     } finally {
       await rm(oldDir, { recursive: true }).catch(() => {});
@@ -91,7 +100,7 @@ describe('cleanOldArtifacts', () => {
 
     try {
       const cleaned = await cleanOldArtifacts(7);
-      expect(cleaned).toBeGreaterThanOrEqual(1);
+      expect(cleaned).toBe(1);
       await expect(stat(oldDir)).rejects.toThrow();
     } finally {
       await rm(oldDir, { recursive: true }).catch(() => {});
@@ -125,7 +134,7 @@ describe('cleanOldArtifacts', () => {
 
     try {
       const cleaned = await cleanOldArtifacts(7, { verbose: true });
-      expect(cleaned).toBeGreaterThanOrEqual(1);
+      expect(cleaned).toBe(1);
       expect(stderrOutput).toContain('Cleaned');
     } finally {
       spy.mockRestore();
@@ -174,5 +183,60 @@ describe('cleanOldArtifacts error handling', () => {
 
     vi.doUnmock('node:fs/promises');
     vi.resetModules();
+  });
+});
+
+describe('cleanOldArtifacts keep', () => {
+  // TMPDIR is a symlink to a real dir, so each kept path can be named either
+  // through the link (as the sweep lists it) or by its real path.
+  const originalTmpdir = process.env.TMPDIR;
+  let realDir: string;
+  let linkDir: string;
+
+  beforeEach(async () => {
+    realDir = await mkdtemp(join(tmpdir(), 'craboodle-cleanup-keep-test-'));
+    linkDir = `${realDir}-link`;
+    await symlink(realDir, linkDir);
+    process.env.TMPDIR = linkDir;
+  });
+
+  afterEach(async () => {
+    if (originalTmpdir === undefined) delete process.env.TMPDIR;
+    else process.env.TMPDIR = originalTmpdir;
+    await rm(linkDir);
+    await rm(realDir, { recursive: true });
+  });
+
+  async function createOldRunDir(name: string): Promise<string> {
+    const dirPath = join(linkDir, name);
+    await mkdir(dirPath);
+    const past = new Date(Date.now() - 30 * 86_400_000);
+    await utimes(dirPath, past, past);
+    return dirPath;
+  }
+
+  it.each([
+    ['its real path', () => join(realDir, 'craboodle-run-kept')],
+    ['the path the sweep lists', () => join(linkDir, 'craboodle-run-kept')],
+  ])('keeps an old dir named by %s and still removes the others', async (_form, keptPath) => {
+    const { cleanOldArtifacts } = await import('../src/cleanup.js');
+    const kept = await createOldRunDir('craboodle-run-kept');
+    const other = await createOldRunDir('craboodle-run-other');
+
+    const cleaned = await cleanOldArtifacts(7, { keep: [keptPath()] });
+
+    expect(cleaned).toBe(1);
+    expect((await stat(kept)).isDirectory()).toBe(true);
+    await expect(stat(other)).rejects.toThrow();
+  });
+
+  it('ignores a keep path that does not exist', async () => {
+    const { cleanOldArtifacts } = await import('../src/cleanup.js');
+    const other = await createOldRunDir('craboodle-run-other');
+
+    const cleaned = await cleanOldArtifacts(7, { keep: [join(realDir, 'missing')] });
+
+    expect(cleaned).toBe(1);
+    await expect(stat(other)).rejects.toThrow();
   });
 });

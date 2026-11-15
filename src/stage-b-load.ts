@@ -49,10 +49,14 @@ export interface LoadStageBInput {
   gradingPath: string;
   outputPath: string;
   rep: number;
+  /** When false, the transcript's agent cost is not this outcome's (default true). */
+  attributeAgentCost?: boolean;
 }
 
 export async function loadStageBResult(input: LoadStageBInput): Promise<RepOutcome> {
   const { gradingPath, outputPath, rep } = input;
+  const agentCost = (): Promise<number | null> =>
+    input.attributeAgentCost === false ? Promise.resolve(null) : readTranscriptCost(outputPath);
 
   let gradingResult;
   try {
@@ -65,12 +69,12 @@ export async function loadStageBResult(input: LoadStageBInput): Promise<RepOutco
       rep,
       stage: 'pincenez',
       message: `failed to read or parse grading.yaml: ${detail}`,
-      costUsd: await readTranscriptCost(outputPath),
+      costUsd: await agentCost(),
       transcriptPath: outputPath,
     };
   }
 
-  const costUsd = await readTranscriptCost(outputPath);
+  const costUsd = await agentCost();
   return {
     type: 'success',
     grading: gradingResult.checks,

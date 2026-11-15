@@ -2,28 +2,11 @@
 
 Candidate future directions — under consideration, not commitments.
 [GOALS.md](GOALS.md) describes what is built and why; this file holds what
-might come next. Entries come from a hand-driven probe of Claude Code hooks on
-2026-11-04 and the fabrica eval suite run with craboodle the same day;
-scuttlerun's IDEAS.md holds the transcript changes these depend on. Not
+might come next. Most entries come from a hand-driven probe of Claude Code
+hooks on 2026-11-04 and the fabrica eval suite run with craboodle the same
+day; scuttlerun's IDEAS.md holds the transcript changes those depend on. Not
 ordered by priority.
 
-- **Regrading kept transcripts.** Iterating on check wording re-ran whole
-  sessions; the hand loop that avoided it (find the newest run dir under
-  /var/folders by `ls -dt`, two retries on an aliased ls, then pincenez per
-  rep) graded without the `--context` craboodle passes, so its verdicts were
-  not comparable to a run — and artifact_dir had been line 1 of the saved
-  output all along. Every ingredient exists: artifacts are preserved per rep,
-  pincenez grades any file, and the grounding context is
-  `scuttlerun --dry-run` parsed for `prompt`. Now: document the per-rep
-  one-liner with `--context "$(scuttlerun --dry-run … | yq .prompt)"` in
-  `--help`. Open: a `regrade` subcommand that reuses an artifact_dir's
-  transcripts, re-resolves grounding from the current scenario and writes a
-  new run dir naming its source would reproduce run grounding and isolate
-  grader variance from agent variance, but it is the first command consuming
-  a prior run's artifacts and grazes "each run is independent"; scope it as
-  reuse-these-transcripts, never a comparison, and warn when the dry-run
-  prompt differs. Promote only if regrading after check rewording keeps
-  recurring.
 - **A hook-facts suite (weak).** One scenario per headless-reproducible probe
   fact (PostToolUse on AskUserQuestion carries `tool_response.answers` keyed
   by question text; the transcript tail at PreToolUse lacks the current
@@ -52,3 +35,9 @@ ordered by priority.
   is noise today, but it would hide a real loss of the command if npm began
   enforcing it. Shape: an `npm run build` step before `npm publish` in
   `release-please.yml`.
+- **`regrade --repeats`.** Grade each kept transcript N times to measure
+  grader variance apart from agent variance. Deferred because it changes
+  what a rep is: today a regrade has exactly its source's reps, so pass_rate
+  and error_rate count transcripts, and N gradings of one transcript would
+  weigh it N times and need a rep numbering that no longer matches the
+  source's rep-N dirs.

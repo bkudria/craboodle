@@ -5,8 +5,20 @@
 # (newline-separated, '===' between invocations); CRABOODLE_STUB_PINCENEZ_STDOUT
 # is printed as the grading result, which lets a test feed craboodle a valid
 # grading document and exercise the success paths.
+# CRABOODLE_STUB_PINCENEZ_BARRIER names a dir: each invocation adds a file to
+# it and waits, for up to 5s, until _BARRIER_COUNT invocations have, exiting 9
+# if they never do. A test that needs N gradings to run at once sets it.
 if [ -n "${CRABOODLE_STUB_PINCENEZ_ARGS_FILE:-}" ]; then
   printf '%s\n' "$@" '===' >> "$CRABOODLE_STUB_PINCENEZ_ARGS_FILE"
+fi
+if [ -n "${CRABOODLE_STUB_PINCENEZ_BARRIER:-}" ]; then
+  : > "$CRABOODLE_STUB_PINCENEZ_BARRIER/$$"
+  tries=0
+  while [ "$(ls "$CRABOODLE_STUB_PINCENEZ_BARRIER" | wc -l)" -lt "$CRABOODLE_STUB_PINCENEZ_BARRIER_COUNT" ]; do
+    tries=$((tries + 1))
+    [ "$tries" -gt 100 ] && exit 9
+    sleep 0.05
+  done
 fi
 if [ -n "${CRABOODLE_STUB_PINCENEZ_STDOUT:-}" ]; then
   printf '%s\n' "$CRABOODLE_STUB_PINCENEZ_STDOUT"

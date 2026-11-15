@@ -28,7 +28,7 @@ npm run test:coverage # vitest with v8 coverage
 
 ## Project overview
 
-TypeScript CLI that orchestrates eval pipelines. Reads `<root>/evals.yaml`, discovers `<root>/evals/*/scenario.yaml` directories, stages a filtered view of `<root>` (excluding the scenarios dir), passes scenario.yaml to scuttlerun and checks.yaml to pincenez, averages across repetitions, and streams results as YAML.
+TypeScript CLI that orchestrates eval pipelines. Reads `<root>/evals.yaml`, discovers `<root>/evals/*/scenario.yaml` directories, stages a filtered view of `<root>` (excluding the scenarios dir), passes scenario.yaml to scuttlerun and checks.yaml to pincenez, averages across repetitions, and streams results as YAML. `craboodle regrade <root> <artifact_dir>` re-grades a previous run's kept transcripts against the current checks without running any session, streaming a run of its own.
 
 See [GOALS.md](GOALS.md) for design philosophy and [craboodle.allium](craboodle.allium) for the behavioural specification.
 
@@ -43,6 +43,9 @@ See [GOALS.md](GOALS.md) for design philosophy and [craboodle.allium](craboodle.
 - `src/pool.ts` — Flat (scenario, rep) work pool with concurrency control
 - `src/runner.ts` — scuttlerun/pincenez subprocess invocation
 - `src/output.ts` — Results averaging and streaming YAML output
+- `src/scenario-summary.ts` — Folds a scenario's rep results into its streamed block
+- `src/regrade-source.ts` — Reads a regrade's source run dir and compares its transcripts' prompts with the current ones
+- `src/commands/grading-stage.ts` — Grading, scenario streaming and verdict shared by run and regrade
 - `src/cleanup.ts` — Old artifact directory cleanup (craboodle-run-_ and craboodle-staged-_)
 
 ## Key decisions

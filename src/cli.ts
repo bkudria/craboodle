@@ -9,6 +9,7 @@ import { formatCommandError } from './errors.js';
 import { HELP_TEXT } from './help-text.js';
 import { parseAuth, parseConcurrency } from './cli-utils.js';
 import { runCommand } from './commands/run.js';
+import { regradeCommand } from './commands/regrade.js';
 import { listCommand } from './commands/list.js';
 import { lintCommand } from './commands/lint.js';
 import { initCommand } from './commands/init.js';
@@ -62,6 +63,36 @@ program
         concurrency: parseInt(cmdOpts.concurrency, 10),
         timeout: cmdOpts.timeout,
         agentModel: cmdOpts.agentModel,
+        graderModel: cmdOpts.graderModel,
+        auth: cmdOpts.auth,
+        scenarios: cmdOpts.scenarios,
+        verbose: !!cmdOpts.verbose,
+      });
+    } catch (err: unknown) {
+      process.stderr.write(formatCommandError(err));
+      process.exit(EXIT_RUNTIME_ERROR);
+    }
+  });
+
+program
+  .command('regrade <root> <artifact_dir>')
+  .description("Re-grade a previous run's kept transcripts against the current checks")
+  .option('--concurrency <n>', 'Max parallel pincenez invocations', parseConcurrency, 10)
+  .option(
+    '--scenario, --scenarios <pattern>',
+    'Filter scenarios by ID (exact, glob, or comma-separated)',
+  )
+  .option('--grader-model <model>', 'Override pincenez model for all checks')
+  .option(
+    '--auth <mode>',
+    'Credential preference forwarded to pincenez: auto (subscription when present), subscription, or api-key (overrides evals.yaml auth)',
+    parseAuth,
+  )
+  .option('-v, --verbose', 'Verbose logging (to stderr)')
+  .action(async (root: string, artifactDir: string, cmdOpts: Record<string, string>) => {
+    try {
+      await regradeCommand(root, artifactDir, {
+        concurrency: parseInt(cmdOpts.concurrency, 10),
         graderModel: cmdOpts.graderModel,
         auth: cmdOpts.auth,
         scenarios: cmdOpts.scenarios,

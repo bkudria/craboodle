@@ -2,23 +2,21 @@ import { dirname, join, resolve } from 'node:path';
 import { mkdir, mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import pLimit from 'p-limit';
-import { formatErrorWithHint } from '../errors.js';
 import { parseTimeoutFlag, resolveRepeatsFromRawFlag } from '../config.js';
 import { cleanOldArtifacts } from '../cleanup.js';
-import { filterScenarios } from '../discovery.js';
 import { runScuttlerun } from '../runner.js';
-import { findMissingBinaries, formatMissingBinariesError } from '../preflight.js';
 import { executePool, type WorkItem } from '../pool.js';
 import { runStaged } from '../staged.js';
 import { readTranscriptCost, repOutcomeCost, type RepOutcome } from '../stage-b-load.js';
 import { prepareRun } from '../prepare-run.js';
 import { streamHeader } from '../output.js';
-import { EXIT_INFRA_ERROR } from '../exit-codes.js';
 import {
   finishGrading,
   gradeRep,
   makeGroundingResolver,
   makeScenarioStreamer,
+  requireCompanionBinaries,
+  selectRootScenarios,
   withInterruptHandling,
 } from './grading-stage.js';
 
@@ -47,12 +45,7 @@ async function runCommandInner(
 ): Promise<void> {
   const resolvedRoot = resolve(root);
 
-  // Pre-flight: companion CLIs must be on PATH
-  const missing = await findMissingBinaries(['scuttlerun', 'pincenez']);
-  if (missing.length > 0) {
-    process.stderr.write(formatMissingBinariesError(missing));
-    process.exit(EXIT_INFRA_ERROR);
-  }
+  await requireCompanionBinaries();
 
   // Parse the timeout flag early so validation errors surface before staging.
   const cliTimeout = parseTimeoutFlag(opts.timeout);
@@ -63,33 +56,7 @@ async function runCommandInner(
   // `timeout:` field; evals.yaml's top-level `timeout:` is the fallback.
   const prepared = await prepareRun(resolvedRoot, { cliTimeout });
   const { basePath, pipeline } = prepared;
-  let scenarios = prepared.scenarios;
-
-  if (scenarios.length === 0) {
-    process.stderr.write(
-      formatErrorWithHint(
-        `No scenarios found in ${resolvedRoot}`,
-        `craboodle init ${resolvedRoot}`,
-        'craboodle --help',
-      ),
-    );
-    process.exit(EXIT_INFRA_ERROR);
-  }
-
-  // Apply scenario filter
-  if (opts.scenarios) {
-    scenarios = filterScenarios(scenarios, opts.scenarios);
-    if (scenarios.length === 0) {
-      process.stderr.write(
-        formatErrorWithHint(
-          `No scenarios match filter: ${opts.scenarios}`,
-          `craboodle list ${resolvedRoot} to see available IDs`,
-          'craboodle --help',
-        ),
-      );
-      process.exit(EXIT_INFRA_ERROR);
-    }
-  }
+  const scenarios = selectRootScenarios(prepared.scenarios, resolvedRoot, opts.scenarios);
 
   if (opts.verbose) {
     process.stderr.write(`[craboodle] Found ${scenarios.length} scenario(s)\n`);

@@ -1,24 +1,36 @@
-import { readdir, stat, rm } from 'node:fs/promises';
+import { readdir, realpath, stat, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 const PREFIXES = ['craboodle-run-', 'craboodle-staged-'];
 const MS_PER_DAY = 86_400_000;
 
+async function realpathOrNull(path: string): Promise<string | null> {
+  try {
+    return await realpath(path);
+  } catch {
+    return null;
+  }
+}
+
 /**
- * Remove craboodle artifact directories older than maxAgeDays from $TMPDIR.
+ * Remove craboodle artifact directories older than maxAgeDays from $TMPDIR,
+ * except those in `keep`, which are compared by real path.
  * Best-effort: failures are silently ignored.
  * Returns count of directories removed.
  * If maxAgeDays is 0, cleanup is disabled and the function returns 0.
  */
 export async function cleanOldArtifacts(
   maxAgeDays: number,
-  options: { verbose?: boolean } = {},
+  options: { verbose?: boolean; keep?: string[] } = {},
 ): Promise<number> {
   if (maxAgeDays === 0) {
     return 0;
   }
   const tmp = tmpdir();
+  const kept = new Set(
+    (await Promise.all((options.keep ?? []).map(realpathOrNull))).filter((p) => p !== null),
+  );
   const cutoff = Date.now() - maxAgeDays * MS_PER_DAY;
   let cleaned = 0;
 
@@ -30,6 +42,7 @@ export async function cleanOldArtifacts(
 
       const dirPath = join(tmp, entry.name);
       try {
+        if (kept.has(await realpath(dirPath))) continue;
         const info = await stat(dirPath);
         if (info.mtimeMs < cutoff) {
           await rm(dirPath, { recursive: true });
