@@ -398,6 +398,105 @@ describe('pool', () => {
       }
     });
 
+    describe('admission check passed to a started item', () => {
+      // A caller that throttles work inside the item (run's per-stage limits)
+      // starts every item at once, so the pool's own start-time check sees
+      // nothing tripped yet. The admission check applies the same decision
+      // at the moment the item is really about to begin its work.
+      const tripThenAdmit = (trip: () => void) => {
+        let laterWorkRan = false;
+        let release!: () => void;
+        const firstDone = new Promise<void>((resolve) => (release = resolve));
+        const workItems = [
+          {
+            scenarioId: 's1',
+            rep: 1,
+            fn: async () => {
+              // Trip only after a timer tick, so s2 is already past the
+              // pool's start-time check.
+              await new Promise((r) => setTimeout(r, 0));
+              trip();
+              release();
+              return { cost: 0.6 };
+            },
+          },
+          {
+            scenarioId: 's2',
+            rep: 1,
+            fn: async (admit: () => void) => {
+              await firstDone;
+              await new Promise((r) => setTimeout(r, 0));
+              admit();
+              laterWorkRan = true;
+              return { cost: 0.6 };
+            },
+          },
+        ];
+        return { workItems, laterWorkRan: () => laterWorkRan };
+      };
+
+      it('skips the item with reason budget once the budget tripped after it started', async () => {
+        const { executePool } = await import('../src/pool.js');
+        const { workItems, laterWorkRan } = tripThenAdmit(() => {});
+
+        const results = await executePool(workItems, workItems.length, {
+          budgetUsd: 0.5,
+          costOf: (data: { cost: number }) => data.cost,
+        });
+
+        expect(laterWorkRan()).toBe(false);
+        const s2 = results.get('s2')?.[0];
+        expect(s2).toMatchObject({ type: 'error', rep: 1, reason: 'budget' });
+        expect(s2?.type === 'error' && s2.error).toContain('Budget exceeded');
+      });
+
+      it('skips the item with reason fail_fast once shouldAbort turned true after it started', async () => {
+        const { executePool } = await import('../src/pool.js');
+        let abort = false;
+        const { workItems, laterWorkRan } = tripThenAdmit(() => (abort = true));
+
+        const results = await executePool(workItems, workItems.length, {
+          shouldAbort: () => abort,
+        });
+
+        expect(laterWorkRan()).toBe(false);
+        expect(results.get('s2')?.[0]).toEqual({
+          type: 'error',
+          rep: 1,
+          error: 'Aborted (fail-fast)',
+          reason: 'fail_fast',
+        });
+      });
+
+      it('skips the item with reason interrupted once isInterrupted turned true after it started', async () => {
+        const { executePool } = await import('../src/pool.js');
+        let interrupted = false;
+        const { workItems, laterWorkRan } = tripThenAdmit(() => (interrupted = true));
+
+        const results = await executePool(workItems, workItems.length, {
+          isInterrupted: () => interrupted,
+        });
+
+        expect(laterWorkRan()).toBe(false);
+        expect(results.get('s2')?.[0]).toEqual({
+          type: 'error',
+          rep: 1,
+          error: 'Interrupted (SIGINT)',
+          reason: 'interrupted',
+        });
+      });
+
+      it('lets the item run when nothing has tripped', async () => {
+        const { executePool } = await import('../src/pool.js');
+        const { workItems, laterWorkRan } = tripThenAdmit(() => {});
+
+        const results = await executePool(workItems, workItems.length);
+
+        expect(laterWorkRan()).toBe(true);
+        expect(results.get('s2')?.[0]).toMatchObject({ type: 'success', rep: 1 });
+      });
+    });
+
     it('fires onScenarioComplete for abort-skipped items', async () => {
       const { executePool } = await import('../src/pool.js');
 

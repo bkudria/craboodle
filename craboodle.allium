@@ -632,10 +632,13 @@ rule DispatchWorkItem {
         else if item.invocation.budget_exceeded:
             item.failure_message = "Budget exceeded"
     @guidance
-        -- The "running" branch is what the impl calls "admitted to the pool":
         -- Stage A (scuttlerun) and Stage B (pincenez) each have their own
         -- semaphore sized at invocation.concurrency, so up to 2 * concurrency
-        -- items can be in flight at once. The transcript is written to
+        -- items can be in flight at once. An item is dispatched when it
+        -- acquires its Stage A slot, not when the pool first takes it up:
+        -- the pool takes up every item at once and leaves the throttling to
+        -- the stage semaphores, so a decision taken any earlier would see no
+        -- fail-fast or budget outcome yet. The transcript is written to
         -- <artifact_dir>/<scenario.id>/rep-N/output.yaml and the grading to
         -- <artifact_dir>/<scenario.id>/rep-N/grading.yaml. In-flight reps
         -- whose invocation later trips fail-fast or budget still finish;
