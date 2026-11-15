@@ -124,6 +124,7 @@ export interface ScenarioOutput {
   cost_usd?: number;
   agent_cost_usd?: number;
   grading_cost_usd?: number;
+  prompt_changed?: boolean;
   errors?: Array<{
     rep: number;
     stage: string;
@@ -349,8 +350,13 @@ function serializeTopLevel(item: Record<string, unknown>): string {
   return doc.toString({ lineWidth: LINE_WIDTH });
 }
 
-export function streamHeader(artifactDir: string): void {
-  process.stdout.write(serializeTopLevel({ artifact_dir: artifactDir }));
+export function streamHeader(artifactDir: string, sourceArtifactDir?: string): void {
+  process.stdout.write(
+    serializeTopLevel({
+      artifact_dir: artifactDir,
+      ...(sourceArtifactDir !== undefined ? { source_artifact_dir: sourceArtifactDir } : {}),
+    }),
+  );
   process.stdout.write('scenarios:\n');
 }
 
@@ -382,6 +388,10 @@ export function streamScenarioYaml(
     checks,
     pass_rate: scenario.pass_rate,
   };
+
+  if (scenario.prompt_changed) {
+    content.prompt_changed = true;
+  }
 
   if (scenario.error_rate !== undefined && scenario.error_rate > 0) {
     content.error_rate = Math.round(scenario.error_rate * 100) / 100;

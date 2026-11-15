@@ -567,9 +567,43 @@ cost_usd: 0.0042
 
       expect(written).toBe('artifact_dir: /tmp/craboodle-run-abc\nscenarios:\n');
     });
+
+    it('writes source_artifact_dir after artifact_dir when given', async () => {
+      const { streamHeader } = await import('../src/output.js');
+
+      streamHeader('/new', '/src');
+
+      expect(written).toBe('artifact_dir: /new\nsource_artifact_dir: /src\nscenarios:\n');
+    });
   });
 
   describe('streamScenarioYaml', () => {
+    it('emits prompt_changed: true right after pass_rate when set', async () => {
+      const { streamScenarioYaml } = await import('../src/output.js');
+
+      streamScenarioYaml({
+        id: 'test',
+        checks: [{ check: 'test', pass_rate: 1.0 }],
+        pass_rate: 0.5,
+        error_rate: 0.5,
+        prompt_changed: true,
+        errors: [{ rep: 2, stage: 'source', error: 'not graded' }],
+      });
+
+      expect(written).toContain(
+        'pass_rate: 0.5\n      prompt_changed: true\n      error_rate: 0.5\n',
+      );
+    });
+
+    it('omits prompt_changed when false or absent', async () => {
+      const { streamScenarioYaml } = await import('../src/output.js');
+
+      streamScenarioYaml({ id: 'a', checks: [], pass_rate: 1, prompt_changed: false });
+      streamScenarioYaml({ id: 'b', checks: [], pass_rate: 1 });
+
+      expect(written).not.toContain('prompt_changed');
+    });
+
     it('writes atomic YAML block for a scenario', async () => {
       const { streamScenarioYaml } = await import('../src/output.js');
 
@@ -1345,6 +1379,23 @@ prompt: Write a haiku about autumn
       expect(parsed.scenarios[0]['scenario-a'].pass_rate).toBe(0.83);
       expect(Object.keys(parsed.scenarios[1])[0]).toBe('scenario-b');
       expect(parsed.scenarios[1]['scenario-b'].pass_rate).toBe(1.0);
+    });
+
+    it('produces valid YAML for a regrade header and a drifted scenario', async () => {
+      const { parse } = await import('yaml');
+      const { streamHeader, streamScenarioYaml } = await import('../src/output.js');
+
+      streamHeader('/tmp/craboodle-run-new', '/tmp/craboodle-run-src');
+      streamScenarioYaml({
+        id: 'x',
+        checks: [{ check: 'passes', pass_rate: 1.0 }],
+        pass_rate: 1.0,
+        prompt_changed: true,
+      });
+
+      const parsed = parse(written);
+      expect(parsed.source_artifact_dir).toBe('/tmp/craboodle-run-src');
+      expect(parsed.scenarios[0].x.prompt_changed).toBe(true);
     });
 
     it('stays valid YAML with total cost and verdict trailer appended', async () => {
