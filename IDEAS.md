@@ -24,8 +24,9 @@ ordered by priority.
   does. A call that went through has a result entry only if it is a Bash,
   AskUserQuestion or ExitPlanMode call, and a timeout or interrupt can leave
   any call without one. Facts about a hook's input still need its log.
-  The header provenance entry in scuttlerun's IDEAS.md is what lets such a
-  run state which CLI version the facts held for.
+  scuttlerun's transcript header names the Claude Code version
+  (`claude_code`, bkudria/scuttlerun#118), so such a run states which CLI
+  version the facts held for.
 - **Build before `npm publish`.** The release workflow's publish job runs
   `npm publish` right after `npm ci`, so `dist/` exists only once
   `prepublishOnly` builds it. npm checks `bin` before that script runs: the
