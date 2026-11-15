@@ -720,7 +720,9 @@ rule DispatchWorkItem {
         -- acquires its Stage A slot, not when the pool first takes it up:
         -- the pool takes up every item at once and leaves the throttling to
         -- the stage semaphores, so a decision taken any earlier would see no
-        -- fail-fast or budget outcome yet. The transcript is written to
+        -- fail-fast or budget outcome yet. Only a dispatched item gets a
+        -- <artifact_dir>/<scenario.id>/rep-N/ dir, so the artifact dir
+        -- never shows an aborted or skipped rep. The transcript is written to
         -- <artifact_dir>/<scenario.id>/rep-N/output.yaml and the grading to
         -- <artifact_dir>/<scenario.id>/rep-N/grading.yaml. In-flight reps
         -- whose invocation later trips fail-fast or budget still finish;
