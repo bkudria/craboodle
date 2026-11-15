@@ -47,7 +47,8 @@ interface StagedRep {
 }
 
 // Every source rep gets its rep dir and transcript copy before any grading,
-// so a regrade's own artifact dir has the same rep population as its source.
+// so for every scenario it regrades, a regrade's own artifact dir has the
+// same rep population as its source.
 async function stageSourceRep(
   artifactDir: string,
   scenarioId: string,

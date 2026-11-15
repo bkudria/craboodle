@@ -155,8 +155,9 @@ export function planRegradeScenarios<T extends { id: string }>(
 
 /**
  * The transcript's first conversation entry, when it is a user message: the
- * prompt the session was started with. Only the first document is read, and
- * a malformed later entry does not hide a readable first one.
+ * prompt the session was started with. Only the first document's
+ * conversation is used, and a malformed later entry does not hide a readable
+ * first one.
  */
 export function readFirstUserPrompt(transcriptYaml: string): string | undefined {
   const [doc] = parseAllDocuments(transcriptYaml);

@@ -147,15 +147,15 @@ Only directories matching the `craboodle-run-` or `craboodle-staged-` prefixes a
 
 Subset of the shared scuttlerun/pincenez/craboodle taxonomy — see [scuttlerun/README.md#exit-codes](https://github.com/bkudria/scuttlerun#exit-codes) for the canonical table. Source: [`src/exit-codes.ts`](src/exit-codes.ts).
 
-| Code | Meaning                                                                                                    |
-| ---- | ---------------------------------------------------------------------------------------------------------- |
-| 0    | Pipeline completed                                                                                         |
-| 1    | Refusal (list found invalid scenarios; lint reported issues)                                               |
-| 2    | Load failure (`evals.yaml` schema/version/range) or runtime error                                          |
-| 3    | Threshold failure (`min_pass_rate` ratchet)                                                                |
-| 4    | Infrastructure/dependency error (no scenarios, empty filter, zero successful reps, invalid regrade source) |
-| 5    | Budget exhausted (`max_budget_usd`)                                                                        |
-| 130  | Interrupted (SIGINT)                                                                                       |
+| Code | Meaning                                                                                                                                               |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0    | Pipeline completed                                                                                                                                    |
+| 1    | Refusal (list found invalid scenarios; lint reported issues)                                                                                          |
+| 2    | Load failure (`evals.yaml` schema/version/range) or runtime error                                                                                     |
+| 3    | Threshold failure (`min_pass_rate` ratchet)                                                                                                           |
+| 4    | Infrastructure/dependency error (no scenarios, empty filter, zero successful reps, invalid regrade source, regrade source and root share no scenario) |
+| 5    | Budget exhausted (`max_budget_usd`)                                                                                                                   |
+| 130  | Interrupted (SIGINT)                                                                                                                                  |
 
 A scuttlerun **rep** that exhausts its budget mid-run does not raise `5` — `5` is craboodle's own `max_budget_usd` cap on the whole run. The SDK reports such a rep as a runtime error (`"Reached maximum budget"` in the scenario's `errors` block), so it crashes and feeds the `4` reliability gate (`max_error_rate`) instead.
 

@@ -152,14 +152,6 @@ value SourceRun {
 -- Enumerations
 -- ============================================================================
 
--- The operator's credential preference. Set by --auth on the run and lint
--- commands, or by the top-level `auth:` key in evals.yaml (the flag wins).
--- api_key corresponds to the `api-key` token used in both the CLI flag and
--- evals.yaml. craboodle never reads, resolves or interprets credentials
--- itself: it treats the mode as an opaque preference and forwards it verbatim
--- to scuttlerun and pincenez, which each resolve the actual credential (see
--- the Scuttlerun / Pincenez contracts). When no preference is set, no --auth
--- is forwarded and the tools apply their own default (auto, prefer-subscription).
 -- How a regraded rep's transcript prompt compares with the scenario's
 -- current resolved prompt.
 enum PromptDrift {
@@ -168,6 +160,14 @@ enum PromptDrift {
   | unchecked
 }
 
+-- The operator's credential preference. Set by --auth on the run, regrade
+-- and lint commands, or by the top-level `auth:` key in evals.yaml (the flag
+-- wins). api_key corresponds to the `api-key` token used in both the CLI flag
+-- and evals.yaml. craboodle never reads, resolves or interprets credentials
+-- itself: it treats the mode as an opaque preference and forwards it verbatim
+-- to scuttlerun and pincenez, which each resolve the actual credential (see
+-- the Scuttlerun / Pincenez contracts). When no preference is set, no --auth
+-- is forwarded and the tools apply their own default (auto, prefer-subscription).
 enum AuthMode {
     auto                          -- defer to the tools' default resolution
   | subscription                  -- forward a subscription preference
@@ -722,7 +722,6 @@ rule DispatchWorkItem {
             item.failure_message = item.source_problem
             item.transcript_path = copied_transcript_path_if_any(item)
             item.agent_cost_usd = null
-            emit_stderr(item.source_problem)
         else if item.invocation.fail_fast_triggered:
             item.failure_message = "Aborted (fail-fast)"
         else if item.invocation.budget_exceeded:
@@ -1108,6 +1107,9 @@ rule BuildRegradeWorkItems {
             source_problem: source_rep_problem(source_rep, inv.artifact_dir),
             status: queued
         )
+        ensures:
+            if source_rep_problem(source_rep, inv.artifact_dir) != null:
+                emit_stderr(source_rep_problem(source_rep, inv.artifact_dir))
     @guidance
         -- Before any rep is dispatched, every one of these source reps gets
         -- its own rep-N directory under artifact_dir (the same N, so gaps
@@ -1143,22 +1145,22 @@ rule CompareRegradePrompt {
         -- tail does not hide a readable first entry.
 }
 
+-- Each warning is emitted by the first of a scenario's reps to reach that
+-- outcome.
 rule WarnRegradePromptChanged {
-    when: inv: RunInvocation.status transitions_to streaming
-    requires: inv.is_regrade
-    for scenario in inv.selected_scenarios:
-        requires: (inv.work_items where scenario = scenario)
-            .any(w => w.prompt_drift = changed)
-        ensures: emit_stderr("Prompt changed since the source run; grading anyway")
+    when: item: WorkItem.prompt_drift becomes changed
+    let siblings = item.invocation.work_items
+        where scenario = item.scenario and rep_number != item.rep_number
+    requires: not siblings.any(w => w.prompt_drift = changed)
+    ensures: emit_stderr("Prompt changed since the source run; grading anyway")
 }
 
 rule WarnRegradePromptUnchecked {
-    when: inv: RunInvocation.status transitions_to streaming
-    requires: inv.is_regrade
-    for scenario in inv.selected_scenarios:
-        requires: (inv.work_items where scenario = scenario)
-            .any(w => w.prompt_drift = unchecked)
-        ensures: emit_stderr("Could not check whether the prompt changed since the source run")
+    when: item: WorkItem.prompt_drift becomes unchecked
+    let siblings = item.invocation.work_items
+        where scenario = item.scenario and rep_number != item.rep_number
+    requires: not siblings.any(w => w.prompt_drift = unchecked)
+    ensures: emit_stderr("Could not check whether the prompt changed since the source run")
 }
 
 -- ============================================================================
