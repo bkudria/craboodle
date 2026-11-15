@@ -3,9 +3,9 @@
 --
 -- Scope: Craboodle eval pipeline orchestrator for Claude Code configurations.
 -- Includes:
---   - The run, list, lint and init CLI commands
+--   - The run, regrade, list, lint and init CLI commands
 --   - Scenario discovery, repetition averaging, streaming YAML output
---   - Ratchet and budget gates (mid-run fail-fast)
+--   - Ratchet and budget gates (mid-run fail-fast; a regrade never fails fast)
 --   - Artifact directory lifecycle and garbage collection
 --   - evals.yaml load-time validation
 --   - Staged filtered view of the eval root (one tempdir per invocation)
@@ -22,8 +22,10 @@
 --   3    ratchet failure (any scenario below min_pass_rate)
 --   4    infrastructure / dependency error
 --          (no scenarios, empty filter, zero successful reps across all
---          scenarios, zero lint invocations succeeded, or a gated scenario's
---          error_rate exceeds max_error_rate)
+--          scenarios, zero lint invocations succeeded, a gated scenario's
+--          error_rate exceeds max_error_rate, a regrade source that is not
+--          a craboodle run directory, or a regrade source and root that
+--          share no scenario)
 --   5    budget exhausted (max_budget_usd reached; mirrors scuttlerun's
 --          exhausted_budget so CI can distinguish budget cutoff from
 --          generic failure)
@@ -103,11 +105,33 @@ value RepFailureEvidence {
 
 value RepError {
     rep: Integer
-    stage: scuttlerun | pincenez | fail_fast | budget | interrupted
+    stage: scuttlerun | pincenez | source | fail_fast | budget | interrupted
     error: String
     exit_code: Integer?
     transcript: String?
-    agent_cost_usd: Decimal?                 -- the failed rep's agent cost parsed from its transcript; present when the transcript carries one
+    agent_cost_usd: Decimal?                 -- the failed rep's agent cost parsed from its transcript; present when the transcript carries one; never in a regrade
+}
+
+-- One rep-N directory of a regrade's source run, as found on disk. A rep is
+-- regradable iff it holds a transcript (output.yaml) and a grading.yaml that
+-- parses; a rep whose grader failed in the source run is therefore not
+-- regraded.
+value SourceRep {
+    scenario_id: String
+    rep_number: Integer                      -- N of rep-N, kept as the regrade's own rep number
+    rep_dir: String
+    has_transcript: Boolean
+    grading_parses: Boolean
+}
+
+-- What a regrade found at the directory the operator named. A run
+-- directory is recognised by structure: some <id>/rep-<N>/ directory under
+-- it holds an output.yaml or a grading.yaml. Its name is irrelevant, so a
+-- run copied out of the temp dir is still a source.
+value SourceRun {
+    shape: missing | not_a_directory | not_a_run | run
+    real_path: String?                       -- the directory with symlinks resolved; present when shape = run
+    reps: List<SourceRep>                    -- every rep-N directory, empty unless shape = run
 }
 
 -- ============================================================================
@@ -122,6 +146,14 @@ value RepError {
 -- to scuttlerun and pincenez, which each resolve the actual credential (see
 -- the Scuttlerun / Pincenez contracts). When no preference is set, no --auth
 -- is forwarded and the tools apply their own default (auto, prefer-subscription).
+-- How a regraded rep's transcript prompt compares with the scenario's
+-- current resolved prompt.
+enum PromptDrift {
+    same
+  | changed
+  | unchecked
+}
+
 enum AuthMode {
     auto                          -- defer to the tools' default resolution
   | subscription                  -- forward a subscription preference
@@ -230,16 +262,24 @@ entity StagedView {
 -- Invocations (one entity per CLI command, each with its own lifecycle)
 -- ============================================================================
 
+-- A run grades reps and streams the results. A fresh run (craboodle run)
+-- produces each rep's transcript with a scuttlerun session; a regrade
+-- (craboodle regrade) takes them from a source run's kept transcripts
+-- instead and runs no session. A regrade is a run of its own: it has its own
+-- artifact_dir and goes through the same aggregation, streaming, gates and
+-- verdict.
 entity RunInvocation {
     operator: Operator
     eval_root: EvalRoot
-    repeats: Integer
+    repeats: Integer?                       -- null for a regrade, whose reps are its source's
     concurrency: Integer
     timeout: Integer?                       -- null = let scuttlerun apply its own default
     scenario_filter: String?
     agent_model_override: String?
     grader_model_override: String?
     auth: AuthMode?                         -- resolved credential preference (CLI flag > evals.yaml); null = no --auth forwarded
+    source_artifact_dir: String?            -- set iff a regrade: the source run dir as the operator named it, made absolute
+    source: SourceRun?                      -- set iff a regrade: what was found at source_artifact_dir
 
     status: starting | discovering | streaming | completed | failed
     exit_code: Integer when status = completed | failed
@@ -251,12 +291,21 @@ entity RunInvocation {
     work_items: Set<WorkItem> with invocation = this
     scenario_results: Set<ScenarioResult> with invocation = this
 
+    is_regrade: source_artifact_dir != null
+
     -- Projections
-    selected_scenarios:
+    filtered_scenarios:
         if scenario_filter != null:
             eval_root.scenarios where matches_pattern(id, scenario_filter)
         else:
             eval_root.scenarios
+
+    -- A regrade grades only the scenarios both its root and its source have.
+    selected_scenarios:
+        if is_regrade:
+            filtered_scenarios where source.reps.any(r => r.scenario_id = id)
+        else:
+            filtered_scenarios
 
     queued_items: work_items where status = queued
     successful_items: work_items where status = succeeded
@@ -276,11 +325,15 @@ entity RunInvocation {
         eval_root.evals_config.max_budget_usd != null
         and cumulative_cost_usd > eval_root.evals_config.max_budget_usd
 
-    fail_fast_triggered:
+    ratchet_breached:
         eval_root.evals_config.min_pass_rate != null
         and scenario_results.any(s =>
             s.pass_rate = null
             or s.pass_rate < eval_root.evals_config.min_pass_rate)
+
+    -- A regrade is the cheap way to iterate on checks, so every scenario's
+    -- result is worth more than the grading spend fail-fast would save.
+    fail_fast_triggered: not is_regrade and ratchet_breached
 
     error_gate_triggered:
         eval_root.evals_config.min_pass_rate != null
@@ -293,6 +346,7 @@ entity RunInvocation {
 
     transitions status {
         starting -> discovering
+        starting -> failed
         discovering -> streaming
         discovering -> failed
         streaming -> completed
@@ -390,12 +444,16 @@ entity InitInvocation {
 -- Run-pipeline entities
 -- ============================================================================
 
--- A single (scenario, rep) pair. The pool slot is held across the scuttlerun
--- and pincenez stages; a rep can fail at either stage.
+-- A single (scenario, rep) pair. In a fresh run the pool slot is held across
+-- the scuttlerun and pincenez stages and a rep can fail at either; a regrade
+-- rep has only the pincenez stage, or fails at the source.
 entity WorkItem {
     invocation: RunInvocation
     scenario: Scenario
     rep_number: Integer
+    source_rep: SourceRep?                   -- set iff the invocation is a regrade
+    source_problem: String?                  -- why a regrade cannot grade this rep, naming the source rep dir; null when it can
+    prompt_drift: PromptDrift?               -- set when a regrade rep reaches grading
 
     status: queued | running | succeeded | failed | aborted | budget_skipped | interrupted
 
@@ -403,13 +461,14 @@ entity WorkItem {
     agent_cost_usd: Decimal? when status = succeeded | failed
     grading_cost_usd: Decimal? when status = succeeded
     grading: List<GradedCheck> when status = succeeded
-    failure_stage: scuttlerun | pincenez when status = failed
+    failure_stage: scuttlerun | pincenez | source when status = failed
     failure_message: String when status = failed | aborted | budget_skipped | interrupted
 
     is_terminal: status in {succeeded, failed, aborted, budget_skipped, interrupted}
 
     transitions status {
         queued -> running
+        queued -> failed
         queued -> aborted
         queued -> budget_skipped
         queued -> interrupted
@@ -436,6 +495,7 @@ entity ScenarioResult {
     grading_cost_usd: Decimal
     cost_usd: Decimal                -- agent + grading
     errors: List<RepError>
+    prompt_changed: Boolean          -- a regrade graded a transcript whose prompt differs from the current one
 }
 
 entity CheckAggregate {
@@ -513,6 +573,7 @@ rule StartRun {
 rule BeginRunDiscovery {
     when: inv: RunInvocation.created
     requires: inv.status = starting
+    requires: not inv.is_regrade or inv.source.shape = run
     ensures: inv.status = discovering
 }
 
@@ -520,16 +581,22 @@ rule BeginRunDiscovery {
 -- retention window. Best-effort: the current run's directories do not exist
 -- yet at this point; per-directory failures are silently ignored. When
 -- config.artifact_retention_days is 0 (or the evals.yaml override is 0),
--- cleanup is disabled.
+-- cleanup is disabled. A regrade never sweeps its own source, however old:
+-- kept directories are compared by real path, so a source named through a
+-- symlink is still recognised.
 rule CleanOldRunArtifacts {
     when: inv: RunInvocation.status transitions_to discovering
     let retention =
         inv.eval_root.evals_config.artifact_retention_days_override
         ?? config.artifact_retention_days
+    let kept =
+        if inv.is_regrade: {inv.source.real_path}
+        else: {}
     requires: retention > 0
     ensures: clean_old_artifacts(
         prefixes: {config.artifact_prefix, config.staged_view_prefix},
-        older_than: now - retention.days)
+        older_than: now - retention.days,
+        keep: kept)
 }
 
 rule FailRunNoScenarios {
@@ -544,7 +611,7 @@ rule FailRunFilterEmpty {
     when: inv: RunInvocation.status transitions_to discovering
     requires: inv.scenario_filter != null
     requires: inv.eval_root.scenarios.count > 0
-    requires: inv.selected_scenarios.count = 0
+    requires: inv.filtered_scenarios.count = 0
     ensures: inv.status = failed
     ensures: inv.exit_code = 4
     ensures: emit_stderr("No scenarios match filter")
@@ -588,7 +655,13 @@ rule BeginRunStreaming {
 
 rule StreamRunHeader {
     when: inv: RunInvocation.status transitions_to streaming
-    ensures: emit_yaml_doc({ artifact_dir: inv.artifact_dir })
+    ensures:
+        if inv.is_regrade:
+            emit_yaml_doc({
+                artifact_dir: inv.artifact_dir,
+                source_artifact_dir: inv.source_artifact_dir })
+        else:
+            emit_yaml_doc({ artifact_dir: inv.artifact_dir })
     ensures: emit_yaml_key("scenarios")
 }
 
@@ -598,6 +671,7 @@ rule StreamRunHeader {
 
 rule BuildWorkItems {
     when: inv: RunInvocation.status transitions_to streaming
+    requires: not inv.is_regrade
     for scenario in inv.selected_scenarios:
         for n in rep_numbers(1, inv.repeats):
             ensures: WorkItem.created(
@@ -618,6 +692,8 @@ rule DispatchWorkItem {
     ensures:
         if item.invocation.interrupt_requested:
             item.status = interrupted
+        else if item.source_problem != null:
+            item.status = failed
         else if item.invocation.fail_fast_triggered:
             item.status = aborted
         else if item.invocation.budget_exceeded:
@@ -627,6 +703,12 @@ rule DispatchWorkItem {
     ensures:
         if item.invocation.interrupt_requested:
             item.failure_message = "Interrupted (SIGINT)"
+        else if item.source_problem != null:
+            item.failure_stage = source
+            item.failure_message = item.source_problem
+            item.transcript_path = copied_transcript_path_if_any(item)
+            item.agent_cost_usd = null
+            emit_stderr(item.source_problem)
         else if item.invocation.fail_fast_triggered:
             item.failure_message = "Aborted (fail-fast)"
         else if item.invocation.budget_exceeded:
@@ -643,6 +725,15 @@ rule DispatchWorkItem {
         -- <artifact_dir>/<scenario.id>/rep-N/grading.yaml. In-flight reps
         -- whose invocation later trips fail-fast or budget still finish;
         -- only items still queued at dispatch time are aborted/skipped.
+        --
+        -- A regrade has no Stage A: its items share one pool sized at
+        -- invocation.concurrency and are dispatched when they get a slot, so
+        -- a budget or interrupt skips its queued reps, where a fresh run lets
+        -- reps already past Stage A go on to grading. A regrade rep with a
+        -- source_problem is dispatched ahead of every rep it can grade, so a
+        -- budget cut never hides why a source rep went ungraded; it is never
+        -- retried, and its transcript_path is the copy in this regrade's
+        -- artifact_dir when one was made.
 }
 
 rule RepSucceeds {
@@ -650,7 +741,9 @@ rule RepSucceeds {
     requires: rep_succeeded(item)
     ensures: item.status = succeeded
     ensures: item.transcript_path = rep_transcript_path(item)
-    ensures: item.agent_cost_usd = rep_agent_cost(item)
+    ensures: item.agent_cost_usd =
+        if item.invocation.is_regrade: null
+        else: rep_agent_cost(item)
     ensures: item.grading_cost_usd = rep_grading_cost(item)
     ensures: item.grading = rep_grading(item)
     @guidance
@@ -658,6 +751,12 @@ rule RepSucceeds {
         -- prompt as context (see the Pincenez contract). Resolution is
         -- lazy and memoised per scenario: the first rep to reach grading
         -- triggers one Scuttlerun.dry_run; subsequent reps reuse it.
+        --
+        -- A regrade rep's running stage is grading alone: Pincenez.grade
+        -- of the transcript copied into this regrade's artifact_dir, with
+        -- the same grounding, grader model and auth a fresh run would use.
+        -- The agent spend recorded in that transcript belongs to the source
+        -- run, so a regrade never attributes it.
 }
 
 rule RepFails {
@@ -667,7 +766,9 @@ rule RepFails {
     ensures: item.failure_stage = rep_failure_stage(item)
     ensures: item.failure_message = rep_failure_message(item)
     ensures: item.transcript_path = rep_transcript_path_if_any(item)
-    ensures: item.agent_cost_usd = rep_agent_cost_if_any(item)
+    ensures: item.agent_cost_usd =
+        if item.invocation.is_regrade: null
+        else: rep_agent_cost_if_any(item)
     @guidance
         -- transcript_path is populated when scuttlerun emitted any stdout
         -- before exiting, even on the failure path: craboodle writes that
@@ -775,7 +876,8 @@ rule AggregateScenario {
         cost_usd:
             sum_decimals(with_transcript.agent_cost_usd)
             + sum_decimals(successes.grading_cost_usd),
-        errors: collect_rep_errors(non_successes)
+        errors: collect_rep_errors(non_successes),
+        prompt_changed: scenario_items.any(w => w.prompt_drift = changed)
     )
     @guidance
         -- pass_rate is the mean of per-check pass_rates across successful
@@ -804,6 +906,8 @@ rule StreamScenarioBlock {
         -- paths. Failed reps appear under an errors array on the scenario, and
         -- error_rate is emitted only when greater than 0. Blocks arrive in
         -- completion order; ordering between scenarios is not specified.
+        -- prompt_changed is emitted, as true and right after pass_rate,
+        -- only when set.
 }
 
 -- ============================================================================
@@ -871,7 +975,7 @@ rule ExitRunRatchet {
     requires: not inv.budget_exceeded
     requires: inv.has_any_success
     requires: not inv.error_gate_triggered
-    requires: inv.fail_fast_triggered
+    requires: inv.ratchet_breached
     ensures: inv.exit_code = 3
     ensures: inv.result = threshold_failure
     ensures: emit_yaml_doc({ result: "threshold_failure", exit_code: 3 })
@@ -883,10 +987,168 @@ rule ExitRunSuccess {
     requires: not inv.budget_exceeded
     requires: inv.has_any_success
     requires: not inv.error_gate_triggered
-    requires: not inv.fail_fast_triggered
+    requires: not inv.ratchet_breached
     ensures: inv.exit_code = 0
     ensures: inv.result = pass
     ensures: emit_yaml_doc({ result: "pass", exit_code: 0 })
+}
+
+-- ============================================================================
+-- Regrade command: re-grading a source run's kept transcripts
+-- ============================================================================
+
+-- A regrade is a RunInvocation whose reps come from a source run directory
+-- (an earlier run's artifact_dir) rather than from new sessions. It grades
+-- them against the eval root's current checks, so check wording can be
+-- iterated on without paying for sessions. It shares the run rules above
+-- for staging, sweeping, aggregation, streaming, gates and the verdict.
+rule StartRegrade {
+    when: RegradeInvoked(operator, evals_dir, source_dir, raw_concurrency?,
+                         scenario_filter?, grader_model?, raw_auth?)
+    let dir = eval_root_at(evals_dir)
+    ensures: RunInvocation.created(
+        operator: operator,
+        eval_root: dir,
+        repeats: null,
+        concurrency: raw_concurrency ?? config.default_concurrency,
+        timeout: dir.evals_config.timeout_override,
+        scenario_filter: scenario_filter,
+        agent_model_override: null,
+        grader_model_override: grader_model,
+        auth: raw_auth ?? dir.evals_config.auth,
+        source_artifact_dir: absolute_path(source_dir),
+        source: scan_source_run(source_dir),
+        status: starting
+    )
+}
+
+-- The source is checked before anything else happens: a regrade that
+-- fails here streams no header, stages no view, sweeps nothing and creates
+-- no directory.
+rule FailRegradeSourceMissing {
+    when: inv: RunInvocation.created
+    requires: inv.status = starting
+    requires: inv.is_regrade
+    requires: inv.source.shape = missing
+    ensures: inv.status = failed
+    ensures: inv.exit_code = 4
+    ensures: emit_stderr("Artifact dir not found")
+}
+
+rule FailRegradeSourceNotADirectory {
+    when: inv: RunInvocation.created
+    requires: inv.status = starting
+    requires: inv.is_regrade
+    requires: inv.source.shape = not_a_directory
+    ensures: inv.status = failed
+    ensures: inv.exit_code = 4
+    ensures: emit_stderr("Artifact dir is not a directory")
+}
+
+rule FailRegradeNotARunDir {
+    when: inv: RunInvocation.created
+    requires: inv.status = starting
+    requires: inv.is_regrade
+    requires: inv.source.shape = not_a_run
+    ensures: inv.status = failed
+    ensures: inv.exit_code = 4
+    ensures: emit_stderr("Artifact dir is not a craboodle run directory")
+}
+
+-- A scenario only one side has is skipped with a warning and gets no
+-- block. A source scenario the filter excludes is not warned about: the
+-- operator chose to leave it out.
+rule WarnRegradeRootOnlyScenario {
+    when: inv: RunInvocation.status transitions_to discovering
+    requires: inv.is_regrade
+    for scenario in inv.filtered_scenarios:
+        requires: not inv.source.reps.any(r => r.scenario_id = scenario.id)
+        ensures: emit_stderr("Scenario not in the source run; skipped")
+}
+
+rule WarnRegradeSourceOnlyScenario {
+    when: inv: RunInvocation.status transitions_to discovering
+    requires: inv.is_regrade
+    requires: inv.filtered_scenarios.count > 0
+    for scenario_id in source_scenario_ids(inv.source):
+        requires: inv.scenario_filter = null
+            or matches_pattern(scenario_id, inv.scenario_filter)
+        requires: not inv.eval_root.scenarios.any(s => s.id = scenario_id)
+        ensures: emit_stderr("Scenario not in the eval root; skipped")
+}
+
+rule FailRegradeNoCommonScenarios {
+    when: inv: RunInvocation.status transitions_to discovering
+    requires: inv.is_regrade
+    requires: inv.filtered_scenarios.count > 0
+    requires: inv.selected_scenarios.count = 0
+    ensures: inv.status = failed
+    ensures: inv.exit_code = 4
+    ensures: emit_stderr("No scenarios in common between the source run and the eval root")
+}
+
+-- One WorkItem per source rep of each selected scenario, keeping its rep
+-- number.
+rule BuildRegradeWorkItems {
+    when: inv: RunInvocation.status transitions_to streaming
+    requires: inv.is_regrade
+    for source_rep in inv.source.reps:
+        requires: inv.selected_scenarios.any(s => s.id = source_rep.scenario_id)
+        ensures: WorkItem.created(
+            invocation: inv,
+            scenario: scenario_with_id(inv.selected_scenarios, source_rep.scenario_id),
+            rep_number: source_rep.rep_number,
+            source_rep: source_rep,
+            source_problem: source_rep_problem(source_rep, inv.artifact_dir),
+            status: queued
+        )
+    @guidance
+        -- Before any rep is dispatched, every one of these source reps gets
+        -- its own rep-N directory under artifact_dir (the same N, so gaps
+        -- in the source stay gaps) and its output.yaml is copied in when it
+        -- has one. A regrade of a regrade therefore sees the same rep
+        -- population. The grading.yaml is not copied; the regrade writes
+        -- its own. source_rep_problem is null for a rep with a transcript
+        -- and a grading.yaml that parses, and otherwise names what is
+        -- missing or unreadable, or the failed copy, with the source rep
+        -- dir.
+}
+
+-- Grading is grounded in the scenario's current resolved prompt, but the
+-- transcript was produced by the prompt the source run had. Before a
+-- regraded rep is graded, its transcript's first user entry is compared
+-- with the resolved prompt. A mismatch is warned about once per scenario
+-- and flagged on its block, and the rep is graded anyway.
+rule CompareRegradePrompt {
+    when: item: WorkItem.status transitions_to running
+    requires: item.source_rep != null
+    ensures: item.prompt_drift = transcript_prompt_drift(item)
+    @guidance
+        -- Both prompts are compared after collapsing each run of
+        -- whitespace to one space and trimming, because scuttlerun rewraps
+        -- long prompt lines when it writes the transcript; an edit that
+        -- only changes whitespace is therefore not flagged. The drift is
+        -- unchecked when the dry-run failed or resolved no prompt, or when
+        -- no first user entry can be read from the transcript; a malformed
+        -- tail does not hide a readable first entry.
+}
+
+rule WarnRegradePromptChanged {
+    when: inv: RunInvocation.status transitions_to streaming
+    requires: inv.is_regrade
+    for scenario in inv.selected_scenarios:
+        requires: (inv.work_items where scenario = scenario)
+            .any(w => w.prompt_drift = changed)
+        ensures: emit_stderr("Prompt changed since the source run; grading anyway")
+}
+
+rule WarnRegradePromptUnchecked {
+    when: inv: RunInvocation.status transitions_to streaming
+    requires: inv.is_regrade
+    for scenario in inv.selected_scenarios:
+        requires: (inv.work_items where scenario = scenario)
+            .any(w => w.prompt_drift = unchecked)
+        ensures: emit_stderr("Could not check whether the prompt changed since the source run")
 }
 
 -- ============================================================================
@@ -1286,7 +1548,7 @@ rule RejectInvalidMaxErrorRate {
 
 surface RunCommand {
     facing operator: Operator
-    context invocation: RunInvocation where operator = operator
+    context invocation: RunInvocation where operator = operator and not is_regrade
 
     provides:
         RunInvoked(operator, evals_dir, raw_repeats?, raw_concurrency?,
@@ -1363,6 +1625,66 @@ surface RunCommand {
         -- --concurrency; an invalid evals.yaml `auth:` value fails the load
         -- (exit 2). Credential preference never affects cost reporting or the
         -- max_budget_usd gate.
+}
+
+surface RegradeCommand {
+    facing operator: Operator
+    context invocation: RunInvocation where operator = operator and is_regrade
+
+    provides:
+        RegradeInvoked(operator, evals_dir, source_dir, raw_concurrency?,
+                       scenario_filter?, grader_model?, raw_auth?)
+
+    exposes:
+        invocation.artifact_dir
+        invocation.source_artifact_dir
+        invocation.scenario_results
+        invocation.total_cost_usd
+        invocation.result
+        invocation.exit_code
+
+    contracts:
+        demands Scuttlerun
+        demands Pincenez
+
+    @guarantee RegradeIsARun
+        -- StreamingOutput, FinalVerdict, RawPassRates, ArtifactsPreserved,
+        -- GradingGroundedInPrompt and CredentialForwarding hold as they do
+        -- for RunCommand. The header carries source_artifact_dir after
+        -- artifact_dir, and artifact_dir is a new directory of the regrade's
+        -- own, never the source.
+
+    @guarantee RunsNoAgentSession
+        -- A regrade never runs a scuttlerun session; its only scuttlerun
+        -- use is the dry_run that resolves grading grounding.
+
+    @guarantee SourceUntouched
+        -- Nothing under the source directory is written, moved or removed,
+        -- and the regrade's own artifact sweep never removes it.
+
+    @guarantee GradingSpendOnly
+        -- Every cost a regrade reports or budgets against is grading
+        -- spend. The agent spend recorded in a source transcript belongs to
+        -- the run that produced it: no agent_cost_usd appears anywhere in a
+        -- regrade's output, and cost_usd, total_cost_usd and max_budget_usd
+        -- cover grading only.
+
+    @guarantee NoFailFast
+        -- A scenario below min_pass_rate never aborts the remaining reps;
+        -- every scenario is graded, and the ratchet still decides the exit.
+
+    @guarantee PromptDrift
+        -- A scenario whose current prompt differs from the one its
+        -- transcripts were produced with carries prompt_changed: true and
+        -- is warned about once on stderr. Whitespace-only edits are not
+        -- flagged. A scenario whose prompt could not be compared gets one
+        -- stderr warning and no key.
+
+    @guarantee RegradeExitCodes
+        -- As RunExitCodes, plus 4 before any output when the source dir is
+        -- missing, not a directory, or not a craboodle run directory, and
+        -- 4 when the source and the eval root share no selected scenario.
+        -- An invalid --concurrency or --auth exits 1 as for run.
 }
 
 surface ListCommand {
@@ -1524,7 +1846,9 @@ contract Scuttlerun {
         -- success/failure; the lint command additionally consumes the
         -- resolved prompt and tool list to ground pincenez lint; the run
         -- command consumes the resolved prompt (once per scenario) to
-        -- ground pincenez grading.
+        -- ground pincenez grading. The regrade command demands dry_run
+        -- only, for the same grounding and to compare the resolved prompt
+        -- with each transcript's; it never demands run.
         --
         -- auth is the resolved credential preference (RunInvocation.auth).
         -- When non-null it is forwarded verbatim as --auth <mode>; when null
@@ -1616,8 +1940,34 @@ invariant WorkItemCountMatchesRepeats {
     -- appear in failed_reps_count; only succeeded reps appear in
     -- successful_reps_count.
     for result in ScenarioResults:
-        result.successful_reps_count + result.failed_reps_count
+        result.invocation.is_regrade
+        or result.successful_reps_count + result.failed_reps_count
             = result.invocation.repeats
+}
+
+invariant RegradeWorkItemsMatchSourceReps {
+    -- A regrade keeps its source's rep population: one rep per source
+    -- rep-N directory of the scenario, graded or not.
+    for result in ScenarioResults:
+        not result.invocation.is_regrade
+        or result.successful_reps_count + result.failed_reps_count
+            = (result.invocation.source.reps
+                where scenario_id = result.scenario.id).count
+}
+
+invariant RegradeAttributesNoAgentCost {
+    for result in ScenarioResults:
+        not result.invocation.is_regrade or result.agent_cost_usd = 0
+}
+
+invariant RegradeNeverFailsFast {
+    for item in WorkItems:
+        not item.invocation.is_regrade or item.status != aborted
+}
+
+invariant PromptDriftOnlyInRegrades {
+    for result in ScenarioResults:
+        result.invocation.is_regrade or not result.prompt_changed
 }
 
 invariant CostFieldsAreNonNegative {
