@@ -174,8 +174,8 @@ Exit Codes (shared scuttlerun/pincenez/craboodle taxonomy; codes 6-7 scuttlerun-
   2   Load failure (evals.yaml schema/version/range) or runtime error (caught exception in run/regrade/lint)
   3   Threshold failure (min_pass_rate ratchet violated)
   4   Infrastructure/dependency error (no scenarios, empty filter, zero successful reps;
-      regrade: artifact_dir missing, not a directory or not a run, or no scenario
-      shared by the run and the root)
+      regrade: artifact_dir missing, unreadable, not a run or holding no
+      transcripts, or no scenario shared by the run and the root)
   5   Budget exhausted (max_budget_usd)
   130 Interrupted (SIGINT)
 

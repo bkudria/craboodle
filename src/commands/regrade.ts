@@ -126,11 +126,20 @@ function makePromptDriftCheck() {
   return { check, changed };
 }
 
-const INVALID_SOURCE: Record<Exclude<SourceRun['kind'], 'run'>, string> = {
-  missing: 'Artifact dir not found',
-  'not-a-directory': 'Artifact dir is not a directory',
-  'not-a-run': 'Artifact dir is not a craboodle run directory',
-};
+function invalidSourceExplanation(source: Exclude<SourceRun, { kind: 'run' }>): string {
+  switch (source.kind) {
+    case 'missing':
+      return 'Artifact dir not found';
+    case 'not-a-directory':
+      return 'Artifact dir is not a directory';
+    case 'unreadable':
+      return `Artifact dir could not be read (${source.code})`;
+    case 'not-a-run':
+      return 'Artifact dir is not a craboodle run directory';
+    case 'no-transcripts':
+      return 'Artifact dir holds no transcripts to regrade';
+  }
+}
 
 export async function regradeCommand(
   root: string,
@@ -159,7 +168,7 @@ async function regradeCommandInner(args: {
   if (sourceRun.kind !== 'run') {
     process.stderr.write(
       formatErrorWithHint(
-        `${INVALID_SOURCE[sourceRun.kind]}: ${sourceDir}`,
+        `${invalidSourceExplanation(sourceRun)}: ${sourceDir}`,
         'pass the artifact_dir a craboodle run printed; it holds <scenario>/rep-<N>/output.yaml',
         'craboodle --help',
       ),

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { makeTmpDir } from './_fixtures.js';
 import {
@@ -182,6 +182,12 @@ describe('sourceRepProblem', () => {
     );
   });
 
+  it('names a grading that could not be read, with its error code', () => {
+    expect(sourceRepProblem(rep({ grading: 'unreadable', gradingReadError: 'EACCES' }))).toBe(
+      'could not read the source grading.yaml (EACCES): /src/alpha/rep-1',
+    );
+  });
+
   it('names a failed copy of an otherwise regradable rep', () => {
     expect(sourceRepProblem(rep({}), 'EACCES: permission denied')).toBe(
       'could not copy the source transcript (EACCES: permission denied): /src/alpha/rep-1',
@@ -223,14 +229,68 @@ describe('scanSourceRun', () => {
     expect(await scanSourceRun(file)).toEqual({ kind: 'not-a-directory' });
   });
 
-  it('is not a run for an empty dir or one without rep dirs holding run files', async () => {
+  it('is not a run for an empty dir or one with no <id>/rep-<N>/ dirs', async () => {
     expect(await scanSourceRun(tmpDir)).toEqual({ kind: 'not-a-run' });
 
     await mkdir(join(tmpDir, 'alpha', 'notes'), { recursive: true });
-    await mkdir(join(tmpDir, 'alpha', 'rep-1'));
+    await mkdir(join(tmpDir, 'alpha', 'rep-x'));
     await writeFile(join(tmpDir, 'loose.yaml'), '');
-    await writeRep('beta', 'rep-1', { 'notes.txt': '' });
     expect(await scanSourceRun(tmpDir)).toEqual({ kind: 'not-a-run' });
+  });
+
+  it('holds no transcripts when its rep dirs hold neither a transcript nor a grading', async () => {
+    await mkdir(join(tmpDir, 'alpha', 'rep-1'), { recursive: true });
+    await writeRep('beta', 'rep-1', { 'notes.txt': '' });
+
+    expect(await scanSourceRun(tmpDir)).toEqual({ kind: 'no-transcripts' });
+  });
+
+  it('records a grading.yaml it cannot read with the error code', async () => {
+    await writeRep('alpha', 'rep-1', { 'output.yaml': FOLDED });
+    await mkdir(join(tmpDir, 'alpha', 'rep-1', 'grading.yaml'));
+
+    const result = await scanSourceRun(tmpDir);
+
+    expect(result.kind).toBe('run');
+    if (result.kind !== 'run') return;
+    expect(result.scenarios.get('alpha')).toEqual([
+      {
+        rep: 1,
+        repDir: join(tmpDir, 'alpha', 'rep-1'),
+        hasTranscript: true,
+        grading: 'unreadable',
+        gradingReadError: 'EISDIR',
+      },
+    ]);
+  });
+
+  describe.skipIf(process.getuid?.() === 0)('without read permission', () => {
+    it('skips a subdir it cannot list', async () => {
+      await writeRep('alpha', 'rep-1', { 'output.yaml': FOLDED, 'grading.yaml': VALID_GRADING });
+      const locked = join(tmpDir, 'locked');
+      await mkdir(locked);
+      await chmod(locked, 0o000);
+
+      try {
+        const result = await scanSourceRun(tmpDir);
+
+        expect(result.kind).toBe('run');
+        if (result.kind !== 'run') return;
+        expect([...result.scenarios.keys()]).toEqual(['alpha']);
+      } finally {
+        await chmod(locked, 0o755);
+      }
+    });
+
+    it('is unreadable when the dir itself cannot be listed', async () => {
+      await chmod(tmpDir, 0o000);
+
+      try {
+        expect(await scanSourceRun(tmpDir)).toEqual({ kind: 'unreadable', code: 'EACCES' });
+      } finally {
+        await chmod(tmpDir, 0o755);
+      }
+    });
   });
 
   it('lists every rep dir of each scenario in rep order, with what it holds', async () => {

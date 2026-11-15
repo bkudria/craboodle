@@ -460,9 +460,14 @@ describe('cli regrade', () => {
     ['is missing', async () => {}, 'Artifact dir not found'],
     ['is a file', () => writeFile(source, ''), 'Artifact dir is not a directory'],
     [
-      'holds no rep dir with run files',
-      () => mkdir(join(source, 'alpha', 'rep-1'), { recursive: true }),
+      'has no <id>/rep-<N>/ dirs',
+      () => mkdir(join(source, 'alpha', 'notes'), { recursive: true }),
       'Artifact dir is not a craboodle run directory',
+    ],
+    [
+      'has rep dirs with no transcript or grading',
+      () => mkdir(join(source, 'alpha', 'rep-1'), { recursive: true }),
+      'Artifact dir holds no transcripts to regrade',
     ],
   ])('exits 4 before doing anything when the artifact dir %s', async (_case, arrange, message) => {
     await arrange();
@@ -475,6 +480,25 @@ describe('cli regrade', () => {
     expect(stdout).toBe('');
     expect(await readdir(isolatedTmp)).toEqual([]);
   });
+
+  it.skipIf(process.getuid?.() === 0)(
+    'exits 4 before doing anything when the artifact dir cannot be read',
+    async () => {
+      await mkdir(source);
+      await chmod(source, 0o000);
+
+      try {
+        const { code, stdout, stderr } = await regrade([root, source]);
+
+        expect(code).toBe(4);
+        expect(stderr).toContain(`[craboodle] Artifact dir could not be read (EACCES): ${source}`);
+        expect(stdout).toBe('');
+        expect(await readdir(isolatedTmp)).toEqual([]);
+      } finally {
+        await chmod(source, 0o755);
+      }
+    },
+  );
 
   it('exits 4 when scuttlerun or pincenez is not on PATH', async () => {
     await writeSourceRun(source, { alpha: [{ rep: 1 }] });

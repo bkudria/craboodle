@@ -115,21 +115,35 @@ value RepError {
 -- One rep-N directory of a regrade's source run, as found on disk. A rep is
 -- regradable iff it holds a transcript (output.yaml) and a grading.yaml that
 -- parses; a rep whose grader failed in the source run is therefore not
--- regraded.
+-- regraded. A run creates a rep's directory only once the rep is
+-- dispatched, so a rep the source run skipped (fail-fast, budget,
+-- interrupt) has no directory and is not a source rep at all.
 value SourceRep {
     scenario_id: String
     rep_number: Integer                      -- N of rep-N, kept as the regrade's own rep number
     rep_dir: String
     has_transcript: Boolean
-    grading_parses: Boolean
+    grading: SourceGrading
+}
+
+-- The state of a source rep's grading.yaml. unreadable means it exists but
+-- could not be read (its error code is reported); invalid means it was read
+-- but is not a grading.
+enum SourceGrading {
+    missing
+  | unreadable
+  | invalid
+  | ok
 }
 
 -- What a regrade found at the directory the operator named. A run
--- directory is recognised by structure: some <id>/rep-<N>/ directory under
--- it holds an output.yaml or a grading.yaml. Its name is irrelevant, so a
--- run copied out of the temp dir is still a source.
+-- directory is recognised by structure, as one with <id>/rep-<N>/
+-- directories, and has something to regrade when one of them holds an
+-- output.yaml or a grading.yaml. Its name is irrelevant, so a run copied out
+-- of the temp dir is still a source. A subdirectory that cannot be listed
+-- contributes no reps.
 value SourceRun {
-    shape: missing | not_a_directory | not_a_run | run
+    shape: missing | not_a_directory | unreadable | not_a_run | no_transcripts | run
     real_path: String?                       -- the directory with symlinks resolved; present when shape = run
     reps: List<SourceRep>                    -- every rep-N directory, empty unless shape = run
 }
@@ -1027,34 +1041,21 @@ rule StartRegrade {
 -- The source is checked before anything else happens: a regrade that
 -- fails here streams no header, stages no view, sweeps nothing and creates
 -- no directory.
-rule FailRegradeSourceMissing {
+rule FailRegradeInvalidSource {
     when: inv: RunInvocation.created
     requires: inv.status = starting
     requires: inv.is_regrade
-    requires: inv.source.shape = missing
+    requires: inv.source.shape != run
     ensures: inv.status = failed
     ensures: inv.exit_code = 4
-    ensures: emit_stderr("Artifact dir not found")
-}
-
-rule FailRegradeSourceNotADirectory {
-    when: inv: RunInvocation.created
-    requires: inv.status = starting
-    requires: inv.is_regrade
-    requires: inv.source.shape = not_a_directory
-    ensures: inv.status = failed
-    ensures: inv.exit_code = 4
-    ensures: emit_stderr("Artifact dir is not a directory")
-}
-
-rule FailRegradeNotARunDir {
-    when: inv: RunInvocation.created
-    requires: inv.status = starting
-    requires: inv.is_regrade
-    requires: inv.source.shape = not_a_run
-    ensures: inv.status = failed
-    ensures: inv.exit_code = 4
-    ensures: emit_stderr("Artifact dir is not a craboodle run directory")
+    ensures: emit_stderr(invalid_source_explanation(inv.source))
+    @guidance
+        -- The explanation names the source dir and is, by shape:
+        -- missing "Artifact dir not found"; not_a_directory "Artifact dir
+        -- is not a directory"; unreadable "Artifact dir could not be read"
+        -- with the error code; not_a_run "Artifact dir is not a craboodle
+        -- run directory"; no_transcripts "Artifact dir holds no
+        -- transcripts to regrade".
 }
 
 -- A scenario only one side has is skipped with a warning and gets no
