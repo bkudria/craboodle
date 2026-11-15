@@ -80,8 +80,9 @@ scenario.yaml Schema:
 checks.yaml Schema:
   Pure pincenez checks file. Each check is an id-as-key object in a list.
 
-    context: Background for judges     # Optional. Superseded during run and
-                                       #   lint: the scenario's resolved prompt
+    context: Background for judges     # Optional. Superseded during run,
+                                       #   regrade and lint: the scenario's
+                                       #   resolved prompt
                                        #   is passed as pincenez --context,
                                        #   which takes precedence; this field
                                        #   applies only when prompt resolution
@@ -123,6 +124,14 @@ Output Format:
   (mirroring the process exit code); if they are missing, the run was
   interrupted or crashed before completing.
 
+  regrade streams the same shape into a new artifact_dir, with
+  source_artifact_dir (the run it read) after artifact_dir. Its cost fields
+  cover grading only, so it never reports agent_cost_usd. A scenario whose
+  current prompt differs from the one its transcripts were made with carries
+  prompt_changed: true (whitespace-only edits are not flagged). Source reps
+  that cannot be regraded (no transcript, or never graded) come back under
+  errors with stage: source.
+
 Examples:
   # Scaffold an evals.yaml at the skill / plugin root. Mode is auto-detected:
   #   SKILL.md -> skill, .claude-plugin/plugin.json -> plugin, else generic.
@@ -152,19 +161,27 @@ Examples:
   # Use a stronger grader model
   craboodle run ./my-skill --grader-model claude-sonnet-5
 
+  # Re-grade a run's kept transcripts against the current checks (no sessions
+  # run; pass the artifact_dir a run printed)
+  craboodle regrade ./my-skill /tmp/craboodle-run-abc123
+
   # CI quality gate with yq
   craboodle run ./my-skill | yq '.scenarios[].pass_rate'
 
 Exit Codes (shared scuttlerun/pincenez/craboodle taxonomy; codes 6-7 scuttlerun-only):
   0   Pipeline completed successfully
   1   Refusal (list found invalid scenarios; lint reported issues)
-  2   Load failure (evals.yaml schema/version/range) or runtime error (caught exception in run/lint)
+  2   Load failure (evals.yaml schema/version/range) or runtime error (caught exception in run/regrade/lint)
   3   Threshold failure (min_pass_rate ratchet violated)
-  4   Infrastructure/dependency error (no scenarios, empty filter, zero successful reps)
+  4   Infrastructure/dependency error (no scenarios, empty filter, zero successful reps;
+      regrade: artifact_dir missing, not a directory or not a run, or no scenario
+      shared by the run and the root)
   5   Budget exhausted (max_budget_usd)
   130 Interrupted (SIGINT)
 
 Fail-fast:
   When min_pass_rate is set, the run aborts remaining queued reps as soon as
   any completed scenario falls below the threshold. Queued items report
-  "Aborted (fail-fast)" in their errors. In-flight reps still finish.`;
+  "Aborted (fail-fast)" in their errors. In-flight reps still finish.
+  regrade never fails fast: every scenario is graded, and min_pass_rate
+  still decides the exit code.`;

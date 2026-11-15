@@ -236,4 +236,41 @@ describe('cli signal handling (integration)', () => {
     const alive = pids.filter(pidStillAlive);
     expect(alive).toEqual([]);
   }, 15000);
+  it('regrade: SIGINT exits 130 and leaves no zombie subprocesses', async () => {
+    const sourceRep = join(workDir, 'source', 'alpha', 'rep-1');
+    await mkdir(sourceRep, { recursive: true });
+    await writeFile(join(sourceRep, 'output.yaml'), 'conversation:\n  - user: hello\n');
+    await writeFile(
+      join(sourceRep, 'grading.yaml'),
+      'checks:\n  - id: a\n    check: c\n    pass: true\n    evidence: e\npass_rate: 1\n',
+    );
+
+    const child = spawn(
+      process.execPath,
+      [CLI_PATH, 'regrade', evalsDir, join(workDir, 'source')],
+      {
+        env: { ...process.env, PATH: `${stubDir}:${process.env.PATH}` },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      },
+    );
+
+    await pollFileNonEmpty(pidFile, 8000);
+    child.kill('SIGINT');
+
+    const result = await waitForExit(child);
+
+    expect(result.code).toBe(130);
+    expect(result.stderr).toContain('Cleaning up subprocesses');
+    expect(result.stdout).not.toContain('result:');
+
+    await delay(200);
+
+    const pids = (await readFile(pidFile, 'utf8'))
+      .split('\n')
+      .map((s) => parseInt(s, 10))
+      .filter((n) => Number.isInteger(n) && n > 0);
+    expect(pids.length).toBeGreaterThan(0);
+    const alive = pids.filter(pidStillAlive);
+    expect(alive).toEqual([]);
+  }, 15000);
 });

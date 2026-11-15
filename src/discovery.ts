@@ -41,7 +41,7 @@ function matchPattern(id: string, pattern: string): boolean {
   return regex.test(id);
 }
 
-export function filterScenarios(scenarios: ScenarioRef[], pattern: string): ScenarioRef[] {
+export function filterScenarios<T extends { id: string }>(scenarios: T[], pattern: string): T[] {
   const patterns = pattern.split(',').map((p) => p.trim());
   return scenarios.filter((s) => patterns.some((p) => matchPattern(s.id, p)));
 }

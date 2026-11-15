@@ -48,7 +48,7 @@ Each tool does one job. craboodle is the conductor; scuttlerun and pincenez are 
 - Deterministic lint or grade verdicts. Each judge call (lint and grade alike) is a single un-seeded LLM call inherited from pincenez, so re-running identical input may add or drop findings — `craboodle lint` may flip its issue count and exit code between runs. craboodle surfaces this rather than papering over it (`lint --help` plus a stderr advisory when issues are found); the canonical statement lives in `pincenez lint --help`. Making verdicts reproducible is pincenez's non-goal, not craboodle's to override.
 - Pass/fail gating beyond the ratchet. The `min_pass_rate` ratchet provides a binary gate; any finer-grained interpretation (majority voting, weighted scoring, etc.) remains a caller concern.
 - Pluggable runners or graders. scuttlerun + pincenez only.
-- Iteration or history management. Each `craboodle run` is independent. Callers manage versioning externally (git, timestamped copies, etc.).
+- Iteration or history management. Each `craboodle run` is independent. Callers manage versioning externally (git, timestamped copies, etc.). `craboodle regrade` reuses one run's kept transcripts against the current checks; it re-grades, never compares, and its output is a run of its own.
 - CI/CD integration (GitHub Actions, webhooks). craboodle writes to stdout; CI captures it.
 - Web UI or dashboard. yq and the terminal are the UI.
 - Trend analysis across runs. A downstream concern.

@@ -58,9 +58,23 @@ craboodle lint ./my-skill
 
 # Run the eval pipeline
 craboodle run ./my-skill
+
+# Re-grade a run's kept transcripts against the current checks (no sessions run)
+craboodle regrade ./my-skill /tmp/craboodle-run-abc123
 ```
 
 craboodle expects a single `evals.yaml` at the project root (next to `SKILL.md` for skills, or next to `.claude-plugin/plugin.json` for plugins) and scenarios under `evals/<scenario-id>/`. At run time it stages a filtered view of the project root (excluding `evals/`) and hands that to scuttlerun, so `project.skills: [.]` in `scenarios.base` cleanly self-references the skill being tested.
+
+### Regrading a run
+
+`craboodle regrade <root> <artifact_dir>` grades the transcripts a previous run kept in its `artifact_dir` against the root's current `checks.yaml`, without running any agent session, so check wording can be iterated on without paying for new sessions. It accepts `--concurrency`, `--scenarios`, `--grader-model`, `--auth` and `-v` as `run` does; it has no `--repeats`, `--timeout` or `--agent-model`, because it runs no session.
+
+- Its output is a run of its own: a new `craboodle-run-*` directory, holding a copy of every source rep's transcript and the new gradings, and the same YAML stream as `run` with `source_artifact_dir` after `artifact_dir`. The source directory is never written to.
+- Each rep keeps its source rep number. A source rep is regraded only if its run graded it (its `grading.yaml` exists and parses). Every other source rep comes back under the scenario's `errors` with `stage: source`, saying why and naming the source rep directory.
+- Grading is grounded in the scenario's current resolved prompt, as in `run`. If that prompt differs from the first user message of the transcript, craboodle warns once on stderr, sets `prompt_changed: true` on the scenario's block, and grades it anyway. Prompts are compared with whitespace collapsed, because scuttlerun rewraps long lines, so an edit that only changes whitespace is not flagged.
+- Costs (`cost_usd`, `total_cost_usd`, and `max_budget_usd`) cover grading spend only. The agent spend in the source transcripts belongs to the source run.
+- `min_pass_rate`, `max_error_rate` and `max_budget_usd` gate the exit as in `run`. A regrade never fails fast, though: every scenario is graded. All reps share one pool of `--concurrency` slots, so a budget cut or Ctrl-C skips every rep still queued.
+- A scenario that only the source run or only the root has is skipped with a stderr warning. A source scenario that `--scenarios` excludes is skipped without a warning. A regrade exits 4 if the two share no scenario, or if `<artifact_dir>` is missing, is not a directory, or holds no `<scenario>/rep-<N>/` directory with an `output.yaml` or `grading.yaml`. The directory name does not matter, so a run copied out of `$TMPDIR` can still be regraded.
 
 ## Examples
 
@@ -116,6 +130,8 @@ artifact_retention_days: 30 # keep prior runs for 30 days
 
 Only directories matching the `craboodle-run-` or `craboodle-staged-` prefixes are touched; nothing outside `$TMPDIR` is read or modified.
 
+`craboodle regrade` creates and sweeps the same prefixes, and its own sweep never removes the run it is regrading. Any other run or regrade can still sweep that source once it is older than the window, though. To keep a run you intend to regrade, copy it out of `$TMPDIR` or raise `artifact_retention_days`.
+
 ## Troubleshooting
 
 **`scuttlerun is not found on PATH` (or `pincenez …`)** — craboodle requires both companion CLIs on `PATH`. Install them ([scuttlerun](https://github.com/bkudria/scuttlerun), [pincenez](https://github.com/bkudria/pincenez)) and confirm with `which scuttlerun pincenez`. If installed but not found, your shell rc may not be exporting their install directory.
@@ -130,21 +146,21 @@ Only directories matching the `craboodle-run-` or `craboodle-staged-` prefixes a
 
 Subset of the shared scuttlerun/pincenez/craboodle taxonomy — see [scuttlerun/README.md#exit-codes](https://github.com/bkudria/scuttlerun#exit-codes) for the canonical table. Source: [`src/exit-codes.ts`](src/exit-codes.ts).
 
-| Code | Meaning                                                                            |
-| ---- | ---------------------------------------------------------------------------------- |
-| 0    | Pipeline completed                                                                 |
-| 1    | Refusal (list found invalid scenarios; lint reported issues)                       |
-| 2    | Load failure (`evals.yaml` schema/version/range) or runtime error                  |
-| 3    | Threshold failure (`min_pass_rate` ratchet)                                        |
-| 4    | Infrastructure/dependency error (no scenarios, empty filter, zero successful reps) |
-| 5    | Budget exhausted (`max_budget_usd`)                                                |
-| 130  | Interrupted (SIGINT)                                                               |
+| Code | Meaning                                                                                                    |
+| ---- | ---------------------------------------------------------------------------------------------------------- |
+| 0    | Pipeline completed                                                                                         |
+| 1    | Refusal (list found invalid scenarios; lint reported issues)                                               |
+| 2    | Load failure (`evals.yaml` schema/version/range) or runtime error                                          |
+| 3    | Threshold failure (`min_pass_rate` ratchet)                                                                |
+| 4    | Infrastructure/dependency error (no scenarios, empty filter, zero successful reps, invalid regrade source) |
+| 5    | Budget exhausted (`max_budget_usd`)                                                                        |
+| 130  | Interrupted (SIGINT)                                                                                       |
 
 A scuttlerun **rep** that exhausts its budget mid-run does not raise `5` — `5` is craboodle's own `max_budget_usd` cap on the whole run. The SDK reports such a rep as a runtime error (`"Reached maximum budget"` in the scenario's `errors` block), so it crashes and feeds the `4` reliability gate (`max_error_rate`) instead.
 
 The 1-vs-2 split — refusal (1) vs load failure (2) — matches `craboodle.allium` rules `RejectUnknownConfigKeys`, `RejectUnsupportedVersion`, `RejectInvalidMinPassRate` (load → 2) and `ExitListInvalid`, `ExitLintIssuesFound` (refuse → 1). `init` is incremental (rule `InitScaffoldMissing`): it skips existing artifacts rather than refusing, and exits 0.
 
-`craboodle run` also embeds the verdict in the stdout YAML stream as trailing `result:` / `exit_code:` fields (`pass`, `threshold_failure`, `reliability_failure`, `no_successful_reps`, or `budget_exceeded`), so the outcome stays readable even when a shell wrapper masks `$?`. A missing trailer means the run was interrupted or exited before streaming began.
+`craboodle run` and `craboodle regrade` also embed the verdict in the stdout YAML stream as trailing `result:` / `exit_code:` fields (`pass`, `threshold_failure`, `reliability_failure`, `no_successful_reps`, or `budget_exceeded`), so the outcome stays readable even when a shell wrapper masks `$?`. A missing trailer means the run was interrupted or exited before streaming began.
 
 ## Contributing
 

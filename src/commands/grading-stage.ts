@@ -1,4 +1,6 @@
 import { formatErrorWithHint } from '../errors.js';
+import { findMissingBinaries, formatMissingBinariesError } from '../preflight.js';
+import { filterScenarios, type ScenarioRef } from '../discovery.js';
 import { installSignalHandler } from '../signals.js';
 import { runPincenez } from '../runner.js';
 import { resolveScenarioGrounding, type ScenarioGrounding } from '../grounding.js';
@@ -13,7 +15,7 @@ import {
   streamVerdict,
   type ScenarioOutput,
 } from '../output.js';
-import { EXIT_SIGINT } from '../exit-codes.js';
+import { EXIT_INFRA_ERROR, EXIT_SIGINT } from '../exit-codes.js';
 
 /**
  * Run `body` with a SIGINT handler installed; the first signal aborts the
@@ -39,6 +41,49 @@ export async function withInterruptHandling(
       process.exit(EXIT_SIGINT);
     }
   }
+}
+
+/** Exit 4 unless both companion CLIs are on PATH. */
+export async function requireCompanionBinaries(): Promise<void> {
+  const missing = await findMissingBinaries(['scuttlerun', 'pincenez']);
+  if (missing.length > 0) {
+    process.stderr.write(formatMissingBinariesError(missing));
+    process.exit(EXIT_INFRA_ERROR);
+  }
+}
+
+/**
+ * The root's scenarios the --scenarios filter selects; exits 4 when the root
+ * has none or the filter matches none.
+ */
+export function selectRootScenarios(
+  scenarios: ScenarioRef[],
+  resolvedRoot: string,
+  pattern: string | undefined,
+): ScenarioRef[] {
+  if (scenarios.length === 0) {
+    process.stderr.write(
+      formatErrorWithHint(
+        `No scenarios found in ${resolvedRoot}`,
+        `craboodle init ${resolvedRoot}`,
+        'craboodle --help',
+      ),
+    );
+    process.exit(EXIT_INFRA_ERROR);
+  }
+  if (!pattern) return scenarios;
+  const selected = filterScenarios(scenarios, pattern);
+  if (selected.length === 0) {
+    process.stderr.write(
+      formatErrorWithHint(
+        `No scenarios match filter: ${pattern}`,
+        `craboodle list ${resolvedRoot} to see available IDs`,
+        'craboodle --help',
+      ),
+    );
+    process.exit(EXIT_INFRA_ERROR);
+  }
+  return selected;
 }
 
 // Resolve the scenario's prompt once, shared across all reps; lazy so
@@ -70,6 +115,8 @@ export interface GradeRepOptions {
   auth?: string;
   signal: AbortSignal;
   verbose?: boolean;
+  /** When false, the transcript's agent cost is not this rep's (default true). */
+  attributeAgentCost?: boolean;
 }
 
 /** Grade one rep's transcript with pincenez and load the grading it wrote. */
@@ -94,14 +141,19 @@ export async function gradeRep(opts: GradeRepOptions): Promise<RepOutcome> {
       rep,
       stage: pincenezResult.error.stage,
       message: pincenezResult.error.message,
-      costUsd: await readTranscriptCost(outputPath),
+      costUsd: opts.attributeAgentCost === false ? null : await readTranscriptCost(outputPath),
       ...(pincenezResult.error.exitCode !== undefined
         ? { exitCode: pincenezResult.error.exitCode }
         : {}),
       transcriptPath: outputPath,
     };
   }
-  return loadStageBResult({ gradingPath, outputPath, rep });
+  return loadStageBResult({
+    gradingPath,
+    outputPath,
+    rep,
+    attributeAgentCost: opts.attributeAgentCost,
+  });
 }
 
 export interface ScenarioStreamState {
@@ -118,6 +170,9 @@ export function makeScenarioStreamer(opts: {
   artifactDir: string;
   minPassRate?: number;
   verbose?: boolean;
+  /** When false, a breach never trips fail-fast (default true). */
+  failFast?: boolean;
+  decorate?: (output: ScenarioOutput) => ScenarioOutput;
 }): {
   state: ScenarioStreamState;
   onScenarioComplete: (scenarioId: string, repResults: WorkResult<RepOutcome>[]) => void;
@@ -130,7 +185,8 @@ export function makeScenarioStreamer(opts: {
   const { minPassRate } = opts;
 
   const onScenarioComplete = (scenarioId: string, repResults: WorkResult<RepOutcome>[]) => {
-    const { output: scenarioOutput, anySuccess } = summarizeScenario(scenarioId, repResults);
+    const { output: summary, anySuccess } = summarizeScenario(scenarioId, repResults);
+    const scenarioOutput = opts.decorate ? opts.decorate(summary) : summary;
     state.hasAnySuccess ||= anySuccess;
 
     state.scenarioOutputs.push(scenarioOutput);
@@ -141,6 +197,7 @@ export function makeScenarioStreamer(opts: {
     }
 
     if (
+      opts.failFast !== false &&
       minPassRate !== undefined &&
       (scenarioOutput.pass_rate === null || scenarioOutput.pass_rate < minPassRate)
     ) {
