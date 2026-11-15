@@ -251,6 +251,19 @@ describe('cli exit codes (unified taxonomy)', () => {
       expect(stderr).not.toContain('Fail-fast triggered');
     });
 
+    it('ends stdout with reliability_failure / 4 and names the scenario when a rep crashes', async () => {
+      await writeEvals({ version: '1', min_pass_rate: 0, scenarios: { base: {} } });
+      await writeAlpha();
+      const { code, stdout, stderr } = await runAndCaptureAll(['run', '--repeats', '2', tmpDir], {
+        CRABOODLE_STUB_SCUTTLERUN_FAIL_ONCE: join(tmpDir, 'failed-once'),
+        CRABOODLE_STUB_PINCENEZ_STDOUT: gradingYaml(true),
+      });
+      expect(code).toBe(4);
+      expect(stdout.endsWith('result: reliability_failure\nexit_code: 4\n')).toBe(true);
+      expect(stderr).toContain('Reliability check failed (max_error_rate: 0)');
+      expect(stderr).toContain('alpha: error_rate=0.5 > 0');
+    });
+
     it('ends stdout with no_successful_reps / 4 when every rep fails', async () => {
       await writeEvals();
       await writeAlpha();
