@@ -110,6 +110,41 @@ describe('loadStageBResult', () => {
     expect(result.costUsd).toBe(0.0123);
   });
 
+  it('attributes no agent cost when attributeAgentCost is false', async () => {
+    const { loadStageBResult } = await import('../src/stage-b-load.js');
+    await writeFile(gradingPath, VALID_GRADING, 'utf8');
+    await writeFile(outputPath, VALID_TRANSCRIPT, 'utf8');
+
+    const result = await loadStageBResult({
+      gradingPath,
+      outputPath,
+      rep: 1,
+      attributeAgentCost: false,
+    });
+
+    expect(result.type).toBe('success');
+    if (result.type !== 'success') return;
+    expect(result.costUsd).toBeNull();
+    expect(result.gradingCostUsd).toBe(0.0042);
+  });
+
+  it('attributes no agent cost to a grading.yaml error when attributeAgentCost is false', async () => {
+    const { loadStageBResult } = await import('../src/stage-b-load.js');
+    await writeFile(gradingPath, '{{ not yaml :::', 'utf8');
+    await writeFile(outputPath, VALID_TRANSCRIPT, 'utf8');
+
+    const result = await loadStageBResult({
+      gradingPath,
+      outputPath,
+      rep: 1,
+      attributeAgentCost: false,
+    });
+
+    expect(result.type).toBe('error');
+    if (result.type !== 'error') return;
+    expect(result.costUsd).toBeNull();
+  });
+
   it('returns error with costUsd null when the transcript is also missing', async () => {
     const { loadStageBResult } = await import('../src/stage-b-load.js');
 
