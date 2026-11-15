@@ -9,7 +9,9 @@
 # (combined with _EXIT, simulates a crash that leaves a partial transcript);
 # CRABOODLE_STUB_SCUTTLERUN_DRYRUN_STDOUT / _DRYRUN_EXIT control --dry-run
 # invocations separately from real runs; CRABOODLE_STUB_SCUTTLERUN_SLEEP
-# delays each real run by that many seconds before it prints and exits.
+# delays each real run by that many seconds before it prints and exits;
+# CRABOODLE_STUB_SCUTTLERUN_FAIL_ONCE names a marker dir: the first real
+# run creates it and exits 5, later runs see it and carry on.
 if [ -n "${CRABOODLE_STUB_SCUTTLERUN_ARGS_FILE:-}" ]; then
   printf '%s\n' "$@" '===' >> "$CRABOODLE_STUB_SCUTTLERUN_ARGS_FILE"
 fi
@@ -19,6 +21,11 @@ if [ "${1:-}" = "--dry-run" ]; then
 fi
 if [ -n "${CRABOODLE_STUB_SCUTTLERUN_SLEEP:-}" ]; then
   sleep "$CRABOODLE_STUB_SCUTTLERUN_SLEEP"
+fi
+# mkdir creates the marker or fails in one step, so of two concurrent runs
+# exactly one takes the failure.
+if [ -n "${CRABOODLE_STUB_SCUTTLERUN_FAIL_ONCE:-}" ] && mkdir "$CRABOODLE_STUB_SCUTTLERUN_FAIL_ONCE" 2>/dev/null; then
+  exit 5
 fi
 printf '%s' "${CRABOODLE_STUB_SCUTTLERUN_STDOUT:-}"
 exit "${CRABOODLE_STUB_SCUTTLERUN_EXIT:-0}"
