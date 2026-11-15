@@ -96,7 +96,7 @@ value ResolvedSessionConfig {
 }
 
 value RepFailureEvidence {
-    rep: Integer
+    rep: Integer                             -- the failing rep's number, as in its rep-N artifact dir and in errors[].rep; never its position among the graded reps
     evidence: String
     transcript_path: String?
 }
