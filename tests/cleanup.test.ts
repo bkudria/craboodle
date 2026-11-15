@@ -4,11 +4,20 @@ import { mkdir, mkdtemp, rm, stat, symlink, utimes } from 'node:fs/promises';
 import { join } from 'node:path';
 
 describe('cleanOldArtifacts', () => {
+  // cleanOldArtifacts sweeps $TMPDIR, so each test gets a private one: no
+  // other process's dirs are swept, and the counts are exact.
+  const originalTmpdir = process.env.TMPDIR;
   let tmpDir: string;
-  // We test in the real tmpdir since that's where cleanOldArtifacts looks
 
   beforeEach(async () => {
-    tmpDir = tmpdir();
+    tmpDir = await mkdtemp(join(tmpdir(), 'craboodle-cleanup-test-'));
+    process.env.TMPDIR = tmpDir;
+  });
+
+  afterEach(async () => {
+    if (originalTmpdir === undefined) delete process.env.TMPDIR;
+    else process.env.TMPDIR = originalTmpdir;
+    await rm(tmpDir, { recursive: true });
   });
 
   async function createOldDir(name: string, daysOld: number): Promise<string> {
@@ -31,7 +40,7 @@ describe('cleanOldArtifacts', () => {
 
     try {
       const cleaned = await cleanOldArtifacts(7);
-      expect(cleaned).toBeGreaterThanOrEqual(1);
+      expect(cleaned).toBe(1);
       await expect(stat(oldDir)).rejects.toThrow();
     } finally {
       await rm(oldDir, { recursive: true }).catch(() => {});
@@ -91,7 +100,7 @@ describe('cleanOldArtifacts', () => {
 
     try {
       const cleaned = await cleanOldArtifacts(7);
-      expect(cleaned).toBeGreaterThanOrEqual(1);
+      expect(cleaned).toBe(1);
       await expect(stat(oldDir)).rejects.toThrow();
     } finally {
       await rm(oldDir, { recursive: true }).catch(() => {});
@@ -125,7 +134,7 @@ describe('cleanOldArtifacts', () => {
 
     try {
       const cleaned = await cleanOldArtifacts(7, { verbose: true });
-      expect(cleaned).toBeGreaterThanOrEqual(1);
+      expect(cleaned).toBe(1);
       expect(stderrOutput).toContain('Cleaned');
     } finally {
       spy.mockRestore();

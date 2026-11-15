@@ -101,12 +101,16 @@ describe('cli signal handling (integration)', () => {
   let evalsDir: string;
   let stubDir: string;
   let pidFile: string;
+  // Each child's mkdtemp dirs, staged view and artifact sweep stay in here.
+  let isolatedTmp: string;
 
   beforeEach(async () => {
     workDir = await makeTmpDir('cli-signal-integration');
     evalsDir = join(workDir, 'evals');
     stubDir = join(workDir, 'stubs');
     pidFile = join(workDir, 'pids.txt');
+    isolatedTmp = join(workDir, 'tmp');
+    await mkdir(isolatedTmp);
     await mkdir(evalsDir);
     await mkdir(stubDir);
     await writeFile(pidFile, '');
@@ -155,7 +159,7 @@ describe('cli signal handling (integration)', () => {
 
   it('run: SIGINT exits 130, prints cleanup message, leaves no zombie subprocesses', async () => {
     const child = spawn(process.execPath, [CLI_PATH, 'run', '--repeats', '1', evalsDir], {
-      env: { ...process.env, PATH: `${stubDir}:${process.env.PATH}` },
+      env: { ...process.env, PATH: `${stubDir}:${process.env.PATH}`, TMPDIR: isolatedTmp },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 
@@ -190,7 +194,7 @@ describe('cli signal handling (integration)', () => {
     await makeForkingStubBin(stubDir, 'pincenez', pidFile);
 
     const child = spawn(process.execPath, [CLI_PATH, 'run', '--repeats', '1', evalsDir], {
-      env: { ...process.env, PATH: `${stubDir}:${process.env.PATH}` },
+      env: { ...process.env, PATH: `${stubDir}:${process.env.PATH}`, TMPDIR: isolatedTmp },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 
@@ -214,7 +218,7 @@ describe('cli signal handling (integration)', () => {
 
   it('lint: SIGINT exits 130 and leaves no zombie subprocesses', async () => {
     const child = spawn(process.execPath, [CLI_PATH, 'lint', evalsDir], {
-      env: { ...process.env, PATH: `${stubDir}:${process.env.PATH}` },
+      env: { ...process.env, PATH: `${stubDir}:${process.env.PATH}`, TMPDIR: isolatedTmp },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 
@@ -249,7 +253,7 @@ describe('cli signal handling (integration)', () => {
       process.execPath,
       [CLI_PATH, 'regrade', evalsDir, join(workDir, 'source')],
       {
-        env: { ...process.env, PATH: `${stubDir}:${process.env.PATH}` },
+        env: { ...process.env, PATH: `${stubDir}:${process.env.PATH}`, TMPDIR: isolatedTmp },
         stdio: ['ignore', 'pipe', 'pipe'],
       },
     );
