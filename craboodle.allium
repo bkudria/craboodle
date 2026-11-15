@@ -909,6 +909,7 @@ rule AggregateScenario {
         -- to completion and are excluded from both numerator and denominator,
         -- so a fail-fast cascade cannot inflate error_rate. It is the raw
         -- fraction the reliability gate compares against (see ExitRunReliability).
+        -- In a regrade, a rep that failed at the source counts as crashed.
 }
 
 rule StreamScenarioBlock {
@@ -1059,14 +1060,16 @@ rule FailRegradeInvalidSource {
 }
 
 -- A scenario only one side has is skipped with a warning and gets no
--- block. A source scenario the filter excludes is not warned about: the
--- operator chose to leave it out.
+-- block. On the root's side that includes a scenario whose reps the source
+-- run never dispatched, since it left no rep directory for them. A source
+-- scenario the filter excludes is not warned about: the operator chose to
+-- leave it out.
 rule WarnRegradeRootOnlyScenario {
     when: inv: RunInvocation.status transitions_to discovering
     requires: inv.is_regrade
     for scenario in inv.filtered_scenarios:
         requires: not inv.source.reps.any(r => r.scenario_id = scenario.id)
-        ensures: emit_stderr("Scenario not in the source run; skipped")
+        ensures: emit_stderr("Scenario has no reps in the source run; skipped")
 }
 
 rule WarnRegradeSourceOnlyScenario {
@@ -1115,6 +1118,10 @@ rule BuildRegradeWorkItems {
         -- and a grading.yaml that parses, and otherwise names what is
         -- missing or unreadable, or the failed copy, with the source rep
         -- dir.
+        --
+        -- A rep this regrade skips (budget, interrupt) keeps its copied
+        -- transcript but gets no grading.yaml, so a regrade of this regrade
+        -- reports it as never graded.
 }
 
 -- Grading is grounded in the scenario's current resolved prompt, but the

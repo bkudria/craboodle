@@ -129,8 +129,11 @@ Output Format:
   cover grading only, so it never reports agent_cost_usd. A scenario whose
   current prompt differs from the one its transcripts were made with carries
   prompt_changed: true (whitespace-only edits are not flagged). Source reps
-  that cannot be regraded (no transcript, or never graded) come back under
-  errors with stage: source.
+  that cannot be regraded come back under errors with stage: source and
+  count toward error_rate as crashed reps do: no transcript, a grading.yaml
+  that is unreadable or invalid, never graded, or a transcript that could not
+  be copied. A rep the source run skipped (fail-fast, budget, Ctrl-C) left no
+  rep dir, so it is not a source rep and reports nothing.
 
 Examples:
   # Scaffold an evals.yaml at the skill / plugin root. Mode is auto-detected:

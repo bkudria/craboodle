@@ -571,6 +571,27 @@ describe('cli regrade', () => {
     expect(code).toBe(4);
     expect(stderr).toContain('not found on PATH');
   });
+  it('regrades a fail-fasted run as the reps that ran, with no errors for the reps it skipped', async () => {
+    // A run creates a rep's dir only once the rep is dispatched, so a run that
+    // failed fast after alpha's first rep left no dirs for its other reps, and
+    // none at all for a scenario none of whose reps ran.
+    await writeRoot({ evals: { min_pass_rate: 1 }, ids: ['alpha', 'beta', 'gamma'] });
+    await writeSourceRun(source, { alpha: [{ rep: 1 }] });
+    await mkdir(join(source, 'gamma'));
+
+    const { code, stdout, stderr } = await regrade([root, source]);
+
+    expect(code).toBe(0);
+    const doc = parse(stdout);
+    expect(doc.result).toBe('pass');
+    expect(doc.scenarios).toEqual([
+      { alpha: expect.not.objectContaining({ errors: expect.anything() }) },
+    ]);
+    expect(stdout).not.toContain('stage: source');
+    expect(stderr).toContain('[craboodle] beta: no reps in the source run; skipped');
+    expect(stderr).toContain('[craboodle] gamma: no reps in the source run; skipped');
+  });
+
   it('skips, with a warning, a scenario only one side has', async () => {
     await writeRoot({ ids: ['alpha', 'beta'] });
     await writeSourceRun(source, { alpha: [{ rep: 1 }], gamma: [{ rep: 1 }] });
@@ -579,7 +600,7 @@ describe('cli regrade', () => {
 
     expect(code).toBe(0);
     expect(stderr).toContain('[craboodle] gamma: not in the eval root; skipped');
-    expect(stderr).toContain('[craboodle] beta: not in the source run; skipped');
+    expect(stderr).toContain('[craboodle] beta: no reps in the source run; skipped');
     expect(parse(stdout).scenarios.map((s: object) => Object.keys(s)[0])).toEqual(['alpha']);
   });
 

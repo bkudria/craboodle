@@ -189,7 +189,7 @@ async function regradeCommandInner(args: {
     process.stderr.write(`[craboodle] ${id}: not in the eval root; skipped\n`);
   }
   for (const id of plan.rootOnly) {
-    process.stderr.write(`[craboodle] ${id}: not in the source run; skipped\n`);
+    process.stderr.write(`[craboodle] ${id}: no reps in the source run; skipped\n`);
   }
   if (plan.selected.length === 0) {
     process.stderr.write(
