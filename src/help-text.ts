@@ -95,6 +95,15 @@ checks.yaml Schema:
       - handles-edge-cases:
           check: "Function handles edge cases like empty string and missing @"
 
+  The judge reads the transcript, and may read any file a note names.
+  For evidence the transcript leaves out (a file a hook wrote, say), name
+  the file relative to the directory the agent worked in, which the
+  transcript header records as project:
+
+      - hook-logged:
+          check: "The hook logged the command the agent ran"
+          note: "Read .claude/hook.log under the transcript's project: directory"
+
 Output Format:
   YAML streamed to stdout, scenario by scenario (arrival order):
 
