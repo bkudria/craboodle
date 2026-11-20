@@ -27,15 +27,6 @@ ordered by priority.
   scuttlerun's transcript header names the Claude Code version
   (`claude_code`, bkudria/scuttlerun#118), so such a run states which CLI
   version the facts held for.
-- **Build before `npm publish`.** The release workflow's publish job runs
-  `npm publish` right after `npm ci`, so `dist/` exists only once
-  `prepublishOnly` builds it. npm checks `bin` before that script runs: the
-  0.4.0 publish logged "No bin file found at dist/cli.js" and that
-  `bin[craboodle]` "was invalid and removed". The published tarball kept `bin`
-  and an executable `dist/cli.js` (checked by downloading it), so the warning
-  is noise today, but it would hide a real loss of the command if npm began
-  enforcing it. Shape: an `npm run build` step before `npm publish` in
-  `release-please.yml`.
 - **`regrade --repeats`.** Grade each kept transcript N times to measure
   grader variance apart from agent variance. Deferred because it changes
   what a rep is: today a regrade has exactly its source's reps, so pass_rate
