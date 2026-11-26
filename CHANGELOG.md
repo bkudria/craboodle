@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.5.0](https://github.com/bkudria/craboodle/compare/v0.4.0...v0.5.0) (2026-11-26)
+
+
+### Features
+
+* **regrade:** re-grade a run's kept transcripts against the current checks ([#103](https://github.com/bkudria/craboodle/issues/103)) ([61ce831](https://github.com/bkudria/craboodle/commit/61ce831bde980e264d33e614beda09c3df0c32f6))
+
+
+### Bug Fixes
+
+* **output:** number check failures by the rep they failed in ([#102](https://github.com/bkudria/craboodle/issues/102)) ([5b571ea](https://github.com/bkudria/craboodle/commit/5b571ea0b775c71667dfff50ee7e3d7ffce5940e))
+* **run:** skip queued reps when they reach a session slot ([#100](https://github.com/bkudria/craboodle/issues/100)) ([fecce77](https://github.com/bkudria/craboodle/commit/fecce7758b97ed82182daac4c64fc0bf3c059745))
+
 ## [0.4.0](https://github.com/bkudria/craboodle/compare/v0.3.0...v0.4.0) (2026-11-08)
 
 
